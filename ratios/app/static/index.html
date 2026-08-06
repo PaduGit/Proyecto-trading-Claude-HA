@@ -208,6 +208,51 @@ button.primario:disabled{opacity:.5;cursor:default}
 .alerta-fila.alta .a{color:var(--coral)}
 .alerta-fila.baja .a{color:var(--sage)}
 
+/* ---------- explorar ---------- */
+.nota{font-size:12px;color:var(--muted);margin:0 0 14px}
+.avanzado{margin-top:18px;border-top:1px solid var(--rule);padding-top:12px}
+.avanzado summary{
+  font-family:var(--mono);font-size:10px;color:var(--muted);
+  letter-spacing:.1em;text-transform:uppercase;cursor:pointer;
+}
+.avanzado summary:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.hallazgo{
+  background:var(--panel);border:1px solid var(--rule);border-radius:4px;
+  padding:12px 14px;margin-bottom:10px;
+}
+.hallazgo h3{
+  font-family:var(--mono);font-size:11px;font-weight:600;margin:0 0 8px;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+}
+.kv{
+  display:grid;grid-template-columns:auto 1fr;gap:4px 12px;
+  font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;
+}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;color:var(--bone);word-break:break-word}
+.kv dd.si{color:var(--sage)}
+.kv dd.no{color:var(--coral)}
+table.panel{
+  width:100%;border-collapse:collapse;
+  font-family:var(--mono);font-size:11px;
+  font-variant-numeric:tabular-nums;
+}
+table.panel th{
+  text-align:right;color:var(--muted);font-weight:500;
+  border-bottom:1px solid var(--rule);padding:6px 4px;
+  font-size:9px;letter-spacing:.06em;text-transform:uppercase;
+}
+table.panel th:first-child,table.panel td:first-child{text-align:left}
+table.panel td{padding:5px 4px;text-align:right;border-bottom:1px solid var(--rule)}
+table.panel tr.dolar td:first-child{color:var(--amber)}
+.scroll{max-height:60vh;overflow:auto;-webkit-overflow-scrolling:touch}
+pre.crudo{
+  background:var(--ink);border:1px solid var(--rule);border-radius:3px;
+  padding:10px;font-family:var(--mono);font-size:10px;
+  color:var(--muted);overflow:auto;max-height:40vh;
+  white-space:pre-wrap;word-break:break-word;margin:0;
+}
+
 @media (prefers-reduced-motion:reduce){
   *{transition:none!important;animation:none!important}
 }
@@ -224,6 +269,7 @@ button.primario:disabled{opacity:.5;cursor:default}
     <button role="tab" aria-selected="true" data-vista="panel">Panel</button>
     <button role="tab" aria-selected="false" data-vista="calc">Calcular</button>
     <button role="tab" aria-selected="false" data-vista="hist">Alertas</button>
+    <button role="tab" aria-selected="false" data-vista="expl">Explorar</button>
   </nav>
 </header>
 
@@ -266,6 +312,49 @@ button.primario:disabled{opacity:.5;cursor:default}
   </section>
 
   <section id="v-hist" hidden></section>
+
+  <section id="v-expl" hidden>
+    <p class="nota">Consultá la API con la sesión que ya tiene la app.
+      Solo lectura.</p>
+
+    <div class="form">
+      <div>
+        <label for="e-inst">Instrumento</label>
+        <select id="e-inst"><option>Bonos</option></select>
+      </div>
+      <div>
+        <label for="e-pais">País</label>
+        <select id="e-pais">
+          <option value="argentina">argentina</option>
+          <option value="estados_Unidos">estados_Unidos</option>
+        </select>
+      </div>
+      <div class="ancho">
+        <label for="e-panel">Panel</label>
+        <select id="e-panel"><option value="">Elegí un instrumento primero</option></select>
+      </div>
+      <div class="ancho">
+        <button class="primario" id="e-btn">Bajar panel</button>
+      </div>
+    </div>
+
+    <div id="e-out"></div>
+
+    <details class="avanzado">
+      <summary>Ruta manual</summary>
+      <div class="form" style="margin-top:10px">
+        <div class="ancho">
+          <label for="e-path">Ruta</label>
+          <input id="e-path" placeholder="api/v2/argentina/Titulos/Cotizacion/Instrumentos"
+                 autocomplete="off" style="text-transform:none">
+        </div>
+        <div class="ancho">
+          <button class="primario" id="e-path-btn">Consultar</button>
+        </div>
+      </div>
+      <div id="e-path-out"></div>
+    </details>
+  </section>
 </main>
 
 <script>
@@ -285,10 +374,158 @@ document.querySelectorAll("nav button").forEach(b => {
     document.querySelectorAll("nav button").forEach(x =>
       x.setAttribute("aria-selected", x === b));
     vistaActual = b.dataset.vista;
-    ["panel","calc","hist"].forEach(v =>
+    ["panel","calc","hist","expl"].forEach(v =>
       $("#v-"+v).hidden = (v !== vistaActual));
     if (vistaActual === "hist") cargarAlertas();
+    if (vistaActual === "expl") iniciarExplorar();
   });
+});
+
+/* ---------- explorar ---------- */
+let explorarListo = false;
+
+async function iniciarExplorar(){
+  if(explorarListo) return;
+  explorarListo = true;
+  await cargarInstrumentos();
+}
+
+async function cargarInstrumentos(){
+  const sel = $("#e-inst");
+  try{
+    const d = await (await fetch(
+      base + "api/explorar/instrumentos?pais=" + $("#e-pais").value)).json();
+    const lista = Array.isArray(d) ? d : [];
+    if(lista.length){
+      sel.innerHTML = lista.map(i =>
+        `<option>${typeof i === "string" ? i : (i.descripcion || i.nombre || i)}</option>`
+      ).join("");
+      sel.value = lista.includes("Bonos") ? "Bonos" : sel.options[0].value;
+    }
+  }catch(e){ /* deja el default */ }
+  await cargarPaneles();
+}
+
+async function cargarPaneles(){
+  const sel = $("#e-panel");
+  sel.innerHTML = '<option value="">Cargando…</option>';
+  try{
+    const q = new URLSearchParams({
+      instrumento: $("#e-inst").value, pais: $("#e-pais").value });
+    const d = await (await fetch(base + "api/explorar/paneles?" + q)).json();
+    const lista = Array.isArray(d) ? d : [];
+    if(!lista.length){
+      sel.innerHTML = '<option value="">Sin paneles para este instrumento</option>';
+      return;
+    }
+    sel.innerHTML = lista.map(p => {
+      const n = typeof p === "string" ? p : (p.descripcion || p.nombre || p);
+      return `<option>${n}</option>`;
+    }).join("");
+  }catch(e){
+    sel.innerHTML = '<option value="">No se pudieron cargar</option>';
+  }
+}
+
+$("#e-inst").addEventListener("change", cargarPaneles);
+$("#e-pais").addEventListener("change", cargarInstrumentos);
+
+$("#e-btn").addEventListener("click", async () => {
+  const out = $("#e-out");
+  const panel = $("#e-panel").value;
+  if(!panel){
+    out.innerHTML = '<div class="msg">Elegí un panel.</div>';
+    return;
+  }
+  $("#e-btn").disabled = true;
+  out.innerHTML = '<div class="vacio">Bajando panel…</div>';
+
+  const q = new URLSearchParams({
+    instrumento: $("#e-inst").value, panel, pais: $("#e-pais").value });
+
+  try{
+    const r = await fetch(base + "api/explorar/panel?" + q);
+    const d = await r.json();
+    if(!r.ok){
+      out.innerHTML = `<div class="msg error">${d.error || "Falló la consulta."}</div>`;
+      return;
+    }
+    out.innerHTML = resumenPanel(d);
+  }catch(e){
+    out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
+  }finally{
+    $("#e-btn").disabled = false;
+  }
+});
+
+function resumenPanel(d){
+  const dolarizadas = d.especies_d.length + d.especies_c.length;
+  const sí = v => v ? "si" : "no";
+
+  const filas = d.titulos.map(t => {
+    const esD = /[DC]$/.test(t.simbolo || "");
+    return `<tr class="${esD ? "dolar" : ""}">
+      <td>${t.simbolo || ""}</td>
+      <td>${precio(t.ultimo)}</td>
+      <td>${t.compra ? precio(t.compra) : "—"}</td>
+      <td>${t.venta ? precio(t.venta) : "—"}</td>
+      <td>${t.plazo || "—"}</td>
+    </tr>`;
+  }).join("");
+
+  return `
+  <div class="hallazgo">
+    <h3>Lo que trae este panel</h3>
+    <dl class="kv">
+      <dt>Títulos</dt><dd>${d.total}</dd>
+      <dt>Con puntas</dt>
+      <dd class="${sí(d.con_puntas)}">${d.con_puntas} de ${d.total}</dd>
+      <dt>Especies D</dt>
+      <dd class="${sí(d.especies_d.length)}">${
+        d.especies_d.length ? d.especies_d.join(" · ") : "ninguna"}</dd>
+      <dt>Especies C</dt>
+      <dd class="${sí(d.especies_c.length)}">${
+        d.especies_c.length ? d.especies_c.join(" · ") : "ninguna"}</dd>
+      <dt>Monedas</dt><dd>${d.monedas.join(" · ") || "—"}</dd>
+      <dt>Plazos</dt><dd>${d.plazos.join(" · ") || "no informa"}</dd>
+    </dl>
+  </div>
+
+  <div class="hallazgo">
+    <h3>Títulos${dolarizadas ? " · en ámbar los D y C" : ""}</h3>
+    <div class="scroll">
+      <table class="panel">
+        <thead><tr>
+          <th>Símbolo</th><th>Último</th><th>Compra</th><th>Venta</th><th>Plazo</th>
+        </tr></thead>
+        <tbody>${filas}</tbody>
+      </table>
+    </div>
+  </div>
+
+  <details class="avanzado">
+    <summary>Respuesta cruda del primer título</summary>
+    <pre class="crudo">${JSON.stringify(d.muestra_cruda, null, 2)}</pre>
+  </details>`;
+}
+
+$("#e-path-btn").addEventListener("click", async () => {
+  const out = $("#e-path-out");
+  const path = $("#e-path").value.trim();
+  if(!path){
+    out.innerHTML = '<div class="msg">Escribí una ruta.</div>';
+    return;
+  }
+  out.innerHTML = '<div class="vacio">Consultando…</div>';
+  try{
+    const r = await fetch(base + "api/explorar/raw?path=" + encodeURIComponent(path));
+    const d = await r.json();
+    out.innerHTML = r.ok
+      ? `<pre class="crudo">${JSON.stringify(d.respuesta, null, 2)}</pre>`
+      : `<div class="msg error">${d.error || "Falló la consulta."}</div>`;
+  }catch(e){
+    out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
+  }
 });
 
 /* ---------- panel ---------- */
