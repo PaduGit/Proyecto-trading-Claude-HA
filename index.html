@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ratios</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0E141B;
+  --panel:#161E28;
+  --panel-2:#1C2632;
+  --rule:#28323F;
+  --bone:#E9E5DC;
+  --muted:#7B8794;
+  --coral:#DF7168;
+  --sage:#6FA88C;
+  --amber:#C6A24B;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--ink);
+  color:var(--bone);
+  font-family:var(--sans);
+  font-size:15px;
+  line-height:1.45;
+  padding:0 0 env(safe-area-inset-bottom);
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ---------- cabecera ---------- */
+header{
+  position:sticky;top:0;z-index:20;
+  background:rgba(14,20,27,.94);
+  backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--rule);
+  padding:14px 16px 10px;
+}
+.hrow{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+h1{
+  font-family:var(--mono);
+  font-size:16px;font-weight:600;
+  letter-spacing:.14em;text-transform:uppercase;
+  margin:0;
+}
+.estado{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:right}
+.pulso{
+  display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--sage);margin-right:6px;vertical-align:middle;
+}
+.pulso.off{background:var(--muted)}
+nav{display:flex;gap:2px;margin-top:12px}
+nav button{
+  flex:1;
+  background:transparent;border:1px solid var(--rule);
+  color:var(--muted);
+  font-family:var(--mono);font-size:11px;
+  letter-spacing:.1em;text-transform:uppercase;
+  padding:8px 4px;cursor:pointer;
+}
+nav button:first-child{border-radius:3px 0 0 3px}
+nav button:last-child{border-radius:0 3px 3px 0}
+nav button+button{border-left:none}
+nav button[aria-selected="true"]{
+  background:var(--panel-2);color:var(--bone);
+  border-color:var(--rule);
+}
+nav button:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+
+main{padding:14px 16px 40px;max-width:720px;margin:0 auto}
+section[hidden]{display:none}
+
+/* ---------- tarjeta de par ---------- */
+.par{
+  background:var(--panel);
+  border:1px solid var(--rule);
+  border-radius:4px;
+  padding:14px 14px 12px;
+  margin-bottom:10px;
+}
+.par.alta{border-left:2px solid var(--coral)}
+.par.baja{border-left:2px solid var(--sage)}
+.par-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.alias{
+  font-family:var(--mono);font-size:13px;font-weight:600;
+  letter-spacing:.06em;
+}
+.silencio{
+  font-family:var(--mono);font-size:9px;color:var(--muted);
+  border:1px solid var(--rule);border-radius:2px;
+  padding:1px 5px;letter-spacing:.08em;text-transform:uppercase;
+}
+.ratio{
+  font-family:var(--mono);
+  font-size:30px;font-weight:500;
+  letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;
+  margin:6px 0 2px;
+}
+.par.alta .ratio{color:var(--coral)}
+.par.baja .ratio{color:var(--sage)}
+
+/* ---------- la banda: soporte |----aguja----| resistencia ---------- */
+.banda{margin:14px 0 10px;position:relative;height:26px}
+.riel{
+  position:absolute;left:0;right:0;top:11px;height:2px;
+  background:var(--rule);
+}
+.zona-ok{
+  position:absolute;top:10px;height:4px;
+  background:var(--panel-2);
+  border-left:1px solid var(--muted);
+  border-right:1px solid var(--muted);
+}
+.marca{
+  position:absolute;top:4px;width:1px;height:16px;
+}
+.marca.sop{background:var(--sage)}
+.marca.res{background:var(--coral)}
+.marca-txt{
+  position:absolute;top:20px;
+  font-family:var(--mono);font-size:9px;color:var(--muted);
+  font-variant-numeric:tabular-nums;white-space:nowrap;
+}
+.aguja{
+  position:absolute;top:2px;width:2px;height:20px;
+  background:var(--bone);
+  transition:left .5s cubic-bezier(.22,.61,.36,1);
+}
+.aguja::after{
+  content:"";position:absolute;top:-4px;left:-3px;
+  width:8px;height:8px;background:var(--bone);
+  transform:rotate(45deg);
+}
+.par.alta .aguja,.par.alta .aguja::after{background:var(--coral)}
+.par.baja .aguja,.par.baja .aguja::after{background:var(--sage)}
+
+/* ---------- datos ---------- */
+.datos{
+  display:grid;grid-template-columns:repeat(2,1fr);
+  gap:2px 14px;
+  font-family:var(--mono);font-size:11px;
+  color:var(--muted);
+  font-variant-numeric:tabular-nums;
+  border-top:1px solid var(--rule);
+  padding-top:9px;margin-top:4px;
+}
+.datos span b{color:var(--bone);font-weight:500}
+.acciones{display:flex;gap:8px;margin-top:10px}
+.acciones button{
+  flex:1;background:transparent;border:1px solid var(--rule);
+  color:var(--muted);font-family:var(--mono);font-size:10px;
+  letter-spacing:.08em;text-transform:uppercase;
+  padding:6px;border-radius:3px;cursor:pointer;
+}
+.acciones button:hover{color:var(--bone);border-color:var(--muted)}
+.acciones button:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+
+/* ---------- grafico ---------- */
+.graf{margin-top:12px;border-top:1px solid var(--rule);padding-top:12px}
+svg.chart{width:100%;height:130px;display:block;overflow:visible}
+.chart .linea{fill:none;stroke:var(--bone);stroke-width:1.25}
+.chart .nivel-res{stroke:var(--coral);stroke-width:1;stroke-dasharray:3 3;opacity:.75}
+.chart .nivel-sop{stroke:var(--sage);stroke-width:1;stroke-dasharray:3 3;opacity:.75}
+.chart .media{stroke:var(--muted);stroke-width:1;stroke-dasharray:1 4}
+.chart text{font-family:var(--mono);font-size:9px;fill:var(--muted)}
+
+/* ---------- calculadora ---------- */
+.form{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.form label{
+  font-family:var(--mono);font-size:10px;color:var(--muted);
+  letter-spacing:.08em;text-transform:uppercase;display:block;margin-bottom:4px;
+}
+.form input,.form select{
+  width:100%;background:var(--panel);border:1px solid var(--rule);
+  color:var(--bone);font-family:var(--mono);font-size:14px;
+  padding:9px 10px;border-radius:3px;text-transform:uppercase;
+}
+.form input:focus,.form select:focus{outline:2px solid var(--amber);outline-offset:-1px;border-color:transparent}
+.ancho{grid-column:1/-1}
+button.primario{
+  width:100%;background:var(--bone);color:var(--ink);
+  border:none;border-radius:3px;padding:11px;
+  font-family:var(--mono);font-size:12px;font-weight:600;
+  letter-spacing:.1em;text-transform:uppercase;cursor:pointer;
+}
+button.primario:disabled{opacity:.5;cursor:default}
+
+/* ---------- varios ---------- */
+.vacio,.msg{
+  color:var(--muted);font-size:13px;
+  border:1px dashed var(--rule);border-radius:4px;
+  padding:20px 16px;text-align:center;
+}
+.msg.error{color:var(--coral);border-color:var(--coral);border-style:solid}
+.alerta-fila{
+  display:flex;justify-content:space-between;gap:10px;
+  font-family:var(--mono);font-size:12px;
+  padding:9px 0;border-bottom:1px solid var(--rule);
+  font-variant-numeric:tabular-nums;
+}
+.alerta-fila .t{color:var(--muted);font-size:10px}
+.alerta-fila.alta .a{color:var(--coral)}
+.alerta-fila.baja .a{color:var(--sage)}
+
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important;animation:none!important}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hrow">
+    <h1>Ratios</h1>
+    <div class="estado" id="estado"><span class="pulso off"></span>conectando</div>
+  </div>
+  <nav role="tablist">
+    <button role="tab" aria-selected="true" data-vista="panel">Panel</button>
+    <button role="tab" aria-selected="false" data-vista="calc">Calcular</button>
+    <button role="tab" aria-selected="false" data-vista="hist">Alertas</button>
+  </nav>
+</header>
+
+<main>
+  <section id="v-panel"></section>
+
+  <section id="v-calc" hidden>
+    <div class="form">
+      <div>
+        <label for="c-num">Numerador</label>
+        <input id="c-num" placeholder="GD30" autocapitalize="characters" autocomplete="off">
+      </div>
+      <div>
+        <label for="c-den">Denominador</label>
+        <input id="c-den" placeholder="AL30" autocapitalize="characters" autocomplete="off">
+      </div>
+      <div>
+        <label for="c-mer">Mercado</label>
+        <select id="c-mer">
+          <option value="bCBA">bCBA</option>
+          <option value="nYSE">nYSE</option>
+          <option value="nASDAQ">nASDAQ</option>
+          <option value="aMEX">aMEX</option>
+          <option value="rOFX">rOFX</option>
+        </select>
+      </div>
+      <div>
+        <label for="c-plazo">Plazo</label>
+        <select id="c-plazo">
+          <option value="t2">t2</option>
+          <option value="t1">t1</option>
+          <option value="t0">t0</option>
+        </select>
+      </div>
+      <div class="ancho">
+        <button class="primario" id="c-btn">Calcular ratio</button>
+      </div>
+    </div>
+    <div id="c-out"></div>
+  </section>
+
+  <section id="v-hist" hidden></section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const base = "";                       // rutas relativas: Ingress las reescribe
+let vistaActual = "panel";
+let abierto = {};                      // alias -> modo de grafico abierto
+
+const num = (v, d=4) => (v ?? 0).toLocaleString("es-AR",
+  {minimumFractionDigits:d, maximumFractionDigits:d});
+const precio = v => (v ?? 0).toLocaleString("es-AR",
+  {minimumFractionDigits:2, maximumFractionDigits:2});
+
+/* ---------- navegacion ---------- */
+document.querySelectorAll("nav button").forEach(b => {
+  b.addEventListener("click", () => {
+    document.querySelectorAll("nav button").forEach(x =>
+      x.setAttribute("aria-selected", x === b));
+    vistaActual = b.dataset.vista;
+    ["panel","calc","hist"].forEach(v =>
+      $("#v-"+v).hidden = (v !== vistaActual));
+    if (vistaActual === "hist") cargarAlertas();
+  });
+});
+
+/* ---------- panel ---------- */
+async function cargarPanel(){
+  let d;
+  try{
+    d = await (await fetch(base + "api/estado")).json();
+  }catch(e){
+    $("#estado").innerHTML = '<span class="pulso off"></span>sin conexión';
+    return;
+  }
+
+  const hora = d.ciclo ? d.ciclo.slice(11,19) : "—";
+  $("#estado").innerHTML =
+    `<span class="pulso ${d.en_rueda ? "" : "off"}"></span>` +
+    (d.en_rueda ? hora : "fuera de rueda · " + hora);
+
+  const cont = $("#v-panel");
+  if(!d.pares.length){
+    cont.innerHTML = '<div class="vacio">Todavía no hay lecturas. ' +
+      'El primer ciclo corre apenas arranca la rueda.</div>';
+    return;
+  }
+  cont.innerHTML = d.pares.map(tarjeta).join("");
+  Object.keys(abierto).forEach(a => dibujar(a, abierto[a]));
+}
+
+function tarjeta(p){
+  if(p.error && p.ratio == null){
+    return `<div class="par"><div class="par-top"><span class="alias">${p.alias}</span></div>
+      <div class="msg error" style="margin-top:10px">${p.error}</div></div>`;
+  }
+  const est = p.est || {};
+  const zona = p.zona === "alta" ? "alta" : p.zona === "baja" ? "baja" : "";
+
+  return `<div class="par ${zona}" data-alias="${p.alias}">
+    <div class="par-top">
+      <span class="alias">${p.alias}</span>
+      ${p.alertas ? "" : '<span class="silencio">sin alertas</span>'}
+    </div>
+    <div class="ratio">${num(p.ratio)}</div>
+    ${banda(p)}
+    <div class="datos">
+      <span>${p.num} <b>${precio(p.p_num?.ref)}</b></span>
+      <span>${p.den} <b>${precio(p.p_den?.ref)}</b></span>
+      ${est.media ? `<span>media <b>${num(est.media)}</b></span>` : "<span></span>"}
+      ${p.z != null ? `<span>z <b>${p.z >= 0 ? "+" : ""}${p.z.toFixed(2)}</b></span>`
+                    : `<span>n <b>${est.n ?? 0}</b></span>`}
+    </div>
+    <div class="acciones">
+      <button onclick="alternar('${p.alias}','diario')">90 días</button>
+      <button onclick="alternar('${p.alias}','intra')">Hoy</button>
+    </div>
+    <div class="graf" id="g-${css(p.alias)}" hidden></div>
+  </div>`;
+}
+
+/* la banda: soporte y resistencia fijos, aguja en el ratio actual */
+function banda(p){
+  const sop = p.soporte || 0, res = p.resistencia || 0;
+  if(!sop || !res || res <= sop){
+    const e = p.est || {};
+    if(!e.min || !e.max) return "";
+    // sin niveles: usamos el rango historico como referencia
+    return riel(e.min, e.max, p.ratio, null, null, "rango 90d");
+  }
+  return riel(sop, res, p.ratio, sop, res, null);
+}
+
+function riel(lo, hi, valor, sop, res, etiqueta){
+  const pad = (hi - lo) * 0.35 || hi * 0.05;
+  const min = lo - pad, max = hi + pad;
+  const pos = v => Math.max(0, Math.min(100, (v - min) / (max - min) * 100));
+  const izq = pos(lo), der = pos(hi);
+
+  return `<div class="banda">
+    <div class="riel"></div>
+    <div class="zona-ok" style="left:${izq}%;width:${der - izq}%"></div>
+    ${sop ? `<div class="marca sop" style="left:${izq}%"></div>
+             <div class="marca-txt" style="left:${izq}%;transform:translateX(-50%)">${num(sop,2)}</div>` : ""}
+    ${res ? `<div class="marca res" style="left:${der}%"></div>
+             <div class="marca-txt" style="left:${der}%;transform:translateX(-50%)">${num(res,2)}</div>` : ""}
+    ${etiqueta ? `<div class="marca-txt" style="left:50%;transform:translateX(-50%)">${etiqueta}</div>` : ""}
+    <div class="aguja" style="left:${pos(valor)}%"></div>
+  </div>`;
+}
+
+const css = s => s.replace(/[^a-zA-Z0-9]/g, "_");
+
+async function alternar(alias, modo){
+  const cont = document.getElementById("g-" + css(alias));
+  if(!cont) return;
+  if(abierto[alias] === modo){
+    delete abierto[alias];
+    cont.hidden = true;
+    cont.innerHTML = "";
+    return;
+  }
+  abierto[alias] = modo;
+  cont.hidden = false;
+  cont.innerHTML = '<div class="vacio" style="padding:12px">Cargando…</div>';
+  dibujar(alias, modo);
+}
+
+async function dibujar(alias, modo){
+  const cont = document.getElementById("g-" + css(alias));
+  if(!cont) return;
+  cont.hidden = false;
+  try{
+    const d = await (await fetch(
+      base + "api/serie?alias=" + encodeURIComponent(alias) + "&modo=" + modo
+    )).json();
+    cont.innerHTML = grafico(d.puntos, d.resistencia, d.soporte, modo);
+  }catch(e){
+    cont.innerHTML = '<div class="msg error">No se pudo cargar la serie.</div>';
+  }
+}
+
+/* ---------- grafico SVG ---------- */
+function grafico(puntos, res, sop, modo){
+  if(!puntos || puntos.length < 2){
+    return '<div class="vacio" style="padding:14px">' +
+      (modo === "intra"
+        ? "Todavía no hay lecturas de hoy."
+        : "No hay suficiente histórico para este par.") + "</div>";
+  }
+  const W = 320, H = 130, ml = 6, mr = 42, mt = 8, mb = 16;
+  const ys = puntos.map(p => p.y);
+  let lo = Math.min(...ys), hi = Math.max(...ys);
+  if(res) hi = Math.max(hi, res);
+  if(sop) lo = Math.min(lo, sop);
+  const pad = (hi - lo) * 0.08 || hi * 0.01;
+  lo -= pad; hi += pad;
+
+  const px = i => ml + i * (W - ml - mr) / (puntos.length - 1);
+  const py = v => mt + (hi - v) / (hi - lo) * (H - mt - mb);
+
+  const d = puntos.map((p, i) => (i ? "L" : "M") + px(i).toFixed(1) + " " + py(p.y).toFixed(1)).join(" ");
+  const media = ys.reduce((a, b) => a + b, 0) / ys.length;
+
+  const linea = (v, clase, txt) => v ? `
+    <line class="${clase}" x1="${ml}" y1="${py(v)}" x2="${W - mr}" y2="${py(v)}"/>
+    <text x="${W - mr + 4}" y="${py(v) + 3}">${txt}</text>` : "";
+
+  const primero = puntos[0].x, ultimo = puntos[puntos.length - 1].x;
+  const fmt = s => modo === "intra" ? s.slice(11, 16) : s.slice(5, 10);
+
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"
+    role="img" aria-label="Serie del ratio">
+    ${linea(res, "nivel-res", num(res, 2))}
+    ${linea(sop, "nivel-sop", num(sop, 2))}
+    ${linea(media, "media", num(media, 2))}
+    <path class="linea" d="${d}"/>
+    <text x="${ml}" y="${H - 4}">${fmt(primero)}</text>
+    <text x="${W - mr}" y="${H - 4}" text-anchor="end">${fmt(ultimo)}</text>
+  </svg>`;
+}
+
+/* ---------- calculadora ---------- */
+$("#c-btn").addEventListener("click", calcular);
+["c-num","c-den"].forEach(id =>
+  $("#"+id).addEventListener("keydown", e => { if(e.key === "Enter") calcular(); }));
+
+async function calcular(){
+  const n = $("#c-num").value.trim().toUpperCase();
+  const dd = $("#c-den").value.trim().toUpperCase();
+  const out = $("#c-out");
+
+  if(!n || !dd){
+    out.innerHTML = '<div class="msg">Escribí las dos especies para comparar.</div>';
+    return;
+  }
+
+  $("#c-btn").disabled = true;
+  out.innerHTML = '<div class="vacio">Consultando…</div>';
+
+  const q = new URLSearchParams({
+    num:n, den:dd, mercado:$("#c-mer").value, plazo:$("#c-plazo").value
+  });
+
+  try{
+    const r = await fetch(base + "api/calc?" + q);
+    const d = await r.json();
+    if(!r.ok){
+      out.innerHTML = `<div class="msg error">${d.error || "No se pudo calcular."}</div>`;
+      return;
+    }
+    const e = d.est || {};
+    out.innerHTML = `<div class="par">
+      <div class="par-top"><span class="alias">${d.alias}</span></div>
+      <div class="ratio">${num(d.ratio)}</div>
+      <div class="datos">
+        <span>${n} <b>${precio(d.num.ref)}</b></span>
+        <span>${dd} <b>${precio(d.den.ref)}</b></span>
+        ${e.media ? `<span>media <b>${num(e.media)}</b></span>` : "<span></span>"}
+        ${e.z != null ? `<span>z <b>${e.z >= 0 ? "+" : ""}${e.z.toFixed(2)}</b></span>`
+                      : `<span>n <b>${e.n ?? 0}</b></span>`}
+        ${e.min ? `<span>mín <b>${num(e.min, 2)}</b></span>` : ""}
+        ${e.max ? `<span>máx <b>${num(e.max, 2)}</b></span>` : ""}
+      </div>
+      <div class="graf">${grafico(d.puntos, 0, 0, "diario")}</div>
+    </div>`;
+  }catch(err){
+    out.innerHTML = '<div class="msg error">No se pudo consultar. Revisá el add-on.</div>';
+  }finally{
+    $("#c-btn").disabled = false;
+  }
+}
+
+/* ---------- alertas ---------- */
+async function cargarAlertas(){
+  const cont = $("#v-hist");
+  try{
+    const d = await (await fetch(base + "api/alertas")).json();
+    if(!d.length){
+      cont.innerHTML = '<div class="vacio">Sin alertas todavía. ' +
+        'Van a aparecer acá y en Telegram.</div>';
+      return;
+    }
+    cont.innerHTML = d.map(a => `
+      <div class="alerta-fila ${a.tipo}">
+        <span>
+          <span class="a">${a.tipo === "alta" ? "▲" : "▼"}</span>
+          ${a.alias}
+        </span>
+        <span>
+          ${num(a.ratio)}
+          <span class="t">${a.ts.slice(5,10)} ${a.ts.slice(11,16)}</span>
+        </span>
+      </div>`).join("");
+  }catch(e){
+    cont.innerHTML = '<div class="msg error">No se pudo cargar el historial.</div>';
+  }
+}
+
+cargarPanel();
+setInterval(() => { if(vistaActual === "panel") cargarPanel(); }, 45000);
+</script>
+</body>
+</html>
