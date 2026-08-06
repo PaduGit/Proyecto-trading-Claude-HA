@@ -384,6 +384,17 @@ document.querySelectorAll("nav button").forEach(b => {
 /* ---------- explorar ---------- */
 let explorarListo = false;
 
+/* La API devuelve objetos, no strings. Sacamos el nombre de la clave que traiga. */
+function nombreDe(x){
+  if(typeof x === "string") return x;
+  if(!x || typeof x !== "object") return String(x ?? "");
+  for(const k of ["panel","instrumento","descripcion","nombre","titulo"]){
+    if(typeof x[k] === "string" && x[k]) return x[k];
+  }
+  const v = Object.values(x).find(v => typeof v === "string" && v);
+  return v || "";
+}
+
 async function iniciarExplorar(){
   if(explorarListo) return;
   explorarListo = true;
@@ -395,7 +406,7 @@ async function cargarInstrumentos(){
   try{
     const d = await (await fetch(
       base + "api/explorar/instrumentos?pais=" + $("#e-pais").value)).json();
-    const lista = Array.isArray(d) ? d : [];
+    const lista = (Array.isArray(d) ? d : []).map(nombreDe).filter(Boolean);
     if(lista.length){
       sel.innerHTML = lista.map(i =>
         `<option>${typeof i === "string" ? i : (i.descripcion || i.nombre || i)}</option>`
@@ -413,7 +424,7 @@ async function cargarPaneles(){
     const q = new URLSearchParams({
       instrumento: $("#e-inst").value, pais: $("#e-pais").value });
     const d = await (await fetch(base + "api/explorar/paneles?" + q)).json();
-    const lista = Array.isArray(d) ? d : [];
+    const lista = (Array.isArray(d) ? d : []).map(nombreDe).filter(Boolean);
     if(!lista.length){
       sel.innerHTML = '<option value="">Sin paneles para este instrumento</option>';
       return;

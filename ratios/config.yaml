@@ -1,5 +1,5 @@
 name: Ratios IOL
-version: "0.1.1"
+version: "0.1.2"
 slug: ratios_iol
 description: Monitor de ratios entre especies con alertas por Telegram y screener web
 url: https://github.com/TU_USUARIO/ha-ratios
@@ -20,7 +20,7 @@ options:
   telegram_token: ""
   telegram_chat_id: ""
   poll_seconds: 180
-  market_open: "11:00"
+  market_open: "10:30"
   market_close: "17:15"
   timezone: "America/Argentina/Buenos_Aires"
   alert_cooldown_minutes: 90
@@ -30,7 +30,7 @@ options:
       num: "ALUA"
       den: "TXAR"
       mercado: "bCBA"
-      plazo: "t2"
+      plazo: "t1"
       resistencia: 1.54
       soporte: 1.36
       alertas: true
@@ -38,7 +38,7 @@ options:
       num: "LOMA"
       den: "HARG"
       mercado: "bCBA"
-      plazo: "t2"
+      plazo: "t1"
       resistencia: 2.2
       soporte: 1.7
       alertas: true
@@ -46,7 +46,7 @@ options:
       num: "GD30"
       den: "AL30"
       mercado: "bCBA"
-      plazo: "t2"
+      plazo: "t1"
       resistencia: 1.03
       soporte: 1.0
       alertas: true
@@ -54,7 +54,7 @@ options:
       num: "AO28"
       den: "AO29"
       mercado: "bCBA"
-      plazo: "t2"
+      plazo: "t1"
       resistencia: 0
       soporte: 0
       alertas: false
@@ -62,7 +62,7 @@ options:
       num: "AL30"
       den: "AL30D"
       mercado: "bCBA"
-      plazo: "t2"
+      plazo: "t1"
       resistencia: 0
       soporte: 0
       alertas: false
