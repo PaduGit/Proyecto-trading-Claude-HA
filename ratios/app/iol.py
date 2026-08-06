@@ -101,6 +101,29 @@ class IOL:
 
     # -- datos --------------------------------------------------------
 
+    def get(self, path, timeout=30):
+        """GET crudo a cualquier ruta de la API. Usado por la pestaña Explorar."""
+        if not path.startswith("/"):
+            path = "/" + path
+        return self._get(path, timeout=timeout)
+
+    def instrumentos(self, pais="argentina"):
+        return self._get(f"/api/v2/{pais}/Titulos/Cotizacion/Instrumentos")
+
+    def paneles(self, instrumento="Acciones", pais="argentina"):
+        return self._get(
+            f"/api/v2/{pais}/Titulos/Cotizacion/Paneles/{instrumento}"
+        )
+
+    def cotizacion_panel(self, instrumento, panel, pais="argentina"):
+        """Cotizaciones de todos los titulos de un panel, en un solo request."""
+        from urllib.parse import quote
+        path = (
+            f"/api/v2/Cotizaciones/{quote(instrumento)}/"
+            f"{quote(panel)}/{quote(pais)}"
+        )
+        return self._get(path, timeout=45)
+
     def cotizacion(self, mercado, simbolo, plazo="t2"):
         """Cotizacion con book. Devuelve dict normalizado."""
         path = (

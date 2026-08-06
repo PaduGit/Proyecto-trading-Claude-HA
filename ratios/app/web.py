@@ -116,6 +116,99 @@ def crear_app(monitor):
             "puntos": [{"x": f, "y": v} for f, v in serie],
         })
 
+    # -- exploracion de la API ---------------------------------------
+
+    @app.get("/api/explorar/instrumentos")
+    def ex_instrumentos():
+        pais = request.args.get("pais", "argentina")
+        try:
+            return jsonify(monitor.iol.instrumentos(pais))
+        except IOLError as e:
+            return jsonify({"error": str(e)}), 502
+
+    @app.get("/api/explorar/paneles")
+    def ex_paneles():
+        pais = request.args.get("pais", "argentina")
+        instrumento = request.args.get("instrumento", "Acciones")
+        try:
+            return jsonify(monitor.iol.paneles(instrumento, pais))
+        except IOLError as e:
+            return jsonify({"error": str(e)}), 502
+
+    @app.get("/api/explorar/panel")
+    def ex_panel():
+        """Baja un panel entero y resume lo que interesa saber de él."""
+        pais = request.args.get("pais", "argentina")
+        instrumento = request.args.get("instrumento", "Bonos")
+        panel = request.args.get("panel", "")
+        if not panel:
+            return jsonify({"error": "Elegí un panel."}), 400
+
+        try:
+            d = monitor.iol.cotizacion_panel(instrumento, panel, pais)
+        except IOLError as e:
+            return jsonify({"error": str(e)}), 502
+
+        titulos = (d or {}).get("titulos") or []
+        filas = []
+        con_puntas = 0
+        for t in titulos:
+            p = t.get("puntas") or {}
+            if isinstance(p, list):
+                p = p[0] if p else {}
+            compra = p.get("precioCompra") or 0
+            venta = p.get("precioVenta") or 0
+            if compra or venta:
+                con_puntas += 1
+            filas.append({
+                "simbolo": t.get("simbolo"),
+                "ultimo": t.get("ultimoPrecio") or 0,
+                "compra": compra,
+                "venta": venta,
+                "cant_compra": p.get("cantidadCompra") or 0,
+                "cant_venta": p.get("cantidadVenta") or 0,
+                "moneda": t.get("moneda") or "",
+                "plazo": t.get("plazo") or "",
+                "fecha": (t.get("fecha") or "")[:19],
+            })
+
+        filas.sort(key=lambda f: f["simbolo"] or "")
+        simbolos = [f["simbolo"] or "" for f in filas]
+
+        return jsonify({
+            "panel": panel,
+            "instrumento": instrumento,
+            "total": len(filas),
+            "con_puntas": con_puntas,
+            # lo que queremos averiguar: ¿están las especies D y C?
+            "especies_d": [s for s in simbolos if s.endswith("D")],
+            "especies_c": [s for s in simbolos if s.endswith("C")],
+            "monedas": sorted({f["moneda"] for f in filas if f["moneda"]}),
+            "plazos": sorted({f["plazo"] for f in filas if f["plazo"]}),
+            "titulos": filas,
+            # una muestra cruda, para ver campos que no estoy mapeando
+            "muestra_cruda": titulos[0] if titulos else None,
+        })
+
+    @app.get("/api/explorar/raw")
+    def ex_raw():
+        """GET a cualquier ruta. Solo lectura: se rechaza todo lo que opere."""
+        path = (request.args.get("path") or "").strip()
+        if not path:
+            return jsonify({"error": "Escribí una ruta."}), 400
+
+        prohibido = ("operar", "comprar", "vender", "cancelar", "token")
+        if any(p in path.lower() for p in prohibido):
+            return jsonify({
+                "error": "Esta pestaña es solo de lectura. "
+                         "No se permiten rutas de operación."
+            }), 403
+
+        try:
+            return jsonify({"path": path, "respuesta": monitor.iol.get(path)})
+        except IOLError as e:
+            return jsonify({"error": str(e)}), 502
+
     @app.get("/api/alertas")
     def alertas():
         filas = db.alertas_recientes(40)
