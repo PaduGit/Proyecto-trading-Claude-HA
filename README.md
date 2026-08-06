@@ -1,107 +1,122 @@
-# Monitor de ratios — InvertirOnline
+# Ratios IOL — add-on para Home Assistant
 
-Calcula el ratio de precios entre pares de tickers usando la API de IOL, y lo
-compara contra su propia historia (media, rango y z-score de los últimos 90 días)
-para saber si el ratio está caro o barato.
+Monitorea ratios de precios entre especies de IOL, avisa por Telegram cuando
+tocan tus niveles, y te da un screener web dentro de Home Assistant.
 
 Solo lee datos. No ejecuta órdenes.
 
 ---
 
-## Instalación
+## Instalar
 
-```bash
-pip install -r requirements.txt
+**1. Subí este repo a GitHub** (privado está bien).
+
+**2. Agregalo en Home Assistant:**
+Ajustes → Complementos → Tienda de complementos → menú ⋮ (arriba a la derecha)
+→ Repositorios → pegá la URL de tu repo → Agregar.
+
+**3. Instalá "Ratios IOL"** desde la tienda. La primera compilación tarda unos
+minutos porque arma la imagen Docker en tu equipo.
+
+**4. Cargá la configuración** (pestaña Configuración del add-on) y arrancalo.
+
+**5. Activá "Mostrar en la barra lateral"** para tener el screener a un toque.
+
+---
+
+## Configuración
+
+| Opción | Qué es |
+|---|---|
+| `iol_user` / `iol_pass` | Credenciales de InvertirOnline. Quedan en el almacén del add-on, no en el repo. |
+| `telegram_token` | Token que te da @BotFather al crear el bot. |
+| `telegram_chat_id` | Tu chat ID. Escribile algo al bot y abrí `https://api.telegram.org/bot<TOKEN>/getUpdates` para verlo. |
+| `poll_seconds` | Cada cuánto consulta durante la rueda. 180 es un buen punto de partida. |
+| `market_open` / `market_close` | Fuera de ese rango consulta cada 10 min, para no gastar llamadas. |
+| `alert_cooldown_minutes` | Tiempo mínimo entre dos avisos del mismo par en la misma zona. Evita el spam cuando un ratio queda pegado al nivel. |
+| `confirm_readings` | Lecturas seguidas en zona antes de avisar. En 2 filtra los picos de un solo tick. |
+
+### Pares
+
+```yaml
+pares:
+  - alias: "ALUA/TXAR"
+    num: "ALUA"          # numerador
+    den: "TXAR"          # denominador
+    mercado: "bCBA"
+    plazo: "t2"
+    resistencia: 1.54    # 0 = sin nivel
+    soporte: 1.36        # 0 = sin nivel
+    alertas: true
 ```
 
-## Configurar los pares
+El ratio es **num / den**.
 
-Editá la lista `PARES` arriba de `ratio_monitor.py`. Formato:
+- **Con niveles cargados** → la alerta salta al cruzar resistencia o soporte.
+- **Sin niveles** (ambos en 0) → cae al z-score, y solo avisa si hay al menos
+  25 días de histórico. Sirve para pares nuevos hasta que definas los tuyos
+  mirando el gráfico.
+- `alertas: false` → lo ves en el screener pero nunca te escribe.
 
-```python
-PARES = [
-    ("bCBA", "GD30", "bCBA", "GD30D", "MEP GD30"),
-    ("bCBA", "AL30", "bCBA", "AL30D", "MEP AL30"),
-    ("bCBA", "GGAL", "bCBA", "YPFD",  "GGAL vs YPFD"),
-]
-```
+---
 
-Cada tupla es: `(mercado_A, ticker_A, mercado_B, ticker_B, alias)`.
-El ratio se calcula como **precio_A / precio_B**.
+## El screener
 
-Mercados válidos en IOL: `bCBA`, `nYSE`, `nASDAQ`, `aMEX`, `bCS`, `rOFX`.
+Tres pestañas:
 
-## Uso
+**Panel.** Cada par con su ratio actual y una banda donde el soporte y la
+resistencia son marcas fijas y la aguja es el precio de ahora. De un vistazo ves
+si está cerca del borde. Los botones abren el gráfico de 90 días o el de hoy.
 
-```bash
-# Una lectura
-python ratio_monitor.py
+**Calcular.** Dos tickers cualquiera y te da el ratio al toque, con su media,
+rango y gráfico. La primera consulta de un símbolo nuevo descarga el histórico y
+lo guarda, así que la segunda vez es instantánea.
 
-# Modo continuo (refresca cada 60s)
-python ratio_monitor.py --watch
-```
+**Alertas.** Las últimas 40 que se dispararon.
 
-Te pide usuario y contraseña de IOL por consola. Las credenciales viven solo en
-memoria: el password se descarta apenas se obtiene el token.
+---
 
-Alternativamente, para evitar tipear en el celular, podés exportarlas antes:
+## Datos
 
-```bash
-export IOL_USER="tu_usuario"
-export IOL_PASS="tu_password"
-python ratio_monitor.py
-```
+Todo va a SQLite en `/data/ratios.db`, que Home Assistant conserva entre
+reinicios y actualizaciones.
 
-⚠️ Si usás variables de entorno, no las pongas en ningún archivo versionado.
-El `.gitignore` ya bloquea `.env`, pero la responsabilidad es tuya.
+- **`lecturas`** — cada ciclo guarda ratio y ambas puntas. Se purgan a los 400 días.
+- **`cierres`** — cierres diarios por símbolo. No se borran nunca.
+- **`alertas`** — historial de disparos.
 
-## Parámetros ajustables
+El histórico se descarga una sola vez por símbolo; después solo agrega los días
+nuevos. Una rueda entera de 5 pares son unas 800 filas: con 120 GB de disco no
+es un tema.
 
-En el encabezado del script:
+Las puntas se guardan desde el primer día aunque todavía no se usen. Cuando
+quieras armar el detector de rulos vas a tener meses de book acumulado en vez de
+empezar de cero.
 
-| Variable              | Default | Qué hace                                      |
-|-----------------------|---------|-----------------------------------------------|
-| `HISTORIAL_DIAS`      | 90      | Ventana para calcular media y desvío          |
-| `INTERVALO_SEGUNDOS`  | 60      | Frecuencia de refresco en `--watch`           |
-| `UMBRAL_Z`            | 1.5     | Z-score a partir del cual dispara alerta      |
+---
 
-## Cómo leer la salida
+## Antes de confiar en los números
 
-```
-  MEP GD30
-    GD30: 78.450,00   GD30D: 54,80
-    Ratio actual: 1431.5693
-    Media 90d: 1385.2041  (rango 1290.1122 – 1502.8871, n=61)
-    Z-score: +0.87
-    ⚪ Dentro del rango normal
-```
+**Verificá el delay.** Comparé nada contra la API real — no tengo acceso a
+internet desde donde escribí esto. Abrí el panel al lado de la pantalla de IOL y
+fijate que los precios coincidan y con cuánto retraso. Para arbitrajes eso
+define si el sistema te sirve.
 
-- **Z-score positivo alto** → el numerador está caro contra el denominador
-  respecto de su historia reciente.
-- **Z-score negativo alto** → está barato.
-- **n** es la cantidad de días con datos en ambas series.
+**Revisá el parseo.** La forma de la respuesta de IOL varía entre instrumentos.
+Si un par muestra precio 0 o el gráfico sale vacío, mirá los logs del add-on:
+ahí queda el error concreto.
 
-El z-score asume que el ratio revierte a su media, lo cual **no siempre es
-cierto**: un ratio puede estar "caro" y seguir subiendo por meses si cambió algo
-estructural. Tomalo como contexto, no como señal de entrada.
+**GD30/AL30 tiene banda angosta.** 1,00–1,03 es 3%, mucho más estrecho que los
+otros pares. Si te satura, subí `confirm_readings` a 3 antes de mover el nivel.
 
-## Uso desde el celular
+---
 
-Subí este repo a GitHub (privado) y desde la app de Claude:
+## Roadmap
 
-- **Pestaña Code → New Session** → elegí el repo → pedile que corra el script.
-  Corre en la nube, no necesita tu compu prendida.
-- **Remote Control** → maneja una sesión que corre en tu propia máquina. Más
-  seguro para credenciales, pero la compu tiene que quedar encendida.
+1. ✅ Ratios, alertas, screener
+2. Publicar los ratios como sensores de HA, para usar automatizaciones nativas
+3. Detector de ciclos (rulo) sobre puntas, con costos por pata
+4. Estrategias con opciones
 
-Para monitoreo continuo real (alertas 24/7), esto necesita correr en un VPS o
-Raspberry con `cron`. Las sesiones de Claude Code son efímeras.
-
-## Limitaciones conocidas
-
-- La API de IOL devuelve precios con delay para algunos instrumentos según tu
-  plan de cuenta.
-- El histórico usa cierres sin ajustar: splits y dividendos pueden generar
-  saltos artificiales en el ratio.
-- Fuera del horario de mercado, `ultimoPrecio` es el último cierre.
-- El token de IOL dura ~15 min; el script lo renueva solo.
+El paso 3 necesita book completo y cálculo de comisiones; la base de datos ya
+está guardando lo que hace falta.
