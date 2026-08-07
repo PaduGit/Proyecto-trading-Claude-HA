@@ -1,122 +1,163 @@
-# Ratios IOL — add-on para Home Assistant
+# Ratios IOL — app para Home Assistant
 
-Monitorea ratios de precios entre especies de IOL, avisa por Telegram cuando
-tocan tus niveles, y te da un screener web dentro de Home Assistant.
+Monitorea ratios entre especies, avisa cuando tocan tus niveles, detecta
+arbitrajes de plazo y te da un screener dentro de Home Assistant.
 
-Solo lee datos. No ejecuta órdenes.
+Solo lee datos. Nunca ejecuta órdenes.
 
 ---
 
 ## Instalar
 
-**1. Subí este repo a GitHub** (privado está bien).
+Ajustes → Apps → ⋮ → Repositorios → pegá la URL de este repo → Agregar.
+Después instalá "Ratios IOL", cargá la configuración y arrancala.
+Activá "Mostrar en la barra lateral" para tenerla a un toque.
 
-**2. Agregalo en Home Assistant:**
-Ajustes → Complementos → Tienda de complementos → menú ⋮ (arriba a la derecha)
-→ Repositorios → pegá la URL de tu repo → Agregar.
+---
 
-**3. Instalá "Ratios IOL"** desde la tienda. La primera compilación tarda unos
-minutos porque arma la imagen Docker en tu equipo.
+## Las cinco pestañas
 
-**4. Cargá la configuración** (pestaña Configuración del add-on) y arrancalo.
+**Panel.** Cada par con su ratio y una banda donde el soporte y la resistencia
+son marcas fijas y la aguja es el precio de ahora. Arriba, cuánto hace de la
+última lectura y un botón para forzar la actualización.
 
-**5. Activá "Mostrar en la barra lateral"** para tener el screener a un toque.
+**Calcular.** Dos tickers cualquiera. Los que ya usaste aparecen como sugerencia
+al tipear, y los pares recientes como botones.
+
+**Plazos.** Arbitraje t0/t1 sobre los tickers que configures.
+
+**Registro.** Tus operaciones y el historial de alertas.
+
+**Explorar.** Consumo de la API y consulta libre de endpoints, solo lectura.
 
 ---
 
 ## Configuración
 
-| Opción | Qué es |
-|---|---|
-| `iol_user` / `iol_pass` | Credenciales de InvertirOnline. Quedan en el almacén del add-on, no en el repo. |
-| `telegram_token` | Token que te da @BotFather al crear el bot. |
-| `telegram_chat_id` | Tu chat ID. Escribile algo al bot y abrí `https://api.telegram.org/bot<TOKEN>/getUpdates` para verlo. |
-| `poll_seconds` | Cada cuánto consulta durante la rueda. 180 es un buen punto de partida. |
-| `market_open` / `market_close` | Fuera de ese rango consulta cada 10 min, para no gastar llamadas. |
-| `alert_cooldown_minutes` | Tiempo mínimo entre dos avisos del mismo par en la misma zona. Evita el spam cuando un ratio queda pegado al nivel. |
-| `confirm_readings` | Lecturas seguidas en zona antes de avisar. En 2 filtra los picos de un solo tick. |
+### Alertas
 
-### Pares
+| Opción | Qué hace |
+|---|---|
+| `canal_alertas` | `ha` (notificación al celular), `telegram`, o `ambos` |
+| `ha_notify_service` | El servicio de tu dispositivo, ej. `notify.mobile_app_mi_celu` |
+| `publicar_sensores` | Crea `sensor.ratio_<par>` para dashboards y automatizaciones |
+
+La notificación de HA va con prioridad alta, así que atraviesa el modo No
+molestar. Si no querés eso, cambiá `importance` en `notify.py`.
+
+### Ritmo
+
+`poll_seconds` en 600 significa una lectura cada diez minutos, y por lo tanto
+alertas que pueden llegar hasta diez minutos tarde. El botón de refrescar del
+encabezado sirve para cuando querés el dato ya.
+
+Fuera de horario consulta cada 15 minutos. Si detecta que ningún título del
+panel se movió, asume día sin rueda y baja a media hora.
+
+### Pares y niveles
 
 ```yaml
 pares:
-  - alias: "ALUA/TXAR"
-    num: "ALUA"          # numerador
-    den: "TXAR"          # denominador
-    mercado: "bCBA"
-    plazo: "t2"
-    resistencia: 1.54    # 0 = sin nivel
-    soporte: 1.36        # 0 = sin nivel
+  - alias: ALUA/TXAR
+    num: ALUA
+    den: TXAR
+    resistencia: 1.54   # 0 = sin nivel, cae al z-score
+    soporte: 1.36
     alertas: true
 ```
 
-El ratio es **num / den**.
+`histeresis_pct` define cuánto tiene que retroceder el ratio para considerar que
+salió de zona. En 0.5 significa medio por ciento. Sirve para que un movimiento
+mínimo alrededor del nivel no dispare una alerta nueva.
 
-- **Con niveles cargados** → la alerta salta al cruzar resistencia o soporte.
-- **Sin niveles** (ambos en 0) → cae al z-score, y solo avisa si hay al menos
-  25 días de histórico. Sirve para pares nuevos hasta que definas los tuyos
-  mirando el gráfico.
-- `alertas: false` → lo ves en el screener pero nunca te escribe.
+**La alerta salta al entrar en zona, una sola vez.** No vuelve a avisar hasta
+que el ratio salga de verdad y vuelva a entrar.
+
+### Paneles
+
+```yaml
+paneles:
+  - instrumento: Bonos
+    panel: Soberanos en dólares
+    pais: argentina
+```
+
+Cada panel es **un solo request** que trae decenas de especies con sus puntas.
+Agregar pares cuyos símbolos ya estén en un panel no cuesta requests
+adicionales. Lo que no aparezca en ningún panel se pide suelto.
+
+Para ver qué paneles hay y qué traen, usá la pestaña Explorar.
+
+### Comisiones y arbitraje de plazos
+
+```yaml
+comisiones:
+  - instrumento: bonos
+    pct: 0.15
+
+tasa_caucion_anual: 40.0
+
+arbitraje_tickers:
+  - ticker: AL30
+    tipo: bonos
+```
+
+La condición es: **punta compradora de t0 por encima de la vendedora de t1**,
+con la diferencia neta de comisiones superando lo que rendiría la caución
+colocadora por ese día. La columna "Cant." muestra el mínimo entre ambas puntas:
+es lo que realmente podrías mover.
+
+Cargá `tasa_caucion_anual` a mano; si queda en 0 la comparación no significa nada.
 
 ---
 
-## El screener
+## Sobre el histórico
 
-Tres pestañas:
+Hay dos fuentes y no son intercambiables:
 
-**Panel.** Cada par con su ratio actual y una banda donde el soporte y la
-resistencia son marcas fijas y la aguja es el precio de ahora. De un vistazo ves
-si está cerca del borde. Los botones abren el gráfico de 90 días o el de hoy.
+- **Propia**: se arma con las lecturas de la app. Siempre el mismo plazo, siempre
+  la misma fuente. Es la buena.
+- **De IOL**: el endpoint de serie histórica. Puede mezclar plazos, y de hecho
+  se ve un escalón donde cambió el estándar de T+2 a T+1.
 
-**Calcular.** Dos tickers cualquiera y te da el ratio al toque, con su media,
-rango y gráfico. La primera consulta de un símbolo nuevo descarga el histórico y
-lo guarda, así que la segunda vez es instantánea.
+La app usa la propia apenas junta 15 días. Hasta entonces usa la de IOL y te
+avisa en pantalla que esa serie no es comparable con el ratio de hoy.
 
-**Alertas.** Las últimas 40 que se dispararon.
+Por eso las medias y los z-scores de las primeras semanas hay que mirarlos con
+desconfianza. Tus niveles manuales no tienen ese problema.
 
 ---
 
 ## Datos
 
-Todo va a SQLite en `/data/ratios.db`, que Home Assistant conserva entre
-reinicios y actualizaciones.
+SQLite en `/data/ratios.db`, que HA conserva entre reinicios.
 
-- **`lecturas`** — cada ciclo guarda ratio y ambas puntas. Se purgan a los 400 días.
-- **`cierres`** — cierres diarios por símbolo. No se borran nunca.
-- **`alertas`** — historial de disparos.
+- `lecturas` — cada ciclo, con ratio y las cuatro puntas. Se purgan a los 400 días.
+- `cierres` — cierres diarios de IOL. No se borran.
+- `alertas` y `operaciones` — historial.
+- `requests` — consumo de la API por día y tipo.
 
-El histórico se descarga una sola vez por símbolo; después solo agrega los días
-nuevos. Una rueda entera de 5 pares son unas 800 filas: con 120 GB de disco no
-es un tema.
-
-Las puntas se guardan desde el primer día aunque todavía no se usen. Cuando
-quieras armar el detector de rulos vas a tener meses de book acumulado en vez de
-empezar de cero.
+Las puntas se guardan desde el primer día aunque todavía no se usen del todo:
+cuando armemos el detector de rulos vas a tener meses de book acumulado.
 
 ---
 
-## Antes de confiar en los números
+## Limitaciones conocidas
 
-**Verificá el delay.** Comparé nada contra la API real — no tengo acceso a
-internet desde donde escribí esto. Abrí el panel al lado de la pantalla de IOL y
-fijate que los precios coincidan y con cuánto retraso. Para arbitrajes eso
-define si el sistema te sirve.
-
-**Revisá el parseo.** La forma de la respuesta de IOL varía entre instrumentos.
-Si un par muestra precio 0 o el gráfico sale vacío, mirá los logs del add-on:
-ahí queda el error concreto.
-
-**GD30/AL30 tiene banda angosta.** 1,00–1,03 es 3%, mucho más estrecho que los
-otros pares. Si te satura, subí `confirm_readings` a 3 antes de mover el nivel.
+- **El delay de la API no está medido.** Para ratios lentos no importa; para
+  arbitrajes de plazo puede ser determinante.
+- **IOL es la fuente de datos, no donde operás.** Los precios de tu ALyC pueden
+  diferir. El registro de operaciones es manual por eso.
+- **La detección de días sin rueda es heurística.** Si el panel abre plano por
+  otro motivo, la app va a espaciar las consultas de más.
+- **El panel no informa plazo.** Verificá contra la pantalla de IOL a qué plazo
+  corresponden esos precios.
 
 ---
 
 ## Roadmap
 
 1. ✅ Ratios, alertas, screener
-2. Publicar los ratios como sensores de HA, para usar automatizaciones nativas
+2. ✅ Paneles, notificaciones nativas, arbitraje de plazos, registro
 3. Detector de ciclos (rulo) sobre puntas, con costos por pata
 4. Estrategias con opciones
-
-El paso 3 necesita book completo y cálculo de comisiones; la base de datos ya
-está guardando lo que hace falta.
