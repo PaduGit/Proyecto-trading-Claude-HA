@@ -27,6 +27,7 @@ class IOL:
         self._token = None
         self._refresh = None
         self._expira = datetime.min
+        self._ultimo_fallo = None
         self._lock = threading.Lock()
         self.session = requests.Session()
         self.session.headers["User-Agent"] = "ha-ratios/0.1"
@@ -50,7 +51,6 @@ class IOL:
                 "password": self._password,
                 "grant_type": "password",
             })
-            self._password = None
             log.info("autenticado como %s", self._usuario)
 
     def _asegurar_token(self):
@@ -59,25 +59,35 @@ class IOL:
         with self._lock:
             if datetime.now() < self._expira:
                 return
+            # si acabamos de fallar, no golpeamos la API una vez por par
+            ultimo_fallo = getattr(self, "_ultimo_fallo", None)
+            if ultimo_fallo and \
+                    datetime.now() - ultimo_fallo < timedelta(seconds=60):
+                raise IOLError("autenticacion fallo recien, esperando")
+
             if self._refresh:
                 try:
                     self._pedir_token({
                         "refresh_token": self._refresh,
                         "grant_type": "refresh_token",
                     })
+                    self._ultimo_fallo = None
                     return
                 except IOLError as e:
-                    log.warning("refresh fallo (%s), reintento con password", e)
-            if self._password:
+                    log.info("refresh vencido (%s), reautenticando", e)
+                    self._refresh = None
+
+            try:
                 self._pedir_token({
                     "username": self._usuario,
                     "password": self._password,
                     "grant_type": "password",
                 })
-            else:
-                raise IOLError(
-                    "token vencido y sin refresh. Reinicia el add-on."
-                )
+                self._ultimo_fallo = None
+                log.info("reautenticado como %s", self._usuario)
+            except IOLError:
+                self._ultimo_fallo = datetime.now()
+                raise
 
     def _get(self, path, timeout=25):
         self._asegurar_token()
