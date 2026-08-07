@@ -3,8 +3,11 @@
 import logging
 import threading
 from datetime import datetime, timedelta
+from urllib.parse import quote
 
 import requests
+
+import db
 
 BASE = "https://api.invertironline.com"
 log = logging.getLogger("iol")
@@ -14,12 +17,23 @@ class IOLError(Exception):
     pass
 
 
-class IOL:
-    """Maneja autenticacion, renovacion de token y consultas.
+def _clasificar(path):
+    p = path.lower()
+    if "/token" in p:
+        return "auth"
+    if "/cotizaciones/" in p:
+        return "panel"
+    if "seriehistorica" in p:
+        return "historico"
+    if "cotizacion" in p:
+        return "cotizacion"
+    if "opciones" in p:
+        return "opciones"
+    return "otros"
 
-    El password se usa una sola vez y se descarta; despues vive el
-    refresh_token, que se rota en cada renovacion.
-    """
+
+class IOL:
+    """Autenticacion, renovacion de token y consultas."""
 
     def __init__(self, usuario, password):
         self._usuario = usuario
@@ -30,18 +44,21 @@ class IOL:
         self._ultimo_fallo = None
         self._lock = threading.Lock()
         self.session = requests.Session()
-        self.session.headers["User-Agent"] = "ha-ratios/0.1"
+        self.session.headers["User-Agent"] = "ha-ratios/0.2"
 
     # -- auth ---------------------------------------------------------
 
     def _pedir_token(self, data):
-        r = self.session.post(f"{BASE}/token", data=data, timeout=25)
+        try:
+            db.contar_request("auth")
+        except Exception:
+            pass
+        r = self.session.post(BASE + "/token", data=data, timeout=25)
         if r.status_code != 200:
-            raise IOLError(f"auth {r.status_code}: {r.text[:180]}")
+            raise IOLError("auth %s: %s" % (r.status_code, r.text[:180]))
         d = r.json()
         self._token = d["access_token"]
         self._refresh = d.get("refresh_token", self._refresh)
-        # IOL emite tokens de ~15 min; renovamos con margen
         self._expira = datetime.now() + timedelta(minutes=12)
 
     def login(self):
@@ -59,10 +76,9 @@ class IOL:
         with self._lock:
             if datetime.now() < self._expira:
                 return
-            # si acabamos de fallar, no golpeamos la API una vez por par
-            ultimo_fallo = getattr(self, "_ultimo_fallo", None)
-            if ultimo_fallo and \
-                    datetime.now() - ultimo_fallo < timedelta(seconds=60):
+
+            if self._ultimo_fallo and \
+                    datetime.now() - self._ultimo_fallo < timedelta(seconds=60):
                 raise IOLError("autenticacion fallo recien, esperando")
 
             if self._refresh:
@@ -89,69 +105,58 @@ class IOL:
                 self._ultimo_fallo = datetime.now()
                 raise
 
-    def _get(self, path, timeout=25):
+    def _get(self, path, timeout=30):
         self._asegurar_token()
-        r = self.session.get(
-            f"{BASE}{path}",
-            headers={"Authorization": f"Bearer {self._token}"},
-            timeout=timeout,
-        )
+        try:
+            db.contar_request(_clasificar(path))
+        except Exception:
+            pass
+        url = BASE + path
+        cab = {"Authorization": "Bearer " + str(self._token)}
+        r = self.session.get(url, headers=cab, timeout=timeout)
         if r.status_code == 401:
-            # token rechazado: forzar renovacion y reintentar una vez
             self._expira = datetime.min
             self._asegurar_token()
-            r = self.session.get(
-                f"{BASE}{path}",
-                headers={"Authorization": f"Bearer {self._token}"},
-                timeout=timeout,
-            )
+            cab = {"Authorization": "Bearer " + str(self._token)}
+            r = self.session.get(url, headers=cab, timeout=timeout)
+        if r.status_code == 429:
+            raise IOLError("429: la API pidio frenar (limite de requests)")
         if r.status_code != 200:
-            raise IOLError(f"{path} -> {r.status_code}: {r.text[:180]}")
+            raise IOLError("%s -> %s: %s" % (path, r.status_code, r.text[:180]))
         return r.json()
 
     # -- datos --------------------------------------------------------
 
     def get(self, path, timeout=30):
-        """GET crudo a cualquier ruta de la API. Usado por la pestaña Explorar."""
         if not path.startswith("/"):
             path = "/" + path
         return self._get(path, timeout=timeout)
 
     def instrumentos(self, pais="argentina"):
-        return self._get(f"/api/v2/{pais}/Titulos/Cotizacion/Instrumentos")
+        return self._get("/api/v2/%s/Titulos/Cotizacion/Instrumentos" % pais)
 
     def paneles(self, instrumento="Acciones", pais="argentina"):
         return self._get(
-            f"/api/v2/{pais}/Titulos/Cotizacion/Paneles/{instrumento}"
-        )
+            "/api/v2/%s/Titulos/Cotizacion/Paneles/%s" % (pais, instrumento))
 
     def cotizacion_panel(self, instrumento, panel, pais="argentina"):
-        """Cotizaciones de todos los titulos de un panel, en un solo request."""
-        from urllib.parse import quote
-        path = (
-            f"/api/v2/Cotizaciones/{quote(instrumento)}/"
-            f"{quote(panel)}/{quote(pais)}"
-        )
+        """Todos los titulos de un panel en un solo request."""
+        path = "/api/v2/Cotizaciones/%s/%s/%s" % (
+            quote(instrumento), quote(panel), quote(pais))
         return self._get(path, timeout=45)
 
-    def cotizacion(self, mercado, simbolo, plazo="t2"):
-        """Cotizacion con book. Devuelve dict normalizado."""
-        path = (
-            f"/api/v2/{mercado}/Titulos/{simbolo}/CotizacionDetalleMobile"
-            f"/{plazo}"
-        )
+    def cotizacion(self, mercado, simbolo, plazo="t1"):
+        path = ("/api/v2/%s/Titulos/%s/CotizacionDetalleMobile/%s"
+                % (mercado, simbolo, plazo))
         try:
             d = self._get(path)
         except IOLError:
-            # fallback al endpoint clasico si el mobile no responde
-            d = self._get(f"/api/v2/{mercado}/Titulos/{simbolo}/Cotizacion")
+            d = self._get("/api/v2/%s/Titulos/%s/Cotizacion" % (mercado, simbolo))
         return normalizar(d, simbolo)
 
     def serie(self, mercado, simbolo, desde, hasta, ajustada="sinAjustar"):
-        path = (
-            f"/api/v2/{mercado}/Titulos/{simbolo}/Cotizacion/seriehistorica/"
-            f"{desde}/{hasta}/{ajustada}"
-        )
+        path = ("/api/v2/%s/Titulos/%s/Cotizacion/seriehistorica/%s/%s/%s"
+                % (mercado, simbolo, desde, hasta, ajustada))
         return self._get(path, timeout=60)
 
 
@@ -164,11 +169,7 @@ def _f(v):
 
 
 def normalizar(d, simbolo):
-    """Extrae ultimo precio y mejor punta de la respuesta de IOL.
-
-    La forma exacta varia entre endpoints e instrumentos, asi que
-    tomamos lo que haya y dejamos en 0 lo que falte.
-    """
+    """Extrae precio y mejor punta. La forma varia entre endpoints."""
     ultimo = _f(d.get("ultimoPrecio"))
     compra = venta = 0.0
     vol_compra = vol_venta = 0.0
@@ -176,20 +177,15 @@ def normalizar(d, simbolo):
     puntas = d.get("puntas")
     if isinstance(puntas, list) and puntas:
         p0 = puntas[0] or {}
-        compra = _f(p0.get("precioCompra"))
-        venta = _f(p0.get("precioVenta"))
-        vol_compra = _f(p0.get("cantidadCompra"))
-        vol_venta = _f(p0.get("cantidadVenta"))
     elif isinstance(puntas, dict):
-        compra = _f(puntas.get("precioCompra"))
-        venta = _f(puntas.get("precioVenta"))
-        vol_compra = _f(puntas.get("cantidadCompra"))
-        vol_venta = _f(puntas.get("cantidadVenta"))
+        p0 = puntas
+    else:
+        p0 = {}
 
-    if not compra:
-        compra = _f(d.get("precioCompra"))
-    if not venta:
-        venta = _f(d.get("precioVenta"))
+    compra = _f(p0.get("precioCompra")) or _f(d.get("precioCompra"))
+    venta = _f(p0.get("precioVenta")) or _f(d.get("precioVenta"))
+    vol_compra = _f(p0.get("cantidadCompra")) or _f(d.get("cantidadCompra"))
+    vol_venta = _f(p0.get("cantidadVenta")) or _f(d.get("cantidadVenta"))
 
     medio = (compra + venta) / 2 if compra and venta else 0.0
 
@@ -201,8 +197,8 @@ def normalizar(d, simbolo):
         "vol_compra": vol_compra,
         "vol_venta": vol_venta,
         "medio": medio,
-        # precio de referencia: punta media si hay book, si no el ultimo
         "ref": medio or ultimo,
-        "variacion": _f(d.get("variacionPorcentual")),
+        "variacion": _f(d.get("variacionPorcentual")) or _f(d.get("variacion")),
+        "volumen": _f(d.get("volumenNominal")) or _f(d.get("cantidadOperada")),
         "moneda": d.get("moneda") or "",
     }
