@@ -9,159 +9,93 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
-  --ink:#0E141B;
-  --panel:#161E28;
-  --panel-2:#1C2632;
-  --rule:#28323F;
-  --bone:#E9E5DC;
-  --muted:#7B8794;
-  --coral:#DF7168;
-  --sage:#6FA88C;
-  --amber:#C6A24B;
+  --ink:#0E141B; --panel:#161E28; --panel-2:#1C2632; --rule:#28323F;
+  --bone:#E9E5DC; --muted:#7B8794;
+  --coral:#DF7168; --sage:#6FA88C; --amber:#C6A24B;
   --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
   --sans:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
-body{
-  background:var(--ink);
-  color:var(--bone);
-  font-family:var(--sans);
-  font-size:15px;
-  line-height:1.45;
-  padding:0 0 env(safe-area-inset-bottom);
-  -webkit-font-smoothing:antialiased;
-}
+body{background:var(--ink);color:var(--bone);font-family:var(--sans);
+  font-size:15px;line-height:1.45;padding:0 0 env(safe-area-inset-bottom);
+  -webkit-font-smoothing:antialiased}
 
-/* ---------- cabecera ---------- */
-header{
-  position:sticky;top:0;z-index:20;
-  background:rgba(14,20,27,.94);
-  backdrop-filter:blur(8px);
-  border-bottom:1px solid var(--rule);
-  padding:14px 16px 10px;
-}
-.hrow{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
-h1{
-  font-family:var(--mono);
-  font-size:16px;font-weight:600;
-  letter-spacing:.14em;text-transform:uppercase;
-  margin:0;
-}
-.estado{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:right}
-.pulso{
-  display:inline-block;width:6px;height:6px;border-radius:50%;
-  background:var(--sage);margin-right:6px;vertical-align:middle;
-}
-.pulso.off{background:var(--muted)}
-nav{display:flex;gap:2px;margin-top:12px}
-nav button{
-  flex:1;
-  background:transparent;border:1px solid var(--rule);
-  color:var(--muted);
-  font-family:var(--mono);font-size:11px;
-  letter-spacing:.1em;text-transform:uppercase;
-  padding:8px 4px;cursor:pointer;
-}
+header{position:sticky;top:0;z-index:20;background:rgba(14,20,27,.94);
+  backdrop-filter:blur(8px);border-bottom:1px solid var(--rule);
+  padding:12px 14px 8px}
+.hrow{display:flex;align-items:center;justify-content:space-between;gap:10px}
+h1{font-family:var(--mono);font-size:15px;font-weight:600;
+  letter-spacing:.14em;text-transform:uppercase;margin:0}
+.reloj{display:flex;align-items:center;gap:8px}
+.hace{font-family:var(--mono);font-size:11px;color:var(--muted);
+  font-variant-numeric:tabular-nums;text-align:right;line-height:1.25}
+.hace.viejo{color:var(--amber)}
+.hace b{display:block;color:var(--bone);font-weight:500}
+.hace.viejo b{color:var(--amber)}
+button.refrescar{background:var(--panel-2);border:1px solid var(--rule);
+  color:var(--bone);width:34px;height:34px;border-radius:50%;cursor:pointer;
+  font-size:15px;line-height:1;flex:none}
+button.refrescar:disabled{opacity:.4}
+button.refrescar.girando{animation:giro .9s linear infinite}
+@keyframes giro{to{transform:rotate(360deg)}}
+
+nav{display:flex;gap:2px;margin-top:10px;overflow-x:auto;scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
+nav button{flex:1 0 auto;background:transparent;border:1px solid var(--rule);
+  color:var(--muted);font-family:var(--mono);font-size:10px;
+  letter-spacing:.09em;text-transform:uppercase;padding:7px 10px;cursor:pointer;
+  white-space:nowrap}
 nav button:first-child{border-radius:3px 0 0 3px}
 nav button:last-child{border-radius:0 3px 3px 0}
 nav button+button{border-left:none}
-nav button[aria-selected="true"]{
-  background:var(--panel-2);color:var(--bone);
-  border-color:var(--rule);
-}
+nav button[aria-selected="true"]{background:var(--panel-2);color:var(--bone)}
 nav button:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
 
-main{padding:14px 16px 40px;max-width:720px;margin:0 auto}
+main{padding:14px;max-width:720px;margin:0 auto}
 section[hidden]{display:none}
 
-/* ---------- tarjeta de par ---------- */
-.par{
-  background:var(--panel);
-  border:1px solid var(--rule);
-  border-radius:4px;
-  padding:14px 14px 12px;
-  margin-bottom:10px;
-}
+.par{background:var(--panel);border:1px solid var(--rule);border-radius:4px;
+  padding:14px 14px 12px;margin-bottom:10px}
 .par.alta{border-left:2px solid var(--coral)}
 .par.baja{border-left:2px solid var(--sage)}
 .par-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
-.alias{
-  font-family:var(--mono);font-size:13px;font-weight:600;
-  letter-spacing:.06em;
-}
-.silencio{
-  font-family:var(--mono);font-size:9px;color:var(--muted);
-  border:1px solid var(--rule);border-radius:2px;
-  padding:1px 5px;letter-spacing:.08em;text-transform:uppercase;
-}
-.ratio{
-  font-family:var(--mono);
-  font-size:30px;font-weight:500;
-  letter-spacing:-.02em;
-  font-variant-numeric:tabular-nums;
-  margin:6px 0 2px;
-}
+.alias{font-family:var(--mono);font-size:13px;font-weight:600;letter-spacing:.06em}
+.silencio{font-family:var(--mono);font-size:9px;color:var(--muted);
+  border:1px solid var(--rule);border-radius:2px;padding:1px 5px;
+  letter-spacing:.08em;text-transform:uppercase}
+.ratio{font-family:var(--mono);font-size:30px;font-weight:500;
+  letter-spacing:-.02em;font-variant-numeric:tabular-nums;margin:6px 0 2px}
 .par.alta .ratio{color:var(--coral)}
 .par.baja .ratio{color:var(--sage)}
 
-/* ---------- la banda: soporte |----aguja----| resistencia ---------- */
 .banda{margin:14px 0 10px;position:relative;height:26px}
-.riel{
-  position:absolute;left:0;right:0;top:11px;height:2px;
-  background:var(--rule);
-}
-.zona-ok{
-  position:absolute;top:10px;height:4px;
-  background:var(--panel-2);
-  border-left:1px solid var(--muted);
-  border-right:1px solid var(--muted);
-}
-.marca{
-  position:absolute;top:4px;width:1px;height:16px;
-}
-.marca.sop{background:var(--sage)}
-.marca.res{background:var(--coral)}
-.marca-txt{
-  position:absolute;top:20px;
-  font-family:var(--mono);font-size:9px;color:var(--muted);
-  font-variant-numeric:tabular-nums;white-space:nowrap;
-}
-.aguja{
-  position:absolute;top:2px;width:2px;height:20px;
-  background:var(--bone);
-  transition:left .5s cubic-bezier(.22,.61,.36,1);
-}
-.aguja::after{
-  content:"";position:absolute;top:-4px;left:-3px;
-  width:8px;height:8px;background:var(--bone);
-  transform:rotate(45deg);
-}
+.riel{position:absolute;left:0;right:0;top:11px;height:2px;background:var(--rule)}
+.zona-ok{position:absolute;top:10px;height:4px;background:var(--panel-2);
+  border-left:1px solid var(--muted);border-right:1px solid var(--muted)}
+.marca{position:absolute;top:4px;width:1px;height:16px}
+.marca.sop{background:var(--sage)} .marca.res{background:var(--coral)}
+.marca-txt{position:absolute;top:20px;font-family:var(--mono);font-size:9px;
+  color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.aguja{position:absolute;top:2px;width:2px;height:20px;background:var(--bone);
+  transition:left .5s cubic-bezier(.22,.61,.36,1)}
+.aguja::after{content:"";position:absolute;top:-4px;left:-3px;width:8px;height:8px;
+  background:var(--bone);transform:rotate(45deg)}
 .par.alta .aguja,.par.alta .aguja::after{background:var(--coral)}
 .par.baja .aguja,.par.baja .aguja::after{background:var(--sage)}
 
-/* ---------- datos ---------- */
-.datos{
-  display:grid;grid-template-columns:repeat(2,1fr);
-  gap:2px 14px;
-  font-family:var(--mono);font-size:11px;
-  color:var(--muted);
-  font-variant-numeric:tabular-nums;
-  border-top:1px solid var(--rule);
-  padding-top:9px;margin-top:4px;
-}
+.datos{display:grid;grid-template-columns:repeat(2,1fr);gap:2px 14px;
+  font-family:var(--mono);font-size:11px;color:var(--muted);
+  font-variant-numeric:tabular-nums;border-top:1px solid var(--rule);
+  padding-top:9px;margin-top:4px}
 .datos span b{color:var(--bone);font-weight:500}
-.acciones{display:flex;gap:8px;margin-top:10px}
-.acciones button{
-  flex:1;background:transparent;border:1px solid var(--rule);
-  color:var(--muted);font-family:var(--mono);font-size:10px;
-  letter-spacing:.08em;text-transform:uppercase;
-  padding:6px;border-radius:3px;cursor:pointer;
-}
+.acciones{display:flex;gap:6px;margin-top:10px}
+.acciones button{flex:1;background:transparent;border:1px solid var(--rule);
+  color:var(--muted);font-family:var(--mono);font-size:10px;letter-spacing:.07em;
+  text-transform:uppercase;padding:6px 4px;border-radius:3px;cursor:pointer}
 .acciones button:hover{color:var(--bone);border-color:var(--muted)}
-.acciones button:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+.acciones button.op{color:var(--amber);border-color:#4a3f22}
 
-/* ---------- grafico ---------- */
 .graf{margin-top:12px;border-top:1px solid var(--rule);padding-top:12px}
 svg.chart{width:100%;height:130px;display:block;overflow:visible}
 .chart .linea{fill:none;stroke:var(--bone);stroke-width:1.25}
@@ -170,92 +104,83 @@ svg.chart{width:100%;height:130px;display:block;overflow:visible}
 .chart .media{stroke:var(--muted);stroke-width:1;stroke-dasharray:1 4}
 .chart text{font-family:var(--mono);font-size:9px;fill:var(--muted)}
 
-/* ---------- calculadora ---------- */
 .form{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
-.form label{
-  font-family:var(--mono);font-size:10px;color:var(--muted);
-  letter-spacing:.08em;text-transform:uppercase;display:block;margin-bottom:4px;
-}
-.form input,.form select{
-  width:100%;background:var(--panel);border:1px solid var(--rule);
-  color:var(--bone);font-family:var(--mono);font-size:14px;
-  padding:9px 10px;border-radius:3px;text-transform:uppercase;
-}
-.form input:focus,.form select:focus{outline:2px solid var(--amber);outline-offset:-1px;border-color:transparent}
+.form label{font-family:var(--mono);font-size:10px;color:var(--muted);
+  letter-spacing:.08em;text-transform:uppercase;display:block;margin-bottom:4px}
+.form input,.form select,.form textarea{width:100%;background:var(--panel);
+  border:1px solid var(--rule);color:var(--bone);font-family:var(--mono);
+  font-size:14px;padding:9px 10px;border-radius:3px;text-transform:uppercase}
+.form textarea{text-transform:none;font-family:var(--sans);min-height:56px}
+.form input:focus,.form select:focus,.form textarea:focus{
+  outline:2px solid var(--amber);outline-offset:-1px;border-color:transparent}
 .ancho{grid-column:1/-1}
-button.primario{
-  width:100%;background:var(--bone);color:var(--ink);
-  border:none;border-radius:3px;padding:11px;
-  font-family:var(--mono);font-size:12px;font-weight:600;
-  letter-spacing:.1em;text-transform:uppercase;cursor:pointer;
-}
-button.primario:disabled{opacity:.5;cursor:default}
+button.primario{width:100%;background:var(--bone);color:var(--ink);border:none;
+  border-radius:3px;padding:11px;font-family:var(--mono);font-size:12px;
+  font-weight:600;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
+button.primario:disabled{opacity:.5}
+button.secundario{width:100%;background:transparent;color:var(--muted);
+  border:1px solid var(--rule);border-radius:3px;padding:10px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.08em;
+  text-transform:uppercase;cursor:pointer;margin-top:6px}
 
-/* ---------- varios ---------- */
-.vacio,.msg{
-  color:var(--muted);font-size:13px;
-  border:1px dashed var(--rule);border-radius:4px;
-  padding:20px 16px;text-align:center;
-}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.chip{background:var(--panel);border:1px solid var(--rule);color:var(--muted);
+  font-family:var(--mono);font-size:11px;padding:5px 9px;border-radius:12px;
+  cursor:pointer}
+.chip:hover{color:var(--bone);border-color:var(--muted)}
+
+.vacio,.msg{color:var(--muted);font-size:13px;border:1px dashed var(--rule);
+  border-radius:4px;padding:18px 16px;text-align:center}
 .msg.error{color:var(--coral);border-color:var(--coral);border-style:solid}
-.alerta-fila{
-  display:flex;justify-content:space-between;gap:10px;
-  font-family:var(--mono);font-size:12px;
-  padding:9px 0;border-bottom:1px solid var(--rule);
-  font-variant-numeric:tabular-nums;
-}
-.alerta-fila .t{color:var(--muted);font-size:10px}
-.alerta-fila.alta .a{color:var(--coral)}
-.alerta-fila.baja .a{color:var(--sage)}
-
-/* ---------- explorar ---------- */
+.msg.ok{color:var(--sage);border-color:var(--sage);border-style:solid}
+.aviso{font-size:11px;color:var(--amber);border-left:2px solid var(--amber);
+  padding:6px 10px;margin:8px 0;background:rgba(198,162,75,.07)}
 .nota{font-size:12px;color:var(--muted);margin:0 0 14px}
-.avanzado{margin-top:18px;border-top:1px solid var(--rule);padding-top:12px}
-.avanzado summary{
-  font-family:var(--mono);font-size:10px;color:var(--muted);
-  letter-spacing:.1em;text-transform:uppercase;cursor:pointer;
-}
-.avanzado summary:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
-.hallazgo{
-  background:var(--panel);border:1px solid var(--rule);border-radius:4px;
-  padding:12px 14px;margin-bottom:10px;
-}
-.hallazgo h3{
-  font-family:var(--mono);font-size:11px;font-weight:600;margin:0 0 8px;
-  letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
-}
-.kv{
-  display:grid;grid-template-columns:auto 1fr;gap:4px 12px;
-  font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;
-}
-.kv dt{color:var(--muted)}
-.kv dd{margin:0;color:var(--bone);word-break:break-word}
-.kv dd.si{color:var(--sage)}
-.kv dd.no{color:var(--coral)}
-table.panel{
-  width:100%;border-collapse:collapse;
-  font-family:var(--mono);font-size:11px;
-  font-variant-numeric:tabular-nums;
-}
-table.panel th{
-  text-align:right;color:var(--muted);font-weight:500;
-  border-bottom:1px solid var(--rule);padding:6px 4px;
-  font-size:9px;letter-spacing:.06em;text-transform:uppercase;
-}
-table.panel th:first-child,table.panel td:first-child{text-align:left}
-table.panel td{padding:5px 4px;text-align:right;border-bottom:1px solid var(--rule)}
-table.panel tr.dolar td:first-child{color:var(--amber)}
-.scroll{max-height:60vh;overflow:auto;-webkit-overflow-scrolling:touch}
-pre.crudo{
-  background:var(--ink);border:1px solid var(--rule);border-radius:3px;
-  padding:10px;font-family:var(--mono);font-size:10px;
-  color:var(--muted);overflow:auto;max-height:40vh;
-  white-space:pre-wrap;word-break:break-word;margin:0;
-}
 
-@media (prefers-reduced-motion:reduce){
-  *{transition:none!important;animation:none!important}
-}
+.fila{display:flex;justify-content:space-between;gap:10px;font-family:var(--mono);
+  font-size:12px;padding:9px 0;border-bottom:1px solid var(--rule);
+  font-variant-numeric:tabular-nums}
+.fila .t{color:var(--muted);font-size:10px}
+.fila.alta .a{color:var(--coral)} .fila.baja .a{color:var(--sage)}
+
+table.tabla{width:100%;border-collapse:collapse;font-family:var(--mono);
+  font-size:11px;font-variant-numeric:tabular-nums}
+table.tabla th{text-align:right;color:var(--muted);font-weight:500;
+  border-bottom:1px solid var(--rule);padding:6px 4px;font-size:9px;
+  letter-spacing:.06em;text-transform:uppercase}
+table.tabla th:first-child,table.tabla td:first-child{text-align:left}
+table.tabla td{padding:6px 4px;text-align:right;border-bottom:1px solid var(--rule)}
+table.tabla tr.si td{color:var(--sage)}
+table.tabla tr.dolar td:first-child{color:var(--amber)}
+.scroll{max-height:60vh;overflow:auto;-webkit-overflow-scrolling:touch}
+
+.hallazgo{background:var(--panel);border:1px solid var(--rule);border-radius:4px;
+  padding:12px 14px;margin-bottom:10px}
+.hallazgo h3{font-family:var(--mono);font-size:11px;font-weight:600;margin:0 0 8px;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;
+  font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums}
+.kv dt{color:var(--muted)} .kv dd{margin:0;word-break:break-word}
+.kv dd.si{color:var(--sage)} .kv dd.no{color:var(--coral)}
+.grande{font-family:var(--mono);font-size:26px;font-variant-numeric:tabular-nums}
+.barras{display:flex;align-items:flex-end;gap:2px;height:60px;margin-top:10px}
+.barras i{flex:1;background:var(--panel-2);border-top:2px solid var(--muted);
+  min-height:2px}
+
+.avanzado{margin-top:18px;border-top:1px solid var(--rule);padding-top:12px}
+.avanzado summary{font-family:var(--mono);font-size:10px;color:var(--muted);
+  letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
+pre.crudo{background:var(--ink);border:1px solid var(--rule);border-radius:3px;
+  padding:10px;font-family:var(--mono);font-size:10px;color:var(--muted);
+  overflow:auto;max-height:40vh;white-space:pre-wrap;word-break:break-word;margin:0}
+
+dialog{background:var(--panel);color:var(--bone);border:1px solid var(--rule);
+  border-radius:6px;padding:16px;width:min(92vw,420px);max-height:86vh}
+dialog::backdrop{background:rgba(0,0,0,.72)}
+dialog h2{font-family:var(--mono);font-size:13px;letter-spacing:.08em;
+  text-transform:uppercase;margin:0 0 12px}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
 <body>
@@ -263,12 +188,17 @@ pre.crudo{
 <header>
   <div class="hrow">
     <h1>Ratios</h1>
-    <div class="estado" id="estado"><span class="pulso off"></span>conectando</div>
+    <div class="reloj">
+      <div class="hace" id="hace"><b>—</b>conectando</div>
+      <button class="refrescar" id="btn-refrescar" title="Actualizar ahora"
+              aria-label="Actualizar ahora">↻</button>
+    </div>
   </div>
   <nav role="tablist">
     <button role="tab" aria-selected="true" data-vista="panel">Panel</button>
     <button role="tab" aria-selected="false" data-vista="calc">Calcular</button>
-    <button role="tab" aria-selected="false" data-vista="hist">Alertas</button>
+    <button role="tab" aria-selected="false" data-vista="plazos">Plazos</button>
+    <button role="tab" aria-selected="false" data-vista="reg">Registro</button>
     <button role="tab" aria-selected="false" data-vista="expl">Explorar</button>
   </nav>
 </header>
@@ -277,46 +207,53 @@ pre.crudo{
   <section id="v-panel"></section>
 
   <section id="v-calc" hidden>
+    <div class="chips" id="c-chips"></div>
     <div class="form">
       <div>
         <label for="c-num">Numerador</label>
-        <input id="c-num" placeholder="GD30" autocapitalize="characters" autocomplete="off">
+        <input id="c-num" list="tickers" placeholder="GD30"
+               autocapitalize="characters" autocomplete="off">
       </div>
       <div>
         <label for="c-den">Denominador</label>
-        <input id="c-den" placeholder="AL30" autocapitalize="characters" autocomplete="off">
+        <input id="c-den" list="tickers" placeholder="AL30"
+               autocapitalize="characters" autocomplete="off">
       </div>
+      <datalist id="tickers"></datalist>
       <div>
         <label for="c-mer">Mercado</label>
         <select id="c-mer">
-          <option value="bCBA">bCBA</option>
-          <option value="nYSE">nYSE</option>
-          <option value="nASDAQ">nASDAQ</option>
-          <option value="aMEX">aMEX</option>
+          <option value="bCBA">bCBA</option><option value="nYSE">nYSE</option>
+          <option value="nASDAQ">nASDAQ</option><option value="aMEX">aMEX</option>
           <option value="rOFX">rOFX</option>
         </select>
       </div>
       <div>
         <label for="c-plazo">Plazo</label>
         <select id="c-plazo">
-          <option value="t2">t2</option>
-          <option value="t1">t1</option>
-          <option value="t0">t0</option>
+          <option value="t1">t1</option><option value="t0">t0</option>
         </select>
       </div>
-      <div class="ancho">
-        <button class="primario" id="c-btn">Calcular ratio</button>
-      </div>
+      <div class="ancho"><button class="primario" id="c-btn">Calcular ratio</button></div>
     </div>
     <div id="c-out"></div>
   </section>
 
-  <section id="v-hist" hidden></section>
+  <section id="v-plazos" hidden>
+    <p class="nota">Vender en t0 y recomprar en t1: conviene cuando la punta
+      compradora de t0 supera a la vendedora de t1, neto de comisiones y por
+      encima de la caución a un día.</p>
+    <button class="primario" id="p-btn">Calcular ahora</button>
+    <div id="p-out" style="margin-top:12px"></div>
+  </section>
+
+  <section id="v-reg" hidden>
+    <div id="r-out"></div>
+  </section>
 
   <section id="v-expl" hidden>
-    <p class="nota">Consultá la API con la sesión que ya tiene la app.
-      Solo lectura.</p>
-
+    <div id="e-consumo"></div>
+    <p class="nota">Consultá la API con la sesión que ya tiene la app. Solo lectura.</p>
     <div class="form">
       <div>
         <label for="e-inst">Instrumento</label>
@@ -331,309 +268,210 @@ pre.crudo{
       </div>
       <div class="ancho">
         <label for="e-panel">Panel</label>
-        <select id="e-panel"><option value="">Elegí un instrumento primero</option></select>
+        <select id="e-panel"><option value="">Elegí un instrumento</option></select>
       </div>
-      <div class="ancho">
-        <button class="primario" id="e-btn">Bajar panel</button>
-      </div>
+      <div class="ancho"><button class="primario" id="e-btn">Bajar panel</button></div>
     </div>
-
     <div id="e-out"></div>
-
     <details class="avanzado">
       <summary>Ruta manual</summary>
       <div class="form" style="margin-top:10px">
         <div class="ancho">
           <label for="e-path">Ruta</label>
-          <input id="e-path" placeholder="api/v2/argentina/Titulos/Cotizacion/Instrumentos"
-                 autocomplete="off" style="text-transform:none">
+          <input id="e-path" style="text-transform:none" autocomplete="off"
+                 placeholder="api/v2/argentina/Titulos/Cotizacion/Instrumentos">
         </div>
-        <div class="ancho">
-          <button class="primario" id="e-path-btn">Consultar</button>
-        </div>
+        <div class="ancho"><button class="primario" id="e-path-btn">Consultar</button></div>
       </div>
       <div id="e-path-out"></div>
     </details>
   </section>
 </main>
 
+<dialog id="dlg-op">
+  <h2 id="dlg-titulo">Registrar operación</h2>
+  <div class="form">
+    <div>
+      <label for="o-cant">Cantidad</label>
+      <input id="o-cant" type="number" inputmode="decimal" placeholder="0">
+    </div>
+    <div>
+      <label for="o-lado">Lado</label>
+      <select id="o-lado">
+        <option value="entrada">Entrada</option>
+        <option value="salida">Salida</option>
+      </select>
+    </div>
+    <div>
+      <label for="o-pn" id="lbl-pn">Precio num.</label>
+      <input id="o-pn" type="number" inputmode="decimal" step="any">
+    </div>
+    <div>
+      <label for="o-pd" id="lbl-pd">Precio den.</label>
+      <input id="o-pd" type="number" inputmode="decimal" step="any">
+    </div>
+    <div class="ancho">
+      <label for="o-nota">Nota (opcional)</label>
+      <textarea id="o-nota"></textarea>
+    </div>
+    <div class="ancho" id="o-ratio" style="font-family:var(--mono);
+         font-size:12px;color:var(--muted)"></div>
+    <div class="ancho"><button class="primario" id="o-guardar">Guardar</button></div>
+    <div class="ancho"><button class="secundario" id="o-cerrar">Cancelar</button></div>
+  </div>
+  <div id="o-msg"></div>
+</dialog>
+
 <script>
 const $ = s => document.querySelector(s);
-const base = "";                       // rutas relativas: Ingress las reescribe
-let vistaActual = "panel";
-let abierto = {};                      // alias -> modo de grafico abierto
+const base = "";
+let vista = "panel";
+let abierto = {};
+let ultimoEstado = null;
+let opCtx = {};
 
-const num = (v, d=4) => (v ?? 0).toLocaleString("es-AR",
+const num = (v,d=4) => (v==null?0:v).toLocaleString("es-AR",
   {minimumFractionDigits:d, maximumFractionDigits:d});
-const precio = v => (v ?? 0).toLocaleString("es-AR",
+const precio = v => (v==null?0:v).toLocaleString("es-AR",
   {minimumFractionDigits:2, maximumFractionDigits:2});
+const ent = v => (v==null?0:v).toLocaleString("es-AR",{maximumFractionDigits:0});
+const pct = v => (v==null?"—":(v>=0?"+":"")+v.toFixed(3)+"%");
+const css = s => s.replace(/[^a-zA-Z0-9]/g,"_");
+const esc = s => String(s??"").replace(/[<>&]/g, c =>
+  ({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]));
 
-/* ---------- navegacion ---------- */
+/* ---------- navegación ---------- */
 document.querySelectorAll("nav button").forEach(b => {
   b.addEventListener("click", () => {
     document.querySelectorAll("nav button").forEach(x =>
       x.setAttribute("aria-selected", x === b));
-    vistaActual = b.dataset.vista;
-    ["panel","calc","hist","expl"].forEach(v =>
-      $("#v-"+v).hidden = (v !== vistaActual));
-    if (vistaActual === "hist") cargarAlertas();
-    if (vistaActual === "expl") iniciarExplorar();
+    vista = b.dataset.vista;
+    ["panel","calc","plazos","reg","expl"].forEach(v =>
+      $("#v-"+v).hidden = (v !== vista));
+    if(vista === "reg") cargarRegistro();
+    if(vista === "expl") iniciarExplorar();
+    if(vista === "calc") cargarRecientes();
   });
 });
 
-/* ---------- explorar ---------- */
-let explorarListo = false;
-
-/* La API devuelve objetos, no strings. Sacamos el nombre de la clave que traiga. */
-function nombreDe(x){
-  if(typeof x === "string") return x;
-  if(!x || typeof x !== "object") return String(x ?? "");
-  for(const k of ["panel","instrumento","descripcion","nombre","titulo"]){
-    if(typeof x[k] === "string" && x[k]) return x[k];
-  }
-  const v = Object.values(x).find(v => typeof v === "string" && v);
-  return v || "";
+/* ---------- reloj ---------- */
+function pintarReloj(seg, poll){
+  const el = $("#hace");
+  if(seg == null){ el.innerHTML = "<b>—</b>sin datos"; return; }
+  let txt;
+  if(seg < 60) txt = seg + " s";
+  else if(seg < 3600) txt = Math.floor(seg/60) + " min";
+  else txt = Math.floor(seg/3600) + " h";
+  el.classList.toggle("viejo", seg > (poll||600) * 1.6);
+  el.innerHTML = "<b>hace " + txt + "</b>última lectura";
 }
 
-async function iniciarExplorar(){
-  if(explorarListo) return;
-  explorarListo = true;
-  await cargarInstrumentos();
-}
-
-async function cargarInstrumentos(){
-  const sel = $("#e-inst");
+$("#btn-refrescar").addEventListener("click", async () => {
+  const b = $("#btn-refrescar");
+  b.disabled = true; b.classList.add("girando");
   try{
-    const d = await (await fetch(
-      base + "api/explorar/instrumentos?pais=" + $("#e-pais").value)).json();
-    const lista = (Array.isArray(d) ? d : []).map(nombreDe).filter(Boolean);
-    if(lista.length){
-      sel.innerHTML = lista.map(i =>
-        `<option>${typeof i === "string" ? i : (i.descripcion || i.nombre || i)}</option>`
-      ).join("");
-      sel.value = lista.includes("Bonos") ? "Bonos" : sel.options[0].value;
-    }
-  }catch(e){ /* deja el default */ }
-  await cargarPaneles();
-}
-
-async function cargarPaneles(){
-  const sel = $("#e-panel");
-  sel.innerHTML = '<option value="">Cargando…</option>';
-  try{
-    const q = new URLSearchParams({
-      instrumento: $("#e-inst").value, pais: $("#e-pais").value });
-    const d = await (await fetch(base + "api/explorar/paneles?" + q)).json();
-    const lista = (Array.isArray(d) ? d : []).map(nombreDe).filter(Boolean);
-    if(!lista.length){
-      sel.innerHTML = '<option value="">Sin paneles para este instrumento</option>';
-      return;
-    }
-    sel.innerHTML = lista.map(p => {
-      const n = typeof p === "string" ? p : (p.descripcion || p.nombre || p);
-      return `<option>${n}</option>`;
-    }).join("");
-  }catch(e){
-    sel.innerHTML = '<option value="">No se pudieron cargar</option>';
-  }
-}
-
-$("#e-inst").addEventListener("change", cargarPaneles);
-$("#e-pais").addEventListener("change", cargarInstrumentos);
-
-$("#e-btn").addEventListener("click", async () => {
-  const out = $("#e-out");
-  const panel = $("#e-panel").value;
-  if(!panel){
-    out.innerHTML = '<div class="msg">Elegí un panel.</div>';
-    return;
-  }
-  $("#e-btn").disabled = true;
-  out.innerHTML = '<div class="vacio">Bajando panel…</div>';
-
-  const q = new URLSearchParams({
-    instrumento: $("#e-inst").value, panel, pais: $("#e-pais").value });
-
-  try{
-    const r = await fetch(base + "api/explorar/panel?" + q);
+    const r = await fetch(base + "api/refrescar", {method:"POST"});
     const d = await r.json();
-    if(!r.ok){
-      out.innerHTML = `<div class="msg error">${d.error || "Falló la consulta."}</div>`;
-      return;
-    }
-    out.innerHTML = resumenPanel(d);
-  }catch(e){
-    out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
-  }finally{
-    $("#e-btn").disabled = false;
-  }
-});
-
-function resumenPanel(d){
-  const dolarizadas = d.especies_d.length + d.especies_c.length;
-  const sí = v => v ? "si" : "no";
-
-  const filas = d.titulos.map(t => {
-    const esD = /[DC]$/.test(t.simbolo || "");
-    return `<tr class="${esD ? "dolar" : ""}">
-      <td>${t.simbolo || ""}</td>
-      <td>${precio(t.ultimo)}</td>
-      <td>${t.compra ? precio(t.compra) : "—"}</td>
-      <td>${t.venta ? precio(t.venta) : "—"}</td>
-      <td>${t.plazo || "—"}</td>
-    </tr>`;
-  }).join("");
-
-  return `
-  <div class="hallazgo">
-    <h3>Lo que trae este panel</h3>
-    <dl class="kv">
-      <dt>Títulos</dt><dd>${d.total}</dd>
-      <dt>Con puntas</dt>
-      <dd class="${sí(d.con_puntas)}">${d.con_puntas} de ${d.total}</dd>
-      <dt>Especies D</dt>
-      <dd class="${sí(d.especies_d.length)}">${
-        d.especies_d.length ? d.especies_d.join(" · ") : "ninguna"}</dd>
-      <dt>Especies C</dt>
-      <dd class="${sí(d.especies_c.length)}">${
-        d.especies_c.length ? d.especies_c.join(" · ") : "ninguna"}</dd>
-      <dt>Monedas</dt><dd>${d.monedas.join(" · ") || "—"}</dd>
-      <dt>Plazos</dt><dd>${d.plazos.join(" · ") || "no informa"}</dd>
-    </dl>
-  </div>
-
-  <div class="hallazgo">
-    <h3>Títulos${dolarizadas ? " · en ámbar los D y C" : ""}</h3>
-    <div class="scroll">
-      <table class="panel">
-        <thead><tr>
-          <th>Símbolo</th><th>Último</th><th>Compra</th><th>Venta</th><th>Plazo</th>
-        </tr></thead>
-        <tbody>${filas}</tbody>
-      </table>
-    </div>
-  </div>
-
-  <details class="avanzado">
-    <summary>Respuesta cruda del primer título</summary>
-    <pre class="crudo">${JSON.stringify(d.muestra_cruda, null, 2)}</pre>
-  </details>`;
-}
-
-$("#e-path-btn").addEventListener("click", async () => {
-  const out = $("#e-path-out");
-  const path = $("#e-path").value.trim();
-  if(!path){
-    out.innerHTML = '<div class="msg">Escribí una ruta.</div>';
-    return;
-  }
-  out.innerHTML = '<div class="vacio">Consultando…</div>';
-  try{
-    const r = await fetch(base + "api/explorar/raw?path=" + encodeURIComponent(path));
-    const d = await r.json();
-    out.innerHTML = r.ok
-      ? `<pre class="crudo">${JSON.stringify(d.respuesta, null, 2)}</pre>`
-      : `<div class="msg error">${d.error || "Falló la consulta."}</div>`;
-  }catch(e){
-    out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
-  }
+    if(!r.ok) $("#hace").innerHTML = "<b>—</b>" + esc(d.mensaje || "no se pudo");
+    await cargarPanel();
+    if(vista === "plazos" && $("#p-out").innerHTML.trim()) calcularPlazos();
+  }catch(e){ /* el panel muestra el estado */ }
+  finally{ b.disabled = false; b.classList.remove("girando"); }
 });
 
 /* ---------- panel ---------- */
 async function cargarPanel(){
   let d;
-  try{
-    d = await (await fetch(base + "api/estado")).json();
-  }catch(e){
-    $("#estado").innerHTML = '<span class="pulso off"></span>sin conexión';
-    return;
-  }
+  try{ d = await (await fetch(base + "api/estado")).json(); }
+  catch(e){ $("#hace").innerHTML = "<b>—</b>sin conexión"; return; }
 
-  const hora = d.ciclo ? d.ciclo.slice(11,19) : "—";
-  $("#estado").innerHTML =
-    `<span class="pulso ${d.en_rueda ? "" : "off"}"></span>` +
-    (d.en_rueda ? hora : "fuera de rueda · " + hora);
+  ultimoEstado = d;
+  pintarReloj(d.hace_seg, d.poll_seconds);
 
   const cont = $("#v-panel");
+  let cab = "";
+  if(d.hay_rueda === false)
+    cab = '<div class="aviso">Ningún título se movió: parece un día sin rueda. ' +
+          'La app consulta cada media hora hasta que haya movimiento.</div>';
+  else if(!d.en_rueda)
+    cab = '<div class="aviso">Fuera del horario de mercado. ' +
+          'Los precios son del último cierre.</div>';
+  if(d.error) cab += '<div class="msg error">' + esc(d.error) + '</div>';
+
   if(!d.pares.length){
-    cont.innerHTML = '<div class="vacio">Todavía no hay lecturas. ' +
-      'El primer ciclo corre apenas arranca la rueda.</div>';
+    cont.innerHTML = cab + '<div class="vacio">Todavía no hay lecturas.</div>';
     return;
   }
-  cont.innerHTML = d.pares.map(tarjeta).join("");
+  cont.innerHTML = cab + d.pares.map(tarjeta).join("");
   Object.keys(abierto).forEach(a => dibujar(a, abierto[a]));
 }
 
 function tarjeta(p){
   if(p.error && p.ratio == null){
-    return `<div class="par"><div class="par-top"><span class="alias">${p.alias}</span></div>
-      <div class="msg error" style="margin-top:10px">${p.error}</div></div>`;
+    return '<div class="par"><div class="par-top"><span class="alias">' +
+      esc(p.alias) + '</span></div><div class="msg error" style="margin-top:10px">' +
+      esc(p.error) + '</div></div>';
   }
   const est = p.est || {};
   const zona = p.zona === "alta" ? "alta" : p.zona === "baja" ? "baja" : "";
+  const q = c => (c && (c.vol_compra || c.vol_venta))
+    ? " <span style='opacity:.6'>[" + ent(c.vol_compra) + "/" + ent(c.vol_venta) + "]</span>"
+    : "";
 
-  return `<div class="par ${zona}" data-alias="${p.alias}">
-    <div class="par-top">
-      <span class="alias">${p.alias}</span>
-      ${p.alertas ? "" : '<span class="silencio">sin alertas</span>'}
-    </div>
-    <div class="ratio">${num(p.ratio)}</div>
-    ${banda(p)}
-    <div class="datos">
-      <span>${p.num} <b>${precio(p.p_num?.ref)}</b></span>
-      <span>${p.den} <b>${precio(p.p_den?.ref)}</b></span>
-      ${est.media ? `<span>media <b>${num(est.media)}</b></span>` : "<span></span>"}
-      ${p.z != null ? `<span>z <b>${p.z >= 0 ? "+" : ""}${p.z.toFixed(2)}</b></span>`
-                    : `<span>n <b>${est.n ?? 0}</b></span>`}
-    </div>
-    <div class="acciones">
-      <button onclick="alternar('${p.alias}','diario')">90 días</button>
-      <button onclick="alternar('${p.alias}','intra')">Hoy</button>
-    </div>
-    <div class="graf" id="g-${css(p.alias)}" hidden></div>
-  </div>`;
+  return '<div class="par ' + zona + '">' +
+    '<div class="par-top"><span class="alias">' + esc(p.alias) + '</span>' +
+    (p.alertas ? "" : '<span class="silencio">sin alertas</span>') + '</div>' +
+    '<div class="ratio">' + num(p.ratio) + '</div>' +
+    banda(p) +
+    (est.aviso ? '<div class="aviso">' + esc(est.aviso) + '</div>' : "") +
+    '<div class="datos">' +
+      '<span>' + esc(p.num) + ' <b>' + precio(p.p_num && p.p_num.ref) + '</b>' + q(p.p_num) + '</span>' +
+      '<span>' + esc(p.den) + ' <b>' + precio(p.p_den && p.p_den.ref) + '</b>' + q(p.p_den) + '</span>' +
+      (est.media ? '<span>media <b>' + num(est.media) + '</b></span>' : "<span></span>") +
+      (p.z != null ? '<span>z <b>' + (p.z>=0?"+":"") + p.z.toFixed(2) + '</b></span>'
+                   : '<span>n <b>' + (est.n||0) + '</b></span>') +
+    '</div>' +
+    '<div class="acciones">' +
+      '<button onclick="alternar(\'' + esc(p.alias) + '\',\'diario\')">90 días</button>' +
+      '<button onclick="alternar(\'' + esc(p.alias) + '\',\'intra\')">Hoy</button>' +
+      '<button class="op" onclick="abrirOp(\'' + esc(p.alias) + '\')">Operé</button>' +
+    '</div>' +
+    '<div class="graf" id="g-' + css(p.alias) + '" hidden></div></div>';
 }
 
-/* la banda: soporte y resistencia fijos, aguja en el ratio actual */
 function banda(p){
-  const sop = p.soporte || 0, res = p.resistencia || 0;
+  const sop = p.soporte||0, res = p.resistencia||0;
   if(!sop || !res || res <= sop){
-    const e = p.est || {};
+    const e = p.est||{};
     if(!e.min || !e.max) return "";
-    // sin niveles: usamos el rango historico como referencia
-    return riel(e.min, e.max, p.ratio, null, null, "rango 90d");
+    return riel(e.min, e.max, p.ratio, null, null, "rango histórico");
   }
   return riel(sop, res, p.ratio, sop, res, null);
 }
 
 function riel(lo, hi, valor, sop, res, etiqueta){
-  const pad = (hi - lo) * 0.35 || hi * 0.05;
-  const min = lo - pad, max = hi + pad;
-  const pos = v => Math.max(0, Math.min(100, (v - min) / (max - min) * 100));
+  const pad = (hi-lo)*0.35 || hi*0.05;
+  const min = lo-pad, max = hi+pad;
+  const pos = v => Math.max(0, Math.min(100, (v-min)/(max-min)*100));
   const izq = pos(lo), der = pos(hi);
-
-  return `<div class="banda">
-    <div class="riel"></div>
-    <div class="zona-ok" style="left:${izq}%;width:${der - izq}%"></div>
-    ${sop ? `<div class="marca sop" style="left:${izq}%"></div>
-             <div class="marca-txt" style="left:${izq}%;transform:translateX(-50%)">${num(sop,2)}</div>` : ""}
-    ${res ? `<div class="marca res" style="left:${der}%"></div>
-             <div class="marca-txt" style="left:${der}%;transform:translateX(-50%)">${num(res,2)}</div>` : ""}
-    ${etiqueta ? `<div class="marca-txt" style="left:50%;transform:translateX(-50%)">${etiqueta}</div>` : ""}
-    <div class="aguja" style="left:${pos(valor)}%"></div>
-  </div>`;
+  return '<div class="banda"><div class="riel"></div>' +
+    '<div class="zona-ok" style="left:' + izq + '%;width:' + (der-izq) + '%"></div>' +
+    (sop ? '<div class="marca sop" style="left:' + izq + '%"></div>' +
+      '<div class="marca-txt" style="left:' + izq + '%;transform:translateX(-50%)">' +
+      num(sop,2) + '</div>' : "") +
+    (res ? '<div class="marca res" style="left:' + der + '%"></div>' +
+      '<div class="marca-txt" style="left:' + der + '%;transform:translateX(-50%)">' +
+      num(res,2) + '</div>' : "") +
+    (etiqueta ? '<div class="marca-txt" style="left:50%;transform:translateX(-50%)">' +
+      etiqueta + '</div>' : "") +
+    '<div class="aguja" style="left:' + pos(valor) + '%"></div></div>';
 }
-
-const css = s => s.replace(/[^a-zA-Z0-9]/g, "_");
 
 async function alternar(alias, modo){
   const cont = document.getElementById("g-" + css(alias));
   if(!cont) return;
   if(abierto[alias] === modo){
-    delete abierto[alias];
-    cont.hidden = true;
-    cont.innerHTML = "";
-    return;
+    delete abierto[alias]; cont.hidden = true; cont.innerHTML = ""; return;
   }
   abierto[alias] = modo;
   cont.hidden = false;
@@ -646,134 +484,324 @@ async function dibujar(alias, modo){
   if(!cont) return;
   cont.hidden = false;
   try{
-    const d = await (await fetch(
-      base + "api/serie?alias=" + encodeURIComponent(alias) + "&modo=" + modo
-    )).json();
-    cont.innerHTML = grafico(d.puntos, d.resistencia, d.soporte, modo);
+    const d = await (await fetch(base + "api/serie?alias=" +
+      encodeURIComponent(alias) + "&modo=" + modo)).json();
+    cont.innerHTML = (d.aviso ? '<div class="aviso">' + esc(d.aviso) + '</div>' : "") +
+      grafico(d.puntos, d.resistencia, d.soporte, modo);
   }catch(e){
     cont.innerHTML = '<div class="msg error">No se pudo cargar la serie.</div>';
   }
 }
 
-/* ---------- grafico SVG ---------- */
 function grafico(puntos, res, sop, modo){
-  if(!puntos || puntos.length < 2){
+  if(!puntos || puntos.length < 2)
     return '<div class="vacio" style="padding:14px">' +
-      (modo === "intra"
-        ? "Todavía no hay lecturas de hoy."
-        : "No hay suficiente histórico para este par.") + "</div>";
-  }
-  const W = 320, H = 130, ml = 6, mr = 42, mt = 8, mb = 16;
-  const ys = puntos.map(p => p.y);
-  let lo = Math.min(...ys), hi = Math.max(...ys);
-  if(res) hi = Math.max(hi, res);
-  if(sop) lo = Math.min(lo, sop);
-  const pad = (hi - lo) * 0.08 || hi * 0.01;
-  lo -= pad; hi += pad;
-
-  const px = i => ml + i * (W - ml - mr) / (puntos.length - 1);
-  const py = v => mt + (hi - v) / (hi - lo) * (H - mt - mb);
-
-  const d = puntos.map((p, i) => (i ? "L" : "M") + px(i).toFixed(1) + " " + py(p.y).toFixed(1)).join(" ");
-  const media = ys.reduce((a, b) => a + b, 0) / ys.length;
-
-  const linea = (v, clase, txt) => v ? `
-    <line class="${clase}" x1="${ml}" y1="${py(v)}" x2="${W - mr}" y2="${py(v)}"/>
-    <text x="${W - mr + 4}" y="${py(v) + 3}">${txt}</text>` : "";
-
-  const primero = puntos[0].x, ultimo = puntos[puntos.length - 1].x;
-  const fmt = s => modo === "intra" ? s.slice(11, 16) : s.slice(5, 10);
-
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"
-    role="img" aria-label="Serie del ratio">
-    ${linea(res, "nivel-res", num(res, 2))}
-    ${linea(sop, "nivel-sop", num(sop, 2))}
-    ${linea(media, "media", num(media, 2))}
-    <path class="linea" d="${d}"/>
-    <text x="${ml}" y="${H - 4}">${fmt(primero)}</text>
-    <text x="${W - mr}" y="${H - 4}" text-anchor="end">${fmt(ultimo)}</text>
-  </svg>`;
+      (modo === "intra" ? "Todavía no hay lecturas de hoy."
+                        : "No hay suficiente histórico.") + '</div>';
+  const W=320,H=130,ml=6,mr=42,mt=8,mb=16;
+  const ys = puntos.map(p=>p.y);
+  let lo=Math.min(...ys), hi=Math.max(...ys);
+  if(res) hi=Math.max(hi,res);
+  if(sop) lo=Math.min(lo,sop);
+  const pad=(hi-lo)*0.08 || hi*0.01; lo-=pad; hi+=pad;
+  const px=i=>ml+i*(W-ml-mr)/(puntos.length-1);
+  const py=v=>mt+(hi-v)/(hi-lo)*(H-mt-mb);
+  const d=puntos.map((p,i)=>(i?"L":"M")+px(i).toFixed(1)+" "+py(p.y).toFixed(1)).join(" ");
+  const media=ys.reduce((a,b)=>a+b,0)/ys.length;
+  const linea=(v,c,t)=>v?'<line class="'+c+'" x1="'+ml+'" y1="'+py(v)+'" x2="'+
+    (W-mr)+'" y2="'+py(v)+'"/><text x="'+(W-mr+4)+'" y="'+(py(v)+3)+'">'+t+'</text>':"";
+  const fmt=s=>modo==="intra"?s.slice(11,16):s.slice(5,10);
+  return '<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" role="img">'+
+    linea(res,"nivel-res",num(res,2))+linea(sop,"nivel-sop",num(sop,2))+
+    linea(media,"media",num(media,2))+
+    '<path class="linea" d="'+d+'"/>'+
+    '<text x="'+ml+'" y="'+(H-4)+'">'+fmt(puntos[0].x)+'</text>'+
+    '<text x="'+(W-mr)+'" y="'+(H-4)+'" text-anchor="end">'+
+    fmt(puntos[puntos.length-1].x)+'</text></svg>';
 }
 
+/* ---------- registrar operación ---------- */
+function abrirOp(alias){
+  const p = (ultimoEstado && ultimoEstado.pares || []).find(x => x.alias === alias);
+  opCtx = {alias, alerta_id: p && p.alerta_id};
+  $("#dlg-titulo").textContent = alias;
+  $("#lbl-pn").textContent = "Precio " + ((p && p.num) || "num.");
+  $("#lbl-pd").textContent = "Precio " + ((p && p.den) || "den.");
+  $("#o-cant").value = "";
+  $("#o-pn").value = p && p.p_num ? (p.p_num.ref || "") : "";
+  $("#o-pd").value = p && p.p_den ? (p.p_den.ref || "") : "";
+  $("#o-nota").value = "";
+  $("#o-msg").innerHTML = "";
+  calcRatioOp();
+  $("#dlg-op").showModal();
+}
+["o-pn","o-pd"].forEach(id => $("#"+id).addEventListener("input", calcRatioOp));
+function calcRatioOp(){
+  const a = parseFloat($("#o-pn").value), b = parseFloat($("#o-pd").value);
+  $("#o-ratio").textContent = (a && b) ? "Ratio efectivo: " + num(a/b) : "";
+}
+$("#o-cerrar").addEventListener("click", () => $("#dlg-op").close());
+$("#o-guardar").addEventListener("click", async () => {
+  const cuerpo = {
+    alias: opCtx.alias, alerta_id: opCtx.alerta_id,
+    lado: $("#o-lado").value,
+    cantidad: parseFloat($("#o-cant").value) || 0,
+    precio_num: parseFloat($("#o-pn").value) || 0,
+    precio_den: parseFloat($("#o-pd").value) || 0,
+    nota: $("#o-nota").value,
+  };
+  try{
+    const r = await fetch(base + "api/operaciones", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(cuerpo)});
+    const d = await r.json();
+    if(!r.ok){ $("#o-msg").innerHTML = '<div class="msg error">' +
+      esc(d.error || "No se pudo guardar.") + '</div>'; return; }
+    $("#dlg-op").close();
+    if(vista === "reg") cargarRegistro();
+  }catch(e){
+    $("#o-msg").innerHTML = '<div class="msg error">No se pudo guardar.</div>';
+  }
+});
+
 /* ---------- calculadora ---------- */
+async function cargarRecientes(){
+  try{
+    const d = await (await fetch(base + "api/recientes")).json();
+    $("#tickers").innerHTML = (d.tickers||[]).map(t =>
+      '<option value="' + esc(t) + '">').join("");
+    $("#c-chips").innerHTML = (d.pares||[]).slice(0,10).map(p =>
+      '<button class="chip" onclick="usarPar(\'' + esc(p.num) + '\',\'' +
+      esc(p.den) + '\',\'' + esc(p.mercado||"bCBA") + '\',\'' +
+      esc(p.plazo||"t1") + '\')">' + esc(p.num) + "/" + esc(p.den) +
+      '</button>').join("");
+  }catch(e){ /* silencioso */ }
+}
+function usarPar(n,d,m,p){
+  $("#c-num").value=n; $("#c-den").value=d;
+  $("#c-mer").value=m; $("#c-plazo").value=p;
+  calcular();
+}
 $("#c-btn").addEventListener("click", calcular);
-["c-num","c-den"].forEach(id =>
-  $("#"+id).addEventListener("keydown", e => { if(e.key === "Enter") calcular(); }));
+["c-num","c-den"].forEach(id => $("#"+id).addEventListener("keydown",
+  e => { if(e.key === "Enter") calcular(); }));
 
 async function calcular(){
   const n = $("#c-num").value.trim().toUpperCase();
   const dd = $("#c-den").value.trim().toUpperCase();
   const out = $("#c-out");
-
-  if(!n || !dd){
-    out.innerHTML = '<div class="msg">Escribí las dos especies para comparar.</div>';
-    return;
-  }
-
+  if(!n || !dd){ out.innerHTML = '<div class="msg">Escribí las dos especies.</div>'; return; }
   $("#c-btn").disabled = true;
   out.innerHTML = '<div class="vacio">Consultando…</div>';
-
-  const q = new URLSearchParams({
-    num:n, den:dd, mercado:$("#c-mer").value, plazo:$("#c-plazo").value
-  });
-
+  const q = new URLSearchParams({num:n, den:dd,
+    mercado:$("#c-mer").value, plazo:$("#c-plazo").value});
   try{
     const r = await fetch(base + "api/calc?" + q);
     const d = await r.json();
-    if(!r.ok){
-      out.innerHTML = `<div class="msg error">${d.error || "No se pudo calcular."}</div>`;
+    if(!r.ok){ out.innerHTML = '<div class="msg error">' +
+      esc(d.error || "No se pudo calcular.") + '</div>'; return; }
+    const e = d.est || {};
+    out.innerHTML = '<div class="par"><div class="par-top"><span class="alias">' +
+      esc(d.alias) + '</span></div><div class="ratio">' + num(d.ratio) + '</div>' +
+      '<div class="datos">' +
+      '<span>' + esc(n) + ' <b>' + precio(d.num.ref) + '</b></span>' +
+      '<span>' + esc(dd) + ' <b>' + precio(d.den.ref) + '</b></span>' +
+      (e.media ? '<span>media <b>' + num(e.media) + '</b></span>' : "<span></span>") +
+      (e.z != null ? '<span>z <b>' + (e.z>=0?"+":"") + e.z.toFixed(2) + '</b></span>'
+                   : '<span>n <b>' + (e.n||0) + '</b></span>') +
+      '</div><div class="graf">' + grafico(d.puntos,0,0,"diario") + '</div></div>';
+    cargarRecientes();
+  }catch(err){
+    out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
+  }finally{ $("#c-btn").disabled = false; }
+}
+
+/* ---------- arbitraje de plazos ---------- */
+$("#p-btn").addEventListener("click", calcularPlazos);
+async function calcularPlazos(){
+  const out = $("#p-out");
+  $("#p-btn").disabled = true;
+  out.innerHTML = '<div class="vacio">Consultando t0 y t1…</div>';
+  try{
+    const r = await fetch(base + "api/arbitraje");
+    const d = await r.json();
+    if(!r.ok){ out.innerHTML = '<div class="msg error">' +
+      esc(d.error || "Falló.") + '</div>'; return; }
+    if(!d.filas.length){
+      out.innerHTML = '<div class="vacio">No hay tickers configurados. ' +
+        'Cargalos en la configuración de la app, en arbitraje_tickers.</div>';
       return;
     }
-    const e = d.est || {};
-    out.innerHTML = `<div class="par">
-      <div class="par-top"><span class="alias">${d.alias}</span></div>
-      <div class="ratio">${num(d.ratio)}</div>
-      <div class="datos">
-        <span>${n} <b>${precio(d.num.ref)}</b></span>
-        <span>${dd} <b>${precio(d.den.ref)}</b></span>
-        ${e.media ? `<span>media <b>${num(e.media)}</b></span>` : "<span></span>"}
-        ${e.z != null ? `<span>z <b>${e.z >= 0 ? "+" : ""}${e.z.toFixed(2)}</b></span>`
-                      : `<span>n <b>${e.n ?? 0}</b></span>`}
-        ${e.min ? `<span>mín <b>${num(e.min, 2)}</b></span>` : ""}
-        ${e.max ? `<span>máx <b>${num(e.max, 2)}</b></span>` : ""}
-      </div>
-      <div class="graf">${grafico(d.puntos, 0, 0, "diario")}</div>
-    </div>`;
-  }catch(err){
-    out.innerHTML = '<div class="msg error">No se pudo consultar. Revisá el add-on.</div>';
-  }finally{
-    $("#c-btn").disabled = false;
+    const hay = d.filas.some(f => f.conviene);
+    out.innerHTML =
+      (d.tasa_caucion_anual ? "" :
+        '<div class="aviso">La tasa de caución está en 0. Cargala en la ' +
+        'configuración para que la comparación sirva.</div>') +
+      (hay ? '<div class="msg ok">Hay al menos una oportunidad.</div>' : "") +
+      '<div class="hallazgo"><div class="scroll"><table class="tabla"><thead><tr>' +
+      '<th>Ticker</th><th>Compra t0</th><th>Venta t1</th><th>Neto</th>' +
+      '<th>Caución</th><th>Cant.</th></tr></thead><tbody>' +
+      d.filas.map(f => f.error
+        ? '<tr><td>' + esc(f.ticker) + '</td><td colspan="5" style="text-align:left;' +
+          'color:var(--muted)">' + esc(f.error) + '</td></tr>'
+        : '<tr class="' + (f.conviene ? "si" : "") + '"><td>' + esc(f.ticker) + '</td>' +
+          '<td>' + precio(f.compra_t0) + '</td><td>' + precio(f.venta_t1) + '</td>' +
+          '<td>' + pct(f.neto_pct) + '</td><td>' + pct(f.caucion_dia_pct) + '</td>' +
+          '<td>' + ent(f.ejecutable) + '</td></tr>').join("") +
+      '</tbody></table></div></div>';
+  }catch(e){
+    out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
+  }finally{ $("#p-btn").disabled = false; }
+}
+
+/* ---------- registro ---------- */
+async function cargarRegistro(){
+  const cont = $("#r-out");
+  try{
+    const [al, op] = await Promise.all([
+      (await fetch(base + "api/alertas")).json(),
+      (await fetch(base + "api/operaciones")).json()]);
+    let h = '<div class="hallazgo"><h3>Operaciones</h3>';
+    h += op.length ? op.map(o =>
+      '<div class="fila"><span>' + esc(o.alias) +
+      ' <span class="t">' + esc(o.lado) + '</span></span><span>' +
+      num(o.ratio) + ' <span class="t">' + ent(o.cantidad) + ' · ' +
+      o.ts.slice(5,10) + ' ' + o.ts.slice(11,16) + '</span></span></div>').join("")
+      : '<div class="vacio" style="padding:12px">Nada registrado todavía. ' +
+        'Usá el botón "Operé" en el panel.</div>';
+    h += '</div><div class="hallazgo"><h3>Alertas</h3>';
+    h += al.length ? al.map(a =>
+      '<div class="fila ' + esc(a.tipo) + '"><span><span class="a">' +
+      (a.tipo === "alta" ? "▲" : "▼") + '</span> ' + esc(a.alias) +
+      '</span><span>' + num(a.ratio) + ' <span class="t">' +
+      a.ts.slice(5,10) + ' ' + a.ts.slice(11,16) + '</span></span></div>').join("")
+      : '<div class="vacio" style="padding:12px">Sin alertas todavía.</div>';
+    cont.innerHTML = h + '</div>';
+  }catch(e){
+    cont.innerHTML = '<div class="msg error">No se pudo cargar.</div>';
   }
 }
 
-/* ---------- alertas ---------- */
-async function cargarAlertas(){
-  const cont = $("#v-hist");
-  try{
-    const d = await (await fetch(base + "api/alertas")).json();
-    if(!d.length){
-      cont.innerHTML = '<div class="vacio">Sin alertas todavía. ' +
-        'Van a aparecer acá y en Telegram.</div>';
-      return;
-    }
-    cont.innerHTML = d.map(a => `
-      <div class="alerta-fila ${a.tipo}">
-        <span>
-          <span class="a">${a.tipo === "alta" ? "▲" : "▼"}</span>
-          ${a.alias}
-        </span>
-        <span>
-          ${num(a.ratio)}
-          <span class="t">${a.ts.slice(5,10)} ${a.ts.slice(11,16)}</span>
-        </span>
-      </div>`).join("");
-  }catch(e){
-    cont.innerHTML = '<div class="msg error">No se pudo cargar el historial.</div>';
+/* ---------- explorar ---------- */
+let explorarListo = false;
+function nombreDe(x){
+  if(typeof x === "string") return x;
+  if(!x || typeof x !== "object") return String(x ?? "");
+  for(const k of ["panel","instrumento","descripcion","nombre","titulo"]){
+    if(typeof x[k] === "string" && x[k]) return x[k];
   }
+  const v = Object.values(x).find(v => typeof v === "string" && v);
+  return v || "";
 }
+async function iniciarExplorar(){
+  cargarConsumo();
+  if(explorarListo) return;
+  explorarListo = true;
+  await cargarInstrumentos();
+}
+async function cargarConsumo(){
+  try{
+    const d = await (await fetch(base + "api/requests")).json();
+    const max = Math.max(1, ...d.por_dia.map(x => x.n));
+    $("#e-consumo").innerHTML = '<div class="hallazgo"><h3>Consumo de la API</h3>' +
+      '<dl class="kv"><dt>Este mes</dt><dd class="grande">' + ent(d.mes) + '</dd>' +
+      '<dt>Hoy</dt><dd>' + ent(d.hoy) + '</dd>' +
+      (d.por_tipo.length ? '<dt>Por tipo</dt><dd>' + d.por_tipo.map(t =>
+        esc(t.tipo) + " " + ent(t.n)).join(" · ") + '</dd>' : "") +
+      '</dl><div class="barras">' + d.por_dia.map(x =>
+        '<i style="height:' + Math.max(3, x.n/max*100) + '%" title="' +
+        esc(x.fecha) + ": " + x.n + '"></i>').join("") + '</div></div>';
+  }catch(e){ /* silencioso */ }
+}
+async function cargarInstrumentos(){
+  const sel = $("#e-inst");
+  try{
+    const d = await (await fetch(base + "api/explorar/instrumentos?pais=" +
+      $("#e-pais").value)).json();
+    const lista = (Array.isArray(d)?d:[]).map(nombreDe).filter(Boolean);
+    if(lista.length){
+      sel.innerHTML = lista.map(n => '<option>' + esc(n) + '</option>').join("");
+      sel.value = lista.includes("Bonos") ? "Bonos" : lista[0];
+    }
+  }catch(e){}
+  await cargarPaneles();
+}
+async function cargarPaneles(){
+  const sel = $("#e-panel");
+  sel.innerHTML = '<option value="">Cargando…</option>';
+  try{
+    const q = new URLSearchParams({instrumento:$("#e-inst").value, pais:$("#e-pais").value});
+    const d = await (await fetch(base + "api/explorar/paneles?" + q)).json();
+    const lista = (Array.isArray(d)?d:[]).map(nombreDe).filter(Boolean);
+    sel.innerHTML = lista.length
+      ? lista.map(n => '<option>' + esc(n) + '</option>').join("")
+      : '<option value="">Sin paneles</option>';
+  }catch(e){ sel.innerHTML = '<option value="">No se pudieron cargar</option>'; }
+}
+$("#e-inst").addEventListener("change", cargarPaneles);
+$("#e-pais").addEventListener("change", cargarInstrumentos);
+
+$("#e-btn").addEventListener("click", async () => {
+  const out = $("#e-out"), panel = $("#e-panel").value;
+  if(!panel){ out.innerHTML = '<div class="msg">Elegí un panel.</div>'; return; }
+  $("#e-btn").disabled = true;
+  out.innerHTML = '<div class="vacio">Bajando panel…</div>';
+  const q = new URLSearchParams({instrumento:$("#e-inst").value, panel,
+    pais:$("#e-pais").value});
+  try{
+    const r = await fetch(base + "api/explorar/panel?" + q);
+    const d = await r.json();
+    out.innerHTML = r.ok ? resumenPanel(d)
+      : '<div class="msg error">' + esc(d.error || "Falló.") + '</div>';
+  }catch(e){ out.innerHTML = '<div class="msg error">No se pudo consultar.</div>'; }
+  finally{ $("#e-btn").disabled = false; cargarConsumo(); }
+});
+
+function resumenPanel(d){
+  const si = v => v ? "si" : "no";
+  return '<div class="hallazgo"><h3>Lo que trae este panel</h3><dl class="kv">' +
+    '<dt>Títulos</dt><dd>' + d.total + '</dd>' +
+    '<dt>Con puntas</dt><dd class="' + si(d.con_puntas) + '">' +
+      d.con_puntas + ' de ' + d.total + '</dd>' +
+    '<dt>Especies D</dt><dd class="' + si(d.especies_d.length) + '">' +
+      (d.especies_d.length ? d.especies_d.map(esc).join(" · ") : "ninguna") + '</dd>' +
+    '<dt>Especies C</dt><dd class="' + si(d.especies_c.length) + '">' +
+      (d.especies_c.length ? d.especies_c.map(esc).join(" · ") : "ninguna") + '</dd>' +
+    '<dt>Monedas</dt><dd>' + (d.monedas.map(esc).join(" · ") || "—") + '</dd>' +
+    '<dt>Plazos</dt><dd>' + (d.plazos.map(esc).join(" · ") || "no informa") + '</dd>' +
+    '</dl></div><div class="hallazgo"><h3>Títulos</h3><div class="scroll">' +
+    '<table class="tabla"><thead><tr><th>Símbolo</th><th>Último</th>' +
+    '<th>Compra</th><th>Venta</th></tr></thead><tbody>' +
+    d.titulos.map(t => '<tr class="' + (/[DC]$/.test(t.simbolo||"") ? "dolar" : "") +
+      '"><td>' + esc(t.simbolo) + '</td><td>' + precio(t.ultimo) + '</td><td>' +
+      (t.compra ? precio(t.compra) : "—") + '</td><td>' +
+      (t.venta ? precio(t.venta) : "—") + '</td></tr>').join("") +
+    '</tbody></table></div></div>' +
+    '<details class="avanzado"><summary>Respuesta cruda</summary>' +
+    '<pre class="crudo">' + esc(JSON.stringify(d.muestra_cruda, null, 2)) + '</pre></details>';
+}
+
+$("#e-path-btn").addEventListener("click", async () => {
+  const out = $("#e-path-out"), path = $("#e-path").value.trim();
+  if(!path){ out.innerHTML = '<div class="msg">Escribí una ruta.</div>'; return; }
+  out.innerHTML = '<div class="vacio">Consultando…</div>';
+  try{
+    const r = await fetch(base + "api/explorar/raw?path=" + encodeURIComponent(path));
+    const d = await r.json();
+    out.innerHTML = r.ok
+      ? '<pre class="crudo">' + esc(JSON.stringify(d.respuesta, null, 2)) + '</pre>'
+      : '<div class="msg error">' + esc(d.error || "Falló.") + '</div>';
+  }catch(e){ out.innerHTML = '<div class="msg error">No se pudo consultar.</div>'; }
+});
 
 cargarPanel();
-setInterval(() => { if(vistaActual === "panel") cargarPanel(); }, 45000);
+setInterval(() => { if(vista === "panel") cargarPanel(); }, 30000);
+setInterval(() => {
+  if(ultimoEstado && ultimoEstado.hace_seg != null){
+    ultimoEstado.hace_seg += 1;
+    pintarReloj(ultimoEstado.hace_seg, ultimoEstado.poll_seconds);
+  }
+}, 1000);
 </script>
 </body>
 </html>
