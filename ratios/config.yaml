@@ -1,13 +1,14 @@
 name: Ratios IOL
-version: "0.1.3"
+version: "0.2.0"
 slug: ratios_iol
-description: Monitor de ratios entre especies con alertas por Telegram y screener web
-url: https://github.com/TU_USUARIO/ha-ratios
+description: Monitor de ratios entre especies, arbitraje de plazos y screener
+url: https://github.com/PaduGit/Proyecto-trading-Claude-HA
 arch:
   - aarch64
   - amd64
   - armv7
 init: false
+homeassistant_api: true
 map:
   - addon_config:rw
 ingress: true
@@ -17,66 +18,102 @@ panel_title: Ratios
 options:
   iol_user: ""
   iol_pass: ""
+  canal_alertas: ambos
+  ha_notify_service: notify.mobile_app_motorola_razr_60_ultra
   telegram_token: ""
   telegram_chat_id: ""
-  poll_seconds: 180
+  publicar_sensores: true
+  poll_seconds: 600
+  min_segundos_manual: 20
   market_open: "10:30"
   market_close: "17:15"
-  timezone: "America/Argentina/Buenos_Aires"
-  alert_cooldown_minutes: 90
-  confirm_readings: 2
+  timezone: America/Argentina/Buenos_Aires
+  histeresis_pct: 0.5
+  tasa_caucion_anual: 0
+  paneles:
+    - instrumento: Bonos
+      panel: Soberanos en dólares
+      pais: argentina
+    - instrumento: Acciones
+      panel: Merval
+      pais: argentina
+  comisiones:
+    - instrumento: acciones
+      pct: 0.15
+    - instrumento: bonos
+      pct: 0.15
+    - instrumento: opciones
+      pct: 0.5
+    - instrumento: cauciones
+      pct: 0.05
+  arbitraje_tickers: []
   pares:
-    - alias: "ALUA/TXAR"
-      num: "ALUA"
-      den: "TXAR"
-      mercado: "bCBA"
-      plazo: "t1"
+    - alias: ALUA/TXAR
+      num: ALUA
+      den: TXAR
+      mercado: bCBA
+      plazo: t1
       resistencia: 1.54
       soporte: 1.36
       alertas: true
-    - alias: "LOMA/HARG"
-      num: "LOMA"
-      den: "HARG"
-      mercado: "bCBA"
-      plazo: "t1"
+    - alias: LOMA/HARG
+      num: LOMA
+      den: HARG
+      mercado: bCBA
+      plazo: t1
       resistencia: 2.2
       soporte: 1.7
       alertas: true
-    - alias: "GD30/AL30"
-      num: "GD30"
-      den: "AL30"
-      mercado: "bCBA"
-      plazo: "t1"
+    - alias: GD30/AL30
+      num: GD30
+      den: AL30
+      mercado: bCBA
+      plazo: t1
       resistencia: 1.03
       soporte: 1.0
       alertas: true
-    - alias: "AO28/AO29"
-      num: "AO28"
-      den: "AO29"
-      mercado: "bCBA"
-      plazo: "t1"
+    - alias: AO28/AO29
+      num: AO28
+      den: AO29
+      mercado: bCBA
+      plazo: t1
       resistencia: 0
       soporte: 0
       alertas: false
-    - alias: "AL30/AL30D (MEP)"
-      num: "AL30"
-      den: "AL30D"
-      mercado: "bCBA"
-      plazo: "t1"
+    - alias: AL30/AL30D (MEP)
+      num: AL30
+      den: AL30D
+      mercado: bCBA
+      plazo: t1
       resistencia: 0
       soporte: 0
       alertas: false
 schema:
   iol_user: str
   iol_pass: password
-  telegram_token: password
-  telegram_chat_id: str
+  canal_alertas: list(ha|telegram|ambos)
+  ha_notify_service: str?
+  telegram_token: password?
+  telegram_chat_id: str?
+  publicar_sensores: bool
   poll_seconds: int(30,3600)
+  min_segundos_manual: int(0,300)
   market_open: str
   market_close: str
   timezone: str
-  alert_cooldown_minutes: int(0,1440)
-  confirm_readings: int(1,10)
+  histeresis_pct: float(0,10)
+  tasa_caucion_anual: float(0,500)
+  paneles:
+    - instrumento: str
+      panel: str
+      pais: str
+  comisiones:
+    - instrumento: str
+      pct: float(0,10)
+  arbitraje_tickers:
+    - ticker: str
+      mercado: str?
+      tipo: str?
   pares:
     - alias: str
       num: str
