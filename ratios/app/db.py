@@ -102,6 +102,16 @@ def init():
         if col not in cols:
             c.execute("ALTER TABLE lecturas ADD COLUMN %s REAL" % col)
     cols = {r["name"] for r in c.execute("PRAGMA table_info(alertas)")}
+    if cols and "id" not in cols:
+        # la tabla de 0.1.x no tenia clave primaria; hay que rehacerla
+        c.execute("ALTER TABLE alertas RENAME TO alertas_v1")
+        c.executescript(ESQUEMA)
+        c.execute(
+            "INSERT INTO alertas (ts, alias, tipo, ratio, nivel, mensaje) "
+            "SELECT ts, alias, tipo, ratio, nivel, mensaje FROM alertas_v1")
+        c.execute("DROP TABLE alertas_v1")
+        c.commit()
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(alertas)")}
     for col in ("p_num", "p_den", "qc_num", "qv_num", "qc_den", "qv_den"):
         if col not in cols:
             c.execute("ALTER TABLE alertas ADD COLUMN %s REAL" % col)

@@ -302,11 +302,8 @@ def crear_app(monitor):
     @app.get("/api/alertas")
     def alertas():
         filas = db.alertas_recientes(40)
-        return jsonify([{
-            "id": f["id"], "ts": f["ts"], "alias": f["alias"],
-            "tipo": f["tipo"], "ratio": f["ratio"], "nivel": f["nivel"],
-            "p_num": f["p_num"], "p_den": f["p_den"],
-        } for f in filas])
+        return jsonify([_fila(f, "id", "ts", "alias", "tipo", "ratio",
+                              "nivel", "p_num", "p_den") for f in filas])
 
     # -- consumo ------------------------------------------------------
 
@@ -444,6 +441,15 @@ def _traer_historico(monitor, mercado, simbolo, dias):
             filas.append((f, c))
     if filas:
         db.guardar_cierres(simbolo, filas)
+
+
+def _fila(f, *campos):
+    """Lee solo las columnas que existan: tolera bases de versiones viejas."""
+    try:
+        presentes = set(f.keys())
+    except Exception:
+        presentes = set()
+    return {c: (f[c] if c in presentes else None) for c in campos}
 
 
 def _p(p):
