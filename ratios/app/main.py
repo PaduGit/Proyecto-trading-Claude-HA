@@ -101,6 +101,7 @@ def validar(cfg):
 def main():
     cfg = validar(cargar_opciones())
     db.init()
+    db.init_posicion()
 
     notif = Notificador(cfg)
     iol = IOL(cfg["iol_user"], cfg["iol_pass"])

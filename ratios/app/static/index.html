@@ -4,16 +4,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ratios</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
+/* Fuentes locales: si dejás los .woff2 en static/fonts se usan, si no
+   cae a las del sistema. Nada sale a internet. */
+@font-face{font-family:"Plex Mono";font-display:swap;font-weight:400;
+  src:url("fonts/IBMPlexMono-Regular.woff2") format("woff2")}
+@font-face{font-family:"Plex Mono";font-display:swap;font-weight:600;
+  src:url("fonts/IBMPlexMono-SemiBold.woff2") format("woff2")}
+@font-face{font-family:"Plex Sans";font-display:swap;font-weight:400;
+  src:url("fonts/IBMPlexSans-Regular.woff2") format("woff2")}
+@font-face{font-family:"Plex Sans";font-display:swap;font-weight:600;
+  src:url("fonts/IBMPlexSans-SemiBold.woff2") format("woff2")}
 :root{
   --ink:#0E141B; --panel:#161E28; --panel-2:#1C2632; --rule:#28323F;
   --bone:#E9E5DC; --muted:#7B8794;
   --coral:#DF7168; --sage:#6FA88C; --amber:#C6A24B;
-  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
-  --sans:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+  --mono:"Plex Mono",ui-monospace,SFMono-Regular,"Roboto Mono",Menlo,Consolas,monospace;
+  --sans:"Plex Sans",system-ui,-apple-system,"Roboto",sans-serif;
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -197,6 +204,7 @@ dialog h2{font-family:var(--mono);font-size:13px;letter-spacing:.08em;
   <nav role="tablist">
     <button role="tab" aria-selected="true" data-vista="panel">Panel</button>
     <button role="tab" aria-selected="false" data-vista="calc">Calcular</button>
+    <button role="tab" aria-selected="false" data-vista="pos">Posición</button>
     <button role="tab" aria-selected="false" data-vista="plazos">Plazos</button>
     <button role="tab" aria-selected="false" data-vista="reg">Registro</button>
     <button role="tab" aria-selected="false" data-vista="expl">Explorar</button>
@@ -237,6 +245,12 @@ dialog h2{font-family:var(--mono);font-size:13px;letter-spacing:.08em;
       <div class="ancho"><button class="primario" id="c-btn">Calcular ratio</button></div>
     </div>
     <div id="c-out"></div>
+  </section>
+
+  <section id="v-pos" hidden>
+    <div id="pos-out"></div>
+    <button class="secundario" id="pos-nuevo" style="margin-top:14px">
+      + Nuevo grupo</button>
   </section>
 
   <section id="v-plazos" hidden>
@@ -287,6 +301,90 @@ dialog h2{font-family:var(--mono);font-size:13px;letter-spacing:.08em;
     </details>
   </section>
 </main>
+
+<dialog id="dlg-grupo">
+  <h2>Nuevo grupo</h2>
+  <div class="form">
+    <div class="ancho">
+      <label for="g-nombre">Nombre</label>
+      <input id="g-nombre" style="text-transform:none" placeholder="Aluar / Ternium">
+    </div>
+    <div class="ancho">
+      <label for="g-tickers">Tickers (separados por coma)</label>
+      <input id="g-tickers" placeholder="ALUA, TXAR">
+    </div>
+    <div class="ancho">
+      <label for="g-base">Unidad de medida</label>
+      <select id="g-base"><option value="">Escribí los tickers primero</option></select>
+    </div>
+    <div class="ancho" style="font-size:11px;color:var(--muted)">
+      Todo el resultado se mide en nominales de la unidad elegida,
+      estés parado donde estés.
+    </div>
+    <div class="ancho"><button class="primario" id="g-guardar">Crear</button></div>
+    <div class="ancho"><button class="secundario" id="g-cerrar">Cancelar</button></div>
+  </div>
+  <div id="g-msg"></div>
+</dialog>
+
+<dialog id="dlg-mov">
+  <h2 id="mov-titulo">Movimiento</h2>
+  <div class="form">
+    <div class="ancho">
+      <label for="m-tipo">Tipo</label>
+      <select id="m-tipo">
+        <option value="rotacion">Rotación</option>
+        <option value="aporte">Aporte de capital</option>
+        <option value="retiro">Retiro</option>
+      </select>
+    </div>
+    <div id="m-rot">
+      <div class="form" style="margin:0">
+        <div>
+          <label for="m-de">Vendo</label>
+          <select id="m-de"></select>
+        </div>
+        <div>
+          <label for="m-cant-de">Cantidad</label>
+          <input id="m-cant-de" type="number" inputmode="decimal" step="any">
+        </div>
+        <div>
+          <label for="m-a">Compro</label>
+          <select id="m-a"></select>
+        </div>
+        <div>
+          <label for="m-cant-a">Cantidad</label>
+          <input id="m-cant-a" type="number" inputmode="decimal" step="any">
+        </div>
+      </div>
+    </div>
+    <div id="m-flujo" hidden>
+      <div class="form" style="margin:0">
+        <div>
+          <label for="m-tk">Ticker</label>
+          <select id="m-tk"></select>
+        </div>
+        <div>
+          <label for="m-cant">Cantidad</label>
+          <input id="m-cant" type="number" inputmode="decimal" step="any">
+        </div>
+        <div class="ancho">
+          <label for="m-eq" id="lbl-eq">Equivale a</label>
+          <input id="m-eq" type="number" inputmode="decimal" step="any">
+        </div>
+      </div>
+    </div>
+    <div class="ancho" id="m-info" style="font-family:var(--mono);
+         font-size:11px;color:var(--muted)"></div>
+    <div class="ancho">
+      <label for="m-nota">Nota (opcional)</label>
+      <textarea id="m-nota"></textarea>
+    </div>
+    <div class="ancho"><button class="primario" id="m-guardar">Guardar</button></div>
+    <div class="ancho"><button class="secundario" id="m-cerrar">Cancelar</button></div>
+  </div>
+  <div id="m-msg"></div>
+</dialog>
 
 <dialog id="dlg-op">
   <h2 id="dlg-titulo">Registrar operación</h2>
@@ -346,8 +444,9 @@ document.querySelectorAll("nav button").forEach(b => {
     document.querySelectorAll("nav button").forEach(x =>
       x.setAttribute("aria-selected", x === b));
     vista = b.dataset.vista;
-    ["panel","calc","plazos","reg","expl"].forEach(v =>
+    ["panel","calc","pos","plazos","reg","expl"].forEach(v =>
       $("#v-"+v).hidden = (v !== vista));
+    if(vista === "pos") cargarPosicion();
     if(vista === "reg") cargarRegistro();
     if(vista === "expl") iniciarExplorar();
     if(vista === "calc") cargarRecientes();
@@ -558,6 +657,7 @@ $("#o-guardar").addEventListener("click", async () => {
     if(!r.ok){ $("#o-msg").innerHTML = '<div class="msg error">' +
       esc(d.error || "No se pudo guardar.") + '</div>'; return; }
     $("#dlg-op").close();
+    if(vista === "pos") cargarPosicion();
     if(vista === "reg") cargarRegistro();
   }catch(e){
     $("#o-msg").innerHTML = '<div class="msg error">No se pudo guardar.</div>';
@@ -792,6 +892,231 @@ $("#e-path-btn").addEventListener("click", async () => {
       ? '<pre class="crudo">' + esc(JSON.stringify(d.respuesta, null, 2)) + '</pre>'
       : '<div class="msg error">' + esc(d.error || "Falló.") + '</div>';
   }catch(e){ out.innerHTML = '<div class="msg error">No se pudo consultar.</div>'; }
+});
+
+/* ---------- posición ---------- */
+let grupos = [];
+let movsAbiertos = {};
+
+async function cargarPosicion(){
+  const cont = $("#pos-out");
+  try{
+    grupos = await (await fetch(base + "api/grupos")).json();
+  }catch(e){
+    cont.innerHTML = '<div class="msg error">No se pudo cargar.</div>'; return;
+  }
+  if(!grupos.length){
+    cont.innerHTML = '<div class="vacio">Todavía no hay grupos. ' +
+      'Creá uno con los tickers entre los que rotás.</div>';
+    return;
+  }
+  cont.innerHTML = grupos.map(tarjetaGrupo).join("");
+  Object.keys(movsAbiertos).forEach(id => {
+    if(movsAbiertos[id]) verMovimientos(parseInt(id), true);
+  });
+}
+
+function tarjetaGrupo(g){
+  const r = g.rendimiento_pct;
+  const color = r == null ? "" : r >= 0 ? "var(--sage)" : "var(--coral)";
+  const falta = g.faltan_precios && g.faltan_precios.length;
+
+  return '<div class="par">' +
+    '<div class="par-top"><span class="alias">' + esc(g.nombre) + '</span>' +
+    '<span class="silencio">en ' + esc(g.base) + '</span></div>' +
+
+    (g.equivalente == null
+      ? '<div class="msg" style="margin-top:10px">Sin precios para calcular. ' +
+        (falta ? 'Falta: ' + g.faltan_precios.map(esc).join(", ") : "") + '</div>'
+      : '<div class="ratio" style="color:' + color + '">' +
+        ent(g.equivalente) + ' <span style="font-size:14px;opacity:.6">' +
+        esc(g.base) + '</span></div>' +
+        '<div style="font-family:var(--mono);font-size:12px;color:' + color + '">' +
+        (r >= 0 ? "+" : "") + r.toFixed(2) + '% · ' +
+        (g.ganancia_nominal >= 0 ? "+" : "") + ent(g.ganancia_nominal) +
+        ' nominales</div>') +
+
+    (falta && g.equivalente != null
+      ? '<div class="aviso">Sin precio de ' + g.faltan_precios.map(esc).join(", ") +
+        ': el equivalente está incompleto.</div>' : "") +
+
+    '<div class="datos" style="margin-top:12px">' +
+      g.tenencia.map(t => '<span>' + esc(t.ticker) + ' <b>' + ent(t.cantidad) +
+        '</b>' + (t.ticker !== g.base && t.equivalente != null
+          ? ' <span style="opacity:.6">≈ ' + ent(t.equivalente) + '</span>' : "") +
+        '</span>').join("") +
+      '<span>aportado <b>' + ent(g.base_ajustada) + '</b></span>' +
+    '</div>' +
+
+    '<div class="acciones">' +
+      '<button onclick="abrirMov(' + g.id + ')">Movimiento</button>' +
+      '<button onclick="verMovimientos(' + g.id + ')">Historial</button>' +
+      '<button onclick="borrarGrupo(' + g.id + ')">Borrar</button>' +
+    '</div>' +
+    '<div class="graf" id="mv-' + g.id + '" hidden></div></div>';
+}
+
+async function verMovimientos(gid, forzar){
+  const cont = document.getElementById("mv-" + gid);
+  if(!cont) return;
+  if(movsAbiertos[gid] && !forzar){
+    movsAbiertos[gid] = false; cont.hidden = true; cont.innerHTML = ""; return;
+  }
+  movsAbiertos[gid] = true;
+  cont.hidden = false;
+  cont.innerHTML = '<div class="vacio" style="padding:12px">Cargando…</div>';
+  try{
+    const d = await (await fetch(base + "api/grupos/" + gid + "/movimientos")).json();
+    const g = grupos.find(x => x.id === gid) || {};
+    let h = "";
+    if(d.curva && d.curva.length > 1){
+      h += grafico(d.curva.map(p => ({x:p.x, y:p.y})), 0, 0, "diario");
+      h += '<div style="font-family:var(--mono);font-size:9px;color:var(--muted);' +
+           'text-align:center;margin-bottom:8px">equivalente en ' +
+           esc(g.base || "") + '</div>';
+    }
+    h += d.movimientos.length ? d.movimientos.map(m => filaMov(m, gid)).join("")
+      : '<div class="vacio" style="padding:12px">Sin movimientos.</div>';
+    cont.innerHTML = h;
+  }catch(e){
+    cont.innerHTML = '<div class="msg error">No se pudo cargar.</div>';
+  }
+}
+
+function filaMov(m, gid){
+  const desc = m.tipo === "rotacion"
+    ? ent(m.cant_de) + " " + esc(m.ticker_de) + " → " + ent(m.cant_a) + " " + esc(m.ticker_a)
+    : (m.tipo === "aporte" ? "+" : "−") + ent(m.cant_a) + " " + esc(m.ticker_a);
+  const icono = m.tipo === "rotacion" ? "⇄" : m.tipo === "aporte" ? "↓" : "↑";
+  return '<div class="fila"><span>' + icono + ' ' + desc +
+    (m.nota ? ' <span class="t">' + esc(m.nota) + '</span>' : "") + '</span>' +
+    '<span><span class="t">' + m.ts.slice(5,10) + " " + m.ts.slice(11,16) +
+    '</span> <button onclick="borrarMov(' + m.id + ',' + gid + ')" ' +
+    'style="background:none;border:none;color:var(--muted);cursor:pointer">×</button>' +
+    '</span></div>';
+}
+
+async function borrarMov(mid, gid){
+  if(!confirm("¿Borrar este movimiento?")) return;
+  await fetch(base + "api/movimientos/" + mid, {method:"DELETE"});
+  await cargarPosicion();
+  verMovimientos(gid, true);
+}
+
+async function borrarGrupo(gid){
+  const g = grupos.find(x => x.id === gid);
+  if(!confirm("¿Borrar \"" + (g ? g.nombre : "") +
+     "\" y todos sus movimientos? No se puede deshacer.")) return;
+  await fetch(base + "api/grupos/" + gid, {method:"DELETE"});
+  cargarPosicion();
+}
+
+/* --- crear grupo --- */
+$("#pos-nuevo").addEventListener("click", () => {
+  $("#g-nombre").value = ""; $("#g-tickers").value = "";
+  $("#g-base").innerHTML = '<option value="">Escribí los tickers primero</option>';
+  $("#g-msg").innerHTML = "";
+  $("#dlg-grupo").showModal();
+});
+$("#g-tickers").addEventListener("input", () => {
+  const tks = $("#g-tickers").value.split(",").map(t => t.trim().toUpperCase())
+    .filter(Boolean);
+  $("#g-base").innerHTML = tks.length
+    ? tks.map(t => '<option>' + esc(t) + '</option>').join("")
+    : '<option value="">Escribí los tickers primero</option>';
+});
+$("#g-cerrar").addEventListener("click", () => $("#dlg-grupo").close());
+$("#g-guardar").addEventListener("click", async () => {
+  const cuerpo = {
+    nombre: $("#g-nombre").value.trim(),
+    tickers: $("#g-tickers").value.split(",").map(t => t.trim().toUpperCase())
+      .filter(Boolean),
+    base: $("#g-base").value,
+  };
+  try{
+    const r = await fetch(base + "api/grupos", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify(cuerpo)});
+    const d = await r.json();
+    if(!r.ok){ $("#g-msg").innerHTML = '<div class="msg error">' +
+      esc(d.error) + '</div>'; return; }
+    $("#dlg-grupo").close();
+    cargarPosicion();
+  }catch(e){
+    $("#g-msg").innerHTML = '<div class="msg error">No se pudo crear.</div>';
+  }
+});
+
+/* --- movimiento --- */
+let movGrupo = null;
+function abrirMov(gid){
+  movGrupo = grupos.find(g => g.id === gid);
+  if(!movGrupo) return;
+  $("#mov-titulo").textContent = movGrupo.nombre;
+  const ops = movGrupo.tickers.map(t => '<option>' + esc(t) + '</option>').join("");
+  ["m-de","m-a","m-tk"].forEach(id => $("#"+id).innerHTML = ops);
+  if(movGrupo.tickers.length > 1) $("#m-a").value = movGrupo.tickers[1];
+  ["m-cant-de","m-cant-a","m-cant","m-eq"].forEach(id => $("#"+id).value = "");
+  $("#m-nota").value = "";
+  $("#m-msg").innerHTML = "";
+  $("#m-tipo").value = "rotacion";
+  cambiarTipoMov();
+  $("#dlg-mov").showModal();
+}
+function cambiarTipoMov(){
+  const t = $("#m-tipo").value;
+  $("#m-rot").hidden = t !== "rotacion";
+  $("#m-flujo").hidden = t === "rotacion";
+  $("#lbl-eq").textContent = "Equivale a cuántos " + (movGrupo ? movGrupo.base : "");
+  infoMov();
+}
+$("#m-tipo").addEventListener("change", cambiarTipoMov);
+["m-cant-de","m-cant-a","m-de","m-a","m-tk","m-cant","m-eq"].forEach(id =>
+  $("#"+id).addEventListener("input", infoMov));
+
+function infoMov(){
+  if(!movGrupo) return;
+  const t = $("#m-tipo").value, el = $("#m-info");
+  if(t === "rotacion"){
+    const cd = parseFloat($("#m-cant-de").value), ca = parseFloat($("#m-cant-a").value);
+    const de = $("#m-de").value, a = $("#m-a").value;
+    if(cd && ca){
+      el.textContent = "Ratio implícito " + de + "/" + a + ": " + num(cd/ca);
+    } else if(cd && movGrupo.precios && movGrupo.precios[de] && movGrupo.precios[a]){
+      const est = cd * movGrupo.precios[de] / movGrupo.precios[a];
+      el.textContent = "Al precio de ahora serían " + ent(est) + " " + a;
+    } else el.textContent = "";
+  } else {
+    const tk = $("#m-tk").value, c = parseFloat($("#m-cant").value);
+    if(c && tk && movGrupo.precios && movGrupo.precios[tk] &&
+       movGrupo.precios[movGrupo.base]){
+      const eq = c * movGrupo.precios[tk] / movGrupo.precios[movGrupo.base];
+      el.textContent = "Al precio de ahora equivale a " + ent(eq) + " " + movGrupo.base;
+      if(!$("#m-eq").value) $("#m-eq").value = Math.round(eq);
+    } else el.textContent = "";
+  }
+}
+$("#m-cerrar").addEventListener("click", () => $("#dlg-mov").close());
+$("#m-guardar").addEventListener("click", async () => {
+  if(!movGrupo) return;
+  const t = $("#m-tipo").value;
+  const cuerpo = t === "rotacion"
+    ? {tipo:t, ticker_de:$("#m-de").value, cant_de:$("#m-cant-de").value,
+       ticker_a:$("#m-a").value, cant_a:$("#m-cant-a").value,
+       nota:$("#m-nota").value}
+    : {tipo:t, ticker_a:$("#m-tk").value, cant_a:$("#m-cant").value,
+       ratio_base:$("#m-eq").value, nota:$("#m-nota").value};
+  try{
+    const r = await fetch(base + "api/grupos/" + movGrupo.id + "/movimientos", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(cuerpo)});
+    const d = await r.json();
+    if(!r.ok){ $("#m-msg").innerHTML = '<div class="msg error">' +
+      esc(d.error) + '</div>'; return; }
+    $("#dlg-mov").close();
+    cargarPosicion();
+  }catch(e){
+    $("#m-msg").innerHTML = '<div class="msg error">No se pudo guardar.</div>';
+  }
 });
 
 cargarPanel();

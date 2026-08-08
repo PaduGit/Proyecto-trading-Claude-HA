@@ -289,3 +289,124 @@ def purgar(dias=400):
     c.execute("DELETE FROM lecturas WHERE ts < date('now', ?)", ("-%d days" % dias,))
     c.execute("DELETE FROM requests WHERE fecha < date('now', ?)", ("-%d days" % dias,))
     c.commit()
+
+
+# =====================================================================
+#  Posición: grupos de tickers rotables y sus movimientos
+# =====================================================================
+
+ESQUEMA_POSICION = """
+CREATE TABLE IF NOT EXISTS grupos (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre    TEXT NOT NULL UNIQUE,
+    base      TEXT NOT NULL,          -- ticker en el que se mide todo
+    tickers   TEXT NOT NULL,          -- JSON: lista de tickers del grupo
+    mercado   TEXT DEFAULT 'bCBA',
+    creado    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS movimientos (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    grupo_id   INTEGER NOT NULL,
+    ts         TEXT NOT NULL,
+    tipo       TEXT NOT NULL,         -- rotacion | aporte | retiro
+    ticker_de  TEXT,                  -- rotacion: de donde sale
+    cant_de    REAL,
+    ticker_a   TEXT,                  -- rotacion: a donde va / aporte-retiro: el ticker
+    cant_a     REAL,
+    ratio_base REAL,                  -- equivalente en la unidad base al momento
+    equiv_antes REAL,                 -- equivalente total justo antes del movimiento
+    nota       TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_mov_grupo ON movimientos(grupo_id, ts);
+"""
+
+
+def init_posicion():
+    c = conn()
+    c.executescript(ESQUEMA_POSICION)
+    cols = {r["name"] for r in c.execute("PRAGMA table_info(movimientos)")}
+    if "equiv_antes" not in cols:
+        c.execute("ALTER TABLE movimientos ADD COLUMN equiv_antes REAL")
+    c.commit()
+
+
+def crear_grupo(nombre, base, tickers, mercado="bCBA"):
+    import json as _json
+    c = conn()
+    cur = c.execute(
+        "INSERT INTO grupos (nombre, base, tickers, mercado, creado) "
+        "VALUES (?,?,?,?,?)",
+        (nombre, base, _json.dumps(tickers), mercado,
+         datetime.now().isoformat(timespec="seconds")))
+    c.commit()
+    return cur.lastrowid
+
+
+def listar_grupos():
+    import json as _json
+    filas = conn().execute("SELECT * FROM grupos ORDER BY nombre").fetchall()
+    out = []
+    for f in filas:
+        try:
+            tickers = _json.loads(f["tickers"])
+        except ValueError:
+            tickers = []
+        out.append({"id": f["id"], "nombre": f["nombre"], "base": f["base"],
+                    "tickers": tickers, "mercado": f["mercado"],
+                    "creado": f["creado"]})
+    return out
+
+
+def grupo_por_id(gid):
+    for g in listar_grupos():
+        if g["id"] == gid:
+            return g
+    return None
+
+
+def actualizar_grupo(gid, nombre=None, base=None, tickers=None):
+    import json as _json
+    g = grupo_por_id(gid)
+    if not g:
+        return False
+    c = conn()
+    c.execute("UPDATE grupos SET nombre=?, base=?, tickers=? WHERE id=?",
+              (nombre or g["nombre"], base or g["base"],
+               _json.dumps(tickers if tickers is not None else g["tickers"]),
+               gid))
+    c.commit()
+    return True
+
+
+def borrar_grupo(gid):
+    c = conn()
+    c.execute("DELETE FROM movimientos WHERE grupo_id=?", (gid,))
+    c.execute("DELETE FROM grupos WHERE id=?", (gid,))
+    c.commit()
+
+
+def registrar_movimiento(grupo_id, tipo, ticker_de=None, cant_de=None,
+                         ticker_a=None, cant_a=None, ratio_base=None,
+                         nota=None, ts=None, equiv_antes=None):
+    c = conn()
+    cur = c.execute(
+        "INSERT INTO movimientos "
+        "(grupo_id, ts, tipo, ticker_de, cant_de, ticker_a, cant_a,"
+        " ratio_base, equiv_antes, nota) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (grupo_id, ts or datetime.now().isoformat(timespec="seconds"), tipo,
+         ticker_de, cant_de, ticker_a, cant_a, ratio_base, equiv_antes, nota))
+    c.commit()
+    return cur.lastrowid
+
+
+def movimientos_de(grupo_id):
+    return conn().execute(
+        "SELECT * FROM movimientos WHERE grupo_id=? ORDER BY ts, id",
+        (grupo_id,)).fetchall()
+
+
+def borrar_movimiento(mid):
+    c = conn()
+    c.execute("DELETE FROM movimientos WHERE id=?", (mid,))
+    c.commit()

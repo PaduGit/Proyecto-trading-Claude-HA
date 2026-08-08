@@ -202,8 +202,36 @@ class Monitor:
                   "Media: %.4f   z: %+.2f" % (est["media"], z),
                   "Rango: %.4f – %.4f  (n=%d, %s)" % (
                       est["min"], est["max"], est["n"], est.get("fuente", ""))]
+        ten = self._tenencia_del_par(par, ratio)
+        if ten:
+            L += [""] + ten
         L += ["", "<i>%s</i>" % datetime.now().strftime("%H:%M:%S")]
         return "\n".join(L)
+
+    def _tenencia_del_par(self, par, ratio):
+        """Si el par pertenece a un grupo, cuanto tenes y cuanto obtendrias."""
+        try:
+            import posicion as P
+            for g in db.listar_grupos():
+                tks = set(g["tickers"])
+                if par["num"] not in tks or par["den"] not in tks:
+                    continue
+                saldos = P.tenencia(g["id"])
+                lineas = []
+                cn = saldos.get(par["num"], 0)
+                cd = saldos.get(par["den"], 0)
+                if cn > 0:
+                    lineas.append("Tenés %s %s → %s %s si rotás"
+                                  % (_e(cn), par["num"],
+                                     _e(cn * ratio), par["den"]))
+                if cd > 0:
+                    lineas.append("Tenés %s %s → %s %s si rotás"
+                                  % (_e(cd), par["den"],
+                                     _e(cd / ratio if ratio else 0), par["num"]))
+                return lineas
+        except Exception as e:
+            log.debug("tenencia en alerta: %s", e)
+        return []
 
     # -- evaluacion ---------------------------------------------------
 

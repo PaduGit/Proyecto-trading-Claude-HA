@@ -16,6 +16,9 @@ class Notificador:
         self.tg_token = (cfg.get("telegram_token") or "").strip()
         self.tg_chat = (cfg.get("telegram_chat_id") or "").strip()
         self.servicio_ha = (cfg.get("ha_notify_service") or "").strip()
+        self.panel = (cfg.get("panel_path") or "").strip()
+        if self.panel and not self.panel.startswith("/"):
+            self.panel = "/" + self.panel
         self.token_sup = os.environ.get("SUPERVISOR_TOKEN", "")
 
         self.tg_ok = bool(self.tg_token and self.tg_chat)
@@ -58,13 +61,12 @@ class Notificador:
                 "importance": "high" if urgente else "default",
                 "ttl": 0,
                 "priority": "high" if urgente else "normal",
-                "clickAction": "/ratios_iol",
-                "actions": [
-                    {"action": "URI", "title": "Ver screener",
-                     "uri": "/ratios_iol"},
-                ],
             },
         }
+        if self.panel:
+            datos["data"]["clickAction"] = self.panel
+            datos["data"]["actions"] = [
+                {"action": "URI", "title": "Ver screener", "uri": self.panel}]
         try:
             r = requests.post(
                 "%s/services/notify/%s" % (SUPERVISOR, servicio),

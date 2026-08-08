@@ -24,11 +24,45 @@ son marcas fijas y la aguja es el precio de ahora. Arriba, cuánto hace de la
 **Calcular.** Dos tickers cualquiera. Los que ya usaste aparecen como sugerencia
 al tipear, y los pares recientes como botones.
 
+**Posición.** Tu resultado medido en nominales, no en pesos.
+
 **Plazos.** Arbitraje t0/t1 sobre los tickers que configures.
 
 **Registro.** Tus operaciones y el historial de alertas.
 
 **Explorar.** Consumo de la API y consulta libre de endpoints, solo lectura.
+
+---
+
+## Posición: por qué en nominales
+
+Si rotás entre ALUA y TXAR, contar pesos no sirve: el resultado se mezcla con
+lo que hizo el mercado. Lo que importa es **cuántos nominales acumulaste**.
+
+Arrancás con 7.000 ALUA, rotás cuando el ratio está caro, volvés cuando está
+barato, terminás con 8.200 ALUA: ganaste, aunque Aluar haya caído 30%.
+
+### Cómo se usa
+
+Creá un grupo con los tickers entre los que rotás y elegí la unidad de medida
+(el ticker en el que se expresa todo). Después cargás tres tipos de movimiento:
+
+- **Rotación** — vendo X de uno, compro Y del otro. Es lo que genera resultado.
+- **Aporte** — entra capital nuevo. Pide a cuántas unidades base equivale.
+- **Retiro** — sale capital.
+
+Los aportes y retiros **no cuentan como ganancia**. La app usa contabilidad por
+cuotapartes, igual que un fondo: los aportes emiten cuotas al valor del momento,
+así que el porcentaje de rendimiento solo se mueve por tus rotaciones.
+
+Por eso al cargar un aporte hay que indicar el equivalente. Si aportás 3.000
+TXAR con el ratio en 1,50, eso equivale a 2.000 ALUA. La app te lo precarga con
+el precio del momento y vos lo corregís si hace falta.
+
+### Grupos de más de dos tickers
+
+Están soportados. Todo se convierte a la unidad base con los precios de hoy,
+así que podés tener un grupo con varios bonos de la misma curva.
 
 ---
 
@@ -40,6 +74,7 @@ al tipear, y los pares recientes como botones.
 |---|---|
 | `canal_alertas` | `ha` (notificación al celular), `telegram`, o `ambos` |
 | `ha_notify_service` | El servicio de tu dispositivo, ej. `notify.mobile_app_mi_celu` |
+| `panel_path` | Ruta del panel en la barra lateral, para que el botón de la notificación abra el screener |
 | `publicar_sensores` | Crea `sensor.ratio_<par>` para dashboards y automatizaciones |
 
 La notificación de HA va con prioridad alta, así que atraviesa el modo No
@@ -128,6 +163,18 @@ desconfianza. Tus niveles manuales no tienen ese problema.
 
 ---
 
+## Privacidad
+
+El screener no carga nada de internet: las fuentes son locales, con respaldo a
+las del sistema. Si querés el tipo IBM Plex, dejá los `.woff2` en
+`ratios/app/static/fonts/` (ver el LEEME de esa carpeta).
+
+Con `canal_alertas: ha` no interviene ningún servicio externo salvo el push de
+Google, que es inevitable en Android. Con `telegram` o `ambos`, los mensajes
+pasan por los servidores de Telegram.
+
+---
+
 ## Datos
 
 SQLite en `/data/ratios.db`, que HA conserva entre reinicios.
@@ -152,6 +199,11 @@ cuando armemos el detector de rulos vas a tener meses de book acumulado.
   otro motivo, la app va a espaciar las consultas de más.
 - **El panel no informa plazo.** Verificá contra la pantalla de IOL a qué plazo
   corresponden esos precios.
+- **La curva de posición es aproximada** en los tramos donde no se puede
+  reconstruir el precio de todos los tickers. Los puntos que no se pueden
+  calcular se omiten; el valor de hoy siempre es exacto.
+- **El botón de la notificación necesita WireGuard levantado** si estás fuera
+  de casa. La notificación llega igual; lo que no funciona es el link.
 
 ---
 
@@ -159,5 +211,7 @@ cuando armemos el detector de rulos vas a tener meses de book acumulado.
 
 1. ✅ Ratios, alertas, screener
 2. ✅ Paneles, notificaciones nativas, arbitraje de plazos, registro
-3. Detector de ciclos (rulo) sobre puntas, con costos por pata
-4. Estrategias con opciones
+3. ✅ Posición en nominales, sin dependencias de nube
+4. Comparar todos los ratios de una curva para ver cuál quedó desalineado
+5. Detector de ciclos (rulo) sobre puntas, con costos por pata
+6. Estrategias con opciones

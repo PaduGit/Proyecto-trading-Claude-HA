@@ -1,0 +1,15 @@
+Fuentes locales (opcional)
+==========================
+
+La interfaz funciona sin esto: cae a las fuentes del sistema.
+
+Si querés el tipo IBM Plex, bajá estos cuatro archivos de
+https://github.com/IBM/plex/releases y dejalos en esta carpeta:
+
+  IBMPlexMono-Regular.woff2
+  IBMPlexMono-SemiBold.woff2
+  IBMPlexSans-Regular.woff2
+  IBMPlexSans-SemiBold.woff2
+
+Son unos 200 KB en total. Nada sale a internet: el navegador los toma
+desde el add-on.

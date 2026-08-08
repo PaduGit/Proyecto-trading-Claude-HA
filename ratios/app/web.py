@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from flask import Flask, jsonify, request, send_from_directory
 
 import db
+import posicion as P
 from iol import IOLError
 
 log = logging.getLogger("web")
@@ -192,6 +193,111 @@ def crear_app(monitor):
             "precio_num": f["precio_num"], "precio_den": f["precio_den"],
             "ratio": f["ratio"], "nota": f["nota"],
         } for f in filas])
+
+    # -- posicion -----------------------------------------------------
+
+    def _precios_para(grupo):
+        """Precio de referencia de cada ticker del grupo."""
+        precios = {}
+        cache = monitor.cotizaciones
+        for tk in grupo["tickers"]:
+            c = cache.get(tk)
+            if not c:
+                try:
+                    c = monitor.iol.cotizacion(grupo.get("mercado") or "bCBA", tk)
+                except IOLError:
+                    continue
+            if c and c.get("ref"):
+                precios[tk] = c["ref"]
+        return precios
+
+    @app.get("/api/grupos")
+    def listar_grupos():
+        salida = []
+        for g in db.listar_grupos():
+            precios = _precios_para(g)
+            r = P.resumen(g, precios)
+            salida.append({
+                "id": g["id"], "nombre": g["nombre"], "base": g["base"],
+                "tickers": g["tickers"], "mercado": g["mercado"],
+                "precios": precios,
+                "equivalente": r["equivalente"],
+                "base_ajustada": r["base_ajustada"],
+                "rendimiento_pct": r["rendimiento_pct"],
+                "ganancia_nominal": r["ganancia_nominal"],
+                "valor_cuota": r["valor_cuota"],
+                "faltan_precios": r["faltan_precios"],
+                "tenencia": [
+                    {"ticker": k, "cantidad": v["cantidad"],
+                     "equivalente": v["equivalente"], "precio": v["precio"]}
+                    for k, v in sorted(r["tenencia"].items())],
+            })
+        return jsonify(salida)
+
+    @app.post("/api/grupos")
+    def nuevo_grupo():
+        d = request.get_json(silent=True) or {}
+        nombre = (d.get("nombre") or "").strip()
+        base = (d.get("base") or "").strip().upper()
+        tickers = [t.strip().upper() for t in (d.get("tickers") or [])
+                   if t and t.strip()]
+        if not nombre:
+            return jsonify({"error": "Poné un nombre al grupo."}), 400
+        if len(tickers) < 2:
+            return jsonify({"error": "Cargá al menos dos tickers."}), 400
+        if base not in tickers:
+            return jsonify({"error": "La base tiene que ser uno de los tickers."}), 400
+        if any(g["nombre"].lower() == nombre.lower() for g in db.listar_grupos()):
+            return jsonify({"error": "Ya existe un grupo con ese nombre."}), 400
+        gid = db.crear_grupo(nombre, base, tickers,
+                             (d.get("mercado") or "bCBA").strip())
+        return jsonify({"ok": True, "id": gid})
+
+    @app.delete("/api/grupos/<int:gid>")
+    def eliminar_grupo(gid):
+        db.borrar_grupo(gid)
+        return jsonify({"ok": True})
+
+    @app.get("/api/grupos/<int:gid>/movimientos")
+    def listar_movimientos(gid):
+        g = db.grupo_por_id(gid)
+        if not g:
+            return jsonify({"error": "grupo desconocido"}), 404
+        filas = db.movimientos_de(gid)
+        return jsonify({
+            "movimientos": [{
+                "id": m["id"], "ts": m["ts"], "tipo": m["tipo"],
+                "ticker_de": m["ticker_de"], "cant_de": m["cant_de"],
+                "ticker_a": m["ticker_a"], "cant_a": m["cant_a"],
+                "ratio_base": m["ratio_base"], "nota": m["nota"],
+            } for m in reversed(filas)],
+            "curva": P.curva(g, _precios_para(g)),
+        })
+
+    @app.post("/api/grupos/<int:gid>/movimientos")
+    def nuevo_movimiento(gid):
+        g = db.grupo_por_id(gid)
+        if not g:
+            return jsonify({"error": "grupo desconocido"}), 404
+        d = request.get_json(silent=True) or {}
+        limpio, error = P.validar_movimiento(g, d)
+        if error:
+            return jsonify({"error": error}), 400
+
+        antes = None
+        if limpio["tipo"] in ("aporte", "retiro"):
+            antes, _, _ = P.equivalente(g, P.tenencia(gid), _precios_para(g))
+
+        mid = db.registrar_movimiento(gid, equiv_antes=antes, **limpio)
+        r = P.resumen(g, _precios_para(g))
+        return jsonify({"ok": True, "id": mid,
+                        "equivalente": r["equivalente"],
+                        "rendimiento_pct": r["rendimiento_pct"]})
+
+    @app.delete("/api/movimientos/<int:mid>")
+    def eliminar_movimiento(mid):
+        db.borrar_movimiento(mid)
+        return jsonify({"ok": True})
 
     @app.get("/api/alertas")
     def alertas():
