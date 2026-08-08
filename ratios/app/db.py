@@ -420,3 +420,9 @@ def borrar_movimiento(mid):
     c = conn()
     c.execute("DELETE FROM movimientos WHERE id=?", (mid,))
     c.commit()
+
+
+def borrar_operacion(oid):
+    c = conn()
+    c.execute("DELETE FROM operaciones WHERE id=?", (oid,))
+    c.commit()

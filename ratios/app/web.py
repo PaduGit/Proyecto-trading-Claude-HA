@@ -299,6 +299,11 @@ def crear_app(monitor):
         db.borrar_movimiento(mid)
         return jsonify({"ok": True})
 
+    @app.delete("/api/operaciones/<int:oid>")
+    def eliminar_operacion(oid):
+        db.borrar_operacion(oid)
+        return jsonify({"ok": True})
+
     @app.get("/api/alertas")
     def alertas():
         filas = db.alertas_recientes(40)

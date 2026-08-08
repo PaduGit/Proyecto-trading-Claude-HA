@@ -766,7 +766,9 @@ async function cargarRegistro(){
       '<div class="fila"><span>' + esc(o.alias) +
       ' <span class="t">' + esc(o.lado) + '</span></span><span>' +
       num(o.ratio) + ' <span class="t">' + ent(o.cantidad) + ' · ' +
-      o.ts.slice(5,10) + ' ' + o.ts.slice(11,16) + '</span></span></div>').join("")
+      o.ts.slice(5,10) + ' ' + o.ts.slice(11,16) + '</span> ' +
+      '<button onclick="borrarOperacion(' + o.id + ')" style="background:none;' +
+      'border:none;color:var(--muted);cursor:pointer">×</button></span></div>').join("")
       : '<div class="vacio" style="padding:12px">Nada registrado todavía. ' +
         'Usá el botón "Operé" en el panel.</div>';
     h += '</div><div class="hallazgo"><h3>Alertas</h3>';
@@ -780,6 +782,12 @@ async function cargarRegistro(){
   }catch(e){
     cont.innerHTML = '<div class="msg error">No se pudo cargar.</div>';
   }
+}
+
+async function borrarOperacion(oid){
+  if(!confirm("¿Borrar esta operación?")) return;
+  await fetch(base + "api/operaciones/" + oid, {method:"DELETE"});
+  cargarRegistro();
 }
 
 /* ---------- explorar ---------- */
@@ -910,7 +918,13 @@ async function cargarPosicion(){
       'Creá uno con los tickers entre los que rotás.</div>';
     return;
   }
-  cont.innerHTML = grupos.map(tarjetaGrupo).join("");
+  try{
+    cont.innerHTML = grupos.map(tarjetaGrupo).join("");
+  }catch(err){
+    cont.innerHTML = '<div class="msg error">No se pudo dibujar: ' +
+      esc(err.message) + '</div>';
+    return;
+  }
   Object.keys(movsAbiertos).forEach(id => {
     if(movsAbiertos[id]) verMovimientos(parseInt(id), true);
   });
@@ -931,10 +945,13 @@ function tarjetaGrupo(g){
       : '<div class="ratio" style="color:' + color + '">' +
         ent(g.equivalente) + ' <span style="font-size:14px;opacity:.6">' +
         esc(g.base) + '</span></div>' +
-        '<div style="font-family:var(--mono);font-size:12px;color:' + color + '">' +
-        (r >= 0 ? "+" : "") + r.toFixed(2) + '% · ' +
-        (g.ganancia_nominal >= 0 ? "+" : "") + ent(g.ganancia_nominal) +
-        ' nominales</div>') +
+        (r == null
+          ? '<div style="font-family:var(--mono);font-size:12px;color:var(--muted)">' +
+            'Cargá un aporte con tu tenencia inicial para empezar a medir.</div>'
+          : '<div style="font-family:var(--mono);font-size:12px;color:' + color + '">' +
+            (r >= 0 ? "+" : "") + r.toFixed(2) + '% · ' +
+            (g.ganancia_nominal >= 0 ? "+" : "") + ent(g.ganancia_nominal) +
+            ' nominales</div>')) +
 
     (falta && g.equivalente != null
       ? '<div class="aviso">Sin precio de ' + g.faltan_precios.map(esc).join(", ") +

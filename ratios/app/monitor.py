@@ -33,9 +33,26 @@ class Monitor:
         self.cotizaciones = {}      # simbolo -> dict, del ultimo ciclo
         self.origen = {}            # simbolo -> "panel" | "individual"
 
-        self._zona_actual = {}      # alias -> zona en la que esta
+        self._zona_actual = self._cargar_zonas()
         self._pidiendo = threading.Lock()
         self._ultimo_manual = datetime.min
+
+    # -- estado persistente -------------------------------------------
+
+    def _cargar_zonas(self):
+        """La zona vive en la base: si no, cada reinicio repite las alertas."""
+        import json
+        try:
+            return json.loads(db.get_estado("zonas") or "{}")
+        except (ValueError, TypeError):
+            return {}
+
+    def _guardar_zonas(self):
+        import json
+        try:
+            db.set_estado("zonas", json.dumps(self._zona_actual))
+        except Exception as e:
+            log.debug("no se pudo guardar el estado de zonas: %s", e)
 
     # -- helpers ------------------------------------------------------
 
@@ -245,7 +262,9 @@ class Monitor:
         est = self.estadistica(par)
         previa = self._zona_actual.get(par["alias"], "normal")
         zona, nivel = self._zona(par, ratio, est)
-        self._zona_actual[par["alias"]] = zona
+        if zona != previa:
+            self._zona_actual[par["alias"]] = zona
+            self._guardar_zonas()
 
         db.guardar_lectura(par["alias"], ratio, num, den)
 
