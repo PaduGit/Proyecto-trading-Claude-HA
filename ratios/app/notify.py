@@ -19,14 +19,23 @@ class Notificador:
         self.panel = (cfg.get("panel_path") or "").strip()
         if self.panel and not self.panel.startswith("/"):
             self.panel = "/" + self.panel
-        self.token_sup = os.environ.get("SUPERVISOR_TOKEN", "")
+        # el nombre de la variable cambió entre versiones del Supervisor
+        self.token_sup = (os.environ.get("SUPERVISOR_TOKEN")
+                          or os.environ.get("HASSIO_TOKEN") or "")
 
         self.tg_ok = bool(self.tg_token and self.tg_chat)
         self.ha_ok = bool(self.servicio_ha and self.token_sup)
 
         if self.canal in ("ha", "ambos") and not self.ha_ok:
-            log.warning("Notificacion de HA sin configurar "
-                        "(falta ha_notify_service o el token del Supervisor)")
+            falta = []
+            if not self.servicio_ha:
+                falta.append("ha_notify_service en la configuración")
+            if not self.token_sup:
+                falta.append("el token del Supervisor: la app necesita "
+                             "homeassistant_api. Desinstalala y volvé a "
+                             "instalarla para que tome el permiso")
+            log.warning("Notificación de HA sin configurar. Falta %s",
+                        "; ".join(falta))
         if self.canal in ("telegram", "ambos") and not self.tg_ok:
             log.warning("Telegram sin configurar")
 
@@ -95,6 +104,25 @@ class Notificador:
         if not enviado:
             log.info("[alerta no enviada] %s | %s", titulo, plano)
         return enviado
+
+    def diagnostico(self):
+        """Para el botón de prueba: qué está y qué falta."""
+        return {
+            "canal": self.canal,
+            "ha_servicio": self.servicio_ha or None,
+            "ha_token": bool(self.token_sup),
+            "ha_listo": self.ha_ok,
+            "telegram_listo": self.tg_ok,
+            "panel_path": self.panel or None,
+        }
+
+    def probar(self):
+        ok = self.enviar("Ratios IOL",
+                         "Prueba de notificación. Si te llegó, está andando.",
+                         urgente=False)
+        d = self.diagnostico()
+        d["enviada"] = ok
+        return d
 
     def publicar_sensor(self, alias, estado, atributos):
         """Expone el ratio como sensor de HA para dashboards y automatizaciones."""

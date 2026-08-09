@@ -74,6 +74,23 @@ bono es agregar una entrada al YAML.
 posterior al corte. La estructura se dedujo del patrón de AO27/AO28 y de la
 descripción que devuelve IOL. El detalle lo marca con un aviso.
 
+### D y C: dos monedas distintas
+
+Las especies D liquidan en dólar MEP y las C en cable. El bono paga donde está
+depositado, así que cada TIR es internamente consistente: comprás en cable y
+cobrás en cable, o comprás en MEP y cobrás en MEP. No hay que convertir nada.
+
+Pero **las TIR de una D y una C no son comparables entre sí**, porque están
+medidas en monedas distintas. Que AL30C rinda más que AL30D no significa que
+esté barata: significa que el cable está más caro.
+
+La columna **Cable** muestra cuánto más caro está el cable que el MEP en ese
+bono. Eso sí es comparable entre bonos, y la dispersión es la señal: si un bono
+muestra 5,7% y el resto 3%, ahí hay algo.
+
+Ojo con la liquidez: las especies C suelen tener spreads anchos, y una punta
+mala distorsiona la lectura.
+
 ### Verificación
 
 El flujo del AO29 calculado acá coincide con una planilla de referencia
@@ -256,10 +273,26 @@ cuando armemos el detector de rulos vas a tener meses de book acumulado.
   calcular se omiten; el valor de hoy siempre es exacto.
 - **El botón de la notificación necesita WireGuard levantado** si estás fuera
   de casa. La notificación llega igual; lo que no funciona es el link.
-- **El menú de tres puntos** navega pidiéndoselo al frame de Home Assistant.
-  Si esa API cambia, cae a abrir una pestaña nueva.
+- **El menú de tres puntos** abre en pestaña nueva. El screener corre en un
+  iframe de Ingress y no puede navegar la ventana principal de HA.
 - **El relleno semanal de huecos** usa cierres de IOL, que pueden venir de otro
   plazo. Esos puntos se dibujan punteados en los gráficos.
+
+---
+
+## Si no llegan las notificaciones
+
+Menú ⋮ → **Probar notificación**. Te dice qué falta.
+
+El caso más común es que falte el token del Supervisor. Eso pasa cuando la app
+se actualizó desde una versión que no pedía `homeassistant_api`: el permiso se
+fija al construir el contenedor. Se arregla desinstalando la app y volviéndola
+a instalar (los datos viven en `/data` y no se pierden).
+
+También conviene revisar, en Ajustes → Apps → Ratios IOL:
+
+- **Iniciar en el arranque** — si no, un corte de luz te deja sin monitoreo.
+- **Vigilancia** — reinicia la app si se cae.
 
 ---
 
@@ -269,7 +302,8 @@ cuando armemos el detector de rulos vas a tener meses de book acumulado.
 2. ✅ Paneles, notificaciones nativas, arbitraje de plazos, registro
 3. ✅ Posición en nominales, sin dependencias de nube
 4. ✅ TIR y duration de bonos, gráficos por período, relleno de huecos
-5. Curva TIR contra duration, para ver qué bono se despegó
-6. Detector de ciclos (rulo) sobre puntas, con costos por pata
-7. Estrategias con opciones
-8. Evaluar la API de ECO Valores (Primary): tiempo real por websocket
+5. Anclajes diarios de TIR: gráfico histórico y alertas sobre rendimiento
+6. Curva TIR contra duration, para ver qué bono se despegó
+7. Detector de ciclos (rulo) sobre puntas, con costos por pata
+8. Estrategias con opciones
+9. Evaluar la API de ECO Valores (Primary): tiempo real por websocket

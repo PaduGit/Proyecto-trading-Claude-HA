@@ -251,6 +251,7 @@ table.bonos .tir{color:var(--bone)}
         <a href="#" data-ir="config" role="menuitem">Configuración</a>
         <a href="#" data-ir="log" role="menuitem">Ver registro</a>
         <a href="#" data-ir="info" role="menuitem">Información</a>
+        <a href="#" id="probar-notif" role="menuitem">Probar notificación</a>
         <hr>
         <span class="ver" id="menu-version">Ratios IOL</span>
       </div>
@@ -1245,6 +1246,9 @@ document.addEventListener("click", () => { $("#menu").hidden = true; });
 document.addEventListener("keydown", e => {
   if(e.key === "Escape") $("#menu").hidden = true;
 });
+$("#probar-notif").addEventListener("click", e => {
+  e.preventDefault(); e.stopPropagation(); probarNotificacion();
+});
 $("#menu").addEventListener("click", e => {
   const a = e.target.closest("a[data-ir]");
   if(!a) return;
@@ -1254,23 +1258,33 @@ $("#menu").addEventListener("click", e => {
 });
 
 function irA(donde){
-  /* El screener vive en un iframe de Ingress y no puede navegar la ventana
-     principal. Se le pide al padre; si no responde, abrimos pestaña nueva. */
-  const slug = (document.body.dataset.slug || "");
+  /* El screener corre dentro de un iframe de Ingress y no puede navegar la
+     ventana principal de HA. Abrimos pestaña nueva, que funciona siempre. */
+  const slug = (document.body.dataset.slug || "").trim();
+  if(!slug){ alert("Falta addon_slug en la configuración de la app."); return; }
   const rutas = {
     config: "/hassio/addon/" + slug + "/config",
     log:    "/hassio/addon/" + slug + "/logs",
     info:   "/hassio/addon/" + slug + "/info",
   };
-  const ruta = rutas[donde] || rutas.info;
+  const origen = (location.ancestorOrigins && location.ancestorOrigins[0])
+    || location.origin;
+  window.open(origen + (rutas[donde] || rutas.info), "_blank", "noopener");
+}
+
+async function probarNotificacion(){
+  $("#menu").hidden = true;
   try{
-    if(window.parent && window.parent !== window){
-      window.parent.postMessage(
-        {type: "navigate", message: {path: ruta}}, "*");
-      return;
-    }
-  }catch(err){ /* cross-origin: caemos a la pestaña nueva */ }
-  window.open(ruta, "_blank", "noopener");
+    const d = await (await fetch(base + "api/notificaciones/probar",
+      {method:"POST"})).json();
+    if(d.enviada){ alert("Enviada. Revisá el celular."); return; }
+    const falta = [];
+    if(!d.ha_servicio) falta.push("falta ha_notify_service");
+    if(!d.ha_token) falta.push("falta el permiso homeassistant_api: " +
+      "desinstalá la app y volvé a instalarla");
+    if(!d.telegram_listo) falta.push("Telegram sin configurar");
+    alert("No se pudo enviar. " + (falta.join(". ") || "Mirá el registro."));
+  }catch(e){ alert("No se pudo probar."); }
 }
 
 /* ---------- bonos ---------- */
@@ -1302,7 +1316,8 @@ async function cargarBonos(){
 
     out.innerHTML = '<div class="hallazgo" style="padding:8px 10px">' +
       '<table class="bonos"><thead><tr><th>Especie</th><th>Bid</th>' +
-      '<th>TIR Bid</th><th>Ask</th><th>TIR Ask</th></tr></thead><tbody>' +
+      '<th>TIR Bid</th><th>Ask</th><th>TIR Ask</th><th>Cable</th>' +
+      '</tr></thead><tbody>' +
       d.filas.map(f => {
         const p = v => v ? (f.moneda === "USD" ? precio(v) : ent(v)) : "—";
         const t = v => v == null ? "—" : v.toFixed(2) + "%";
@@ -1310,10 +1325,17 @@ async function cargarBonos(){
           '<td class="tk" onclick="verBono(\'' + esc(f.simbolo) + '\')">' +
           esc(f.simbolo) + '</td>' +
           '<td>' + p(f.bid) + '</td><td class="tir">' + t(f.tir_bid) + '</td>' +
-          '<td>' + p(f.ask) + '</td><td class="tir">' + t(f.tir_ask) + '</td></tr>';
+          '<td>' + p(f.ask) + '</td><td class="tir">' + t(f.tir_ask) + '</td>' +
+          '<td>' + (f.cable_pct != null
+            ? (f.cable_pct >= 0 ? "+" : "") + f.cable_pct.toFixed(1) + "%" : "—") +
+          '</td></tr>';
       }).join("") + '</tbody></table></div>' +
       '<div class="nota" style="margin-top:8px">Ordenados por duration ' +
-      'modificada. Tocá el ticker para ver el detalle y el flujo de fondos.</div>';
+      'modificada. Tocá el ticker para ver el detalle y el flujo.<br><br>' +
+      '<b>Cable</b>: cuánto más caro está el dólar cable que el MEP en ese ' +
+      'bono. Las TIR de las C están medidas en cable y las de las D en MEP, ' +
+      'así que no se comparan entre sí. Lo que informa es la dispersión ' +
+      'entre bonos.</div>';
   }catch(e){
     out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
   }
@@ -1355,6 +1377,9 @@ async function verBono(sim){
       '<dt>Current yield</dt><dd>' + val(d.current_yield) + '%</dd>' +
       (d.spread_tir != null ? '<dt>Spread TIR</dt><dd>' +
         val(d.spread_tir) + ' pp entre puntas</dd>' : "") +
+      (d.fila && d.fila.cable_pct != null
+        ? '<dt>Cable vs MEP</dt><dd>' + val(d.fila.cable_pct) + '% contra ' +
+          esc(d.fila.par_dolarizado || "") + '</dd>' : "") +
       '<dt>Ley</dt><dd>' + esc(d.ley || "—") + '</dd>' +
       '</dl>' +
       '<details class="avanzado"><summary>Flujo de fondos (' +

@@ -157,10 +157,42 @@ def tabla(cot, liq=None, par_mep=("AL30", "AL30D")):
         if f:
             filas.append(f)
 
+    _brechas(filas)
     filas.sort(key=lambda f: (f["md"] is None, f["md"] or 0, f["simbolo"]))
     return {"mep": mep, "filas": filas,
             "liquidacion": liq.isoformat(),
             "sin_precio": [s for s in especies() if s not in cot]}
+
+
+def _brechas(filas):
+    """Diferencia de TIR entre la especie D y la C del mismo bono.
+
+    D liquida en dólar MEP y C en cable, así que cada TIR está medida en
+    una moneda distinta y no son directamente comparables. Lo que sí
+    significa algo es cuánto se separan: es el spread MEP-cable visto
+    desde el rendimiento. Cuando un bono se despega del resto, ahí hay algo.
+    """
+    por_bono = {}
+    for f in filas:
+        s = f["simbolo"]
+        if s.endswith("D") or s.endswith("C"):
+            por_bono.setdefault(s[:-1], {})[s[-1]] = f
+
+    for base, par in por_bono.items():
+        d, c = par.get("D"), par.get("C")
+        if not d or not c:
+            continue
+        for a, b in ((d, c), (c, d)):
+            a["par_dolarizado"] = b["simbolo"]
+        # se compara punta contra punta del mismo lado
+        if d.get("tir_ask") is not None and c.get("tir_ask") is not None:
+            br = c["tir_ask"] - d["tir_ask"]
+            d["brecha_cable"] = br
+            c["brecha_cable"] = br
+        if d.get("ask_usd") and c.get("ask_usd"):
+            impl = (d["ask_usd"] / c["ask_usd"] - 1) * 100
+            d["cable_pct"] = impl
+            c["cable_pct"] = impl
 
 
 def detalle(simbolo, cot, liq=None, par_mep=("AL30", "AL30D")):
@@ -177,6 +209,14 @@ def detalle(simbolo, cot, liq=None, par_mep=("AL30", "AL30D")):
     f = fila(simbolo, info, cot.get(simbolo) or {}, mep, liq)
     if not f:
         return None
+
+    # la brecha necesita la especie hermana (D contra C)
+    if simbolo.endswith(("D", "C")):
+        otra = simbolo[:-1] + ("C" if simbolo.endswith("D") else "D")
+        if otra in esps and cot.get(otra):
+            g = fila(otra, esps[otra], cot[otra], mep, liq)
+            if g:
+                _brechas([f, g])
 
     precio_usd = f["ask_usd"] or f["bid_usd"] or 0
     m = RF.metricas(cfg, precio_usd, liq) if precio_usd else {}

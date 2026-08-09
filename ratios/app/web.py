@@ -357,6 +357,14 @@ def crear_app(monitor):
             return jsonify({"error": "no tengo cronograma de %s" % simbolo}), 404
         return jsonify(d)
 
+    @app.get("/api/notificaciones/diagnostico")
+    def notif_diag():
+        return jsonify(monitor.notif.diagnostico())
+
+    @app.post("/api/notificaciones/probar")
+    def notif_probar():
+        return jsonify(monitor.notif.probar())
+
     @app.get("/api/alertas")
     def alertas():
         filas = db.alertas_recientes(40)
