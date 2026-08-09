@@ -357,6 +357,14 @@ def crear_app(monitor):
             return jsonify({"error": "no tengo cronograma de %s" % simbolo}), 404
         return jsonify(d)
 
+    @app.get("/api/rulo")
+    def rulo_tabla():
+        try:
+            return jsonify(BO.rulo(_cot_bonos()))
+        except Exception as e:
+            log.exception("rulo")
+            return jsonify({"error": str(e)}), 500
+
     @app.get("/api/notificaciones/diagnostico")
     def notif_diag():
         return jsonify(monitor.notif.diagnostico())

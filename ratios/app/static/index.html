@@ -249,14 +249,10 @@ table.bonos .tir{color:var(--bone)}
       <button class="refrescar" id="btn-menu" title="Más"
               aria-label="Más opciones" aria-haspopup="true">⋮</button>
       <div class="menu" id="menu" hidden role="menu">
-        <a id="ir-config" target="_blank" rel="noopener" role="menuitem">Configuración</a>
-        <a id="ir-log" target="_blank" rel="noopener" role="menuitem">Ver registro</a>
-        <a id="ir-info" target="_blank" rel="noopener" role="menuitem">Información</a>
-        <hr>
         <a href="#" id="probar-notif" role="menuitem">Probar notificación</a>
         <hr>
-        <span class="ver">Si no abre, mantené apretado y copiá el enlace:
-          Home Assistant bloquea la navegación desde el panel.</span>
+        <span class="ver">Configuración y registro: Ajustes → Apps → Ratios IOL.
+          Desde acá no se puede navegar; Home Assistant lo bloquea.</span>
       </div>
     </div>
   </div>
@@ -264,6 +260,7 @@ table.bonos .tir{color:var(--bone)}
     <button role="tab" aria-selected="true" data-vista="panel">Panel</button>
     <button role="tab" aria-selected="false" data-vista="calc">Calcular</button>
     <button role="tab" aria-selected="false" data-vista="bonos">Bonos</button>
+    <button role="tab" aria-selected="false" data-vista="rulo">Rulo</button>
     <button role="tab" aria-selected="false" data-vista="pos">Posición</button>
     <button role="tab" aria-selected="false" data-vista="plazos">Plazos</button>
     <button role="tab" aria-selected="false" data-vista="reg">Registro</button>
@@ -310,6 +307,14 @@ table.bonos .tir{color:var(--bone)}
   <section id="v-bonos" hidden>
     <div id="b-mep"></div>
     <div id="b-out"><div class="vacio">Cargando…</div></div>
+  </section>
+
+  <section id="v-rulo" hidden>
+    <p class="nota">Cada bono implica su propio tipo de cambio. Si el más
+      barato para comprar dólares queda por debajo del más caro para
+      venderlos, hay ciclo.</p>
+    <button class="primario" id="r-btn">Calcular</button>
+    <div id="r-out" style="margin-top:12px"></div>
   </section>
 
   <section id="v-pos" hidden>
@@ -515,9 +520,10 @@ document.querySelectorAll("nav button").forEach(b => {
     document.querySelectorAll("nav button").forEach(x =>
       x.setAttribute("aria-selected", x === b));
     vista = b.dataset.vista;
-    ["panel","calc","bonos","pos","plazos","reg","expl"].forEach(v =>
+    ["panel","calc","bonos","rulo","pos","plazos","reg","expl"].forEach(v =>
       $("#v-"+v).hidden = (v !== vista));
     if(vista === "bonos") cargarBonos();
+    if(vista === "rulo") cargarRulo();
     if(vista === "pos") cargarPosicion();
     if(vista === "reg") cargarRegistro();
     if(vista === "expl") iniciarExplorar();
@@ -760,6 +766,7 @@ $("#o-guardar").addEventListener("click", async () => {
       esc(d.error || "No se pudo guardar.") + '</div>'; return; }
     $("#dlg-op").close();
     if(vista === "bonos") cargarBonos();
+    if(vista === "rulo") cargarRulo();
     if(vista === "pos") cargarPosicion();
     if(vista === "reg") cargarRegistro();
   }catch(e){
@@ -1243,7 +1250,6 @@ $("#m-guardar").addEventListener("click", async () => {
 $("#btn-menu").addEventListener("click", e => {
   e.stopPropagation();
   const m = $("#menu");
-  if(m.hidden) prepararMenu();
   m.hidden = !m.hidden;
 });
 document.addEventListener("click", () => { $("#menu").hidden = true; });
@@ -1253,32 +1259,6 @@ document.addEventListener("keydown", e => {
 $("#probar-notif").addEventListener("click", e => {
   e.preventDefault(); e.stopPropagation(); probarNotificacion();
 });
-$("#menu").addEventListener("click", e => {
-  if(e.target.closest("a[href]")) $("#menu").hidden = true;
-});
-
-function rutasAddon(){
-  const slug = (document.body.dataset.slug || "").trim();
-  if(!slug) return null;
-  /* dentro del iframe de Ingress, el origen real es el del padre */
-  const origen = (location.ancestorOrigins && location.ancestorOrigins.length
-    ? location.ancestorOrigins[0] : location.origin);
-  return {
-    config: origen + "/hassio/addon/" + slug + "/config",
-    log:    origen + "/hassio/addon/" + slug + "/logs",
-    info:   origen + "/hassio/addon/" + slug + "/info",
-  };
-}
-
-function prepararMenu(){
-  const r = rutasAddon();
-  ["config","log","info"].forEach(k => {
-    const a = document.getElementById("ir-" + k);
-    if(!a) return;
-    if(r){ a.href = r[k]; a.removeAttribute("aria-disabled"); }
-    else { a.removeAttribute("href"); a.setAttribute("aria-disabled","true"); }
-  });
-}
 
 async function probarNotificacion(){
   $("#menu").hidden = true;
@@ -1327,8 +1307,7 @@ async function cargarBonos(){
 
     out.innerHTML = '<div class="hallazgo" style="padding:8px 10px">' +
       '<table class="bonos"><thead><tr><th>Especie</th><th>Bid</th>' +
-      '<th>TIR Bid</th><th>Ask</th><th>TIR Ask</th><th>Cable</th>' +
-      '</tr></thead><tbody>' +
+      '<th>TIR Bid</th><th>TIR Ask</th><th>Ask</th></tr></thead><tbody>' +
       d.filas.map(f => {
         const p = v => v ? (f.moneda === "USD" ? precio(v) : ent(v)) : "—";
         const t = v => v == null ? "—" : v.toFixed(2) + "%";
@@ -1336,17 +1315,13 @@ async function cargarBonos(){
           '<td class="tk" onclick="verBono(\'' + esc(f.simbolo) + '\')">' +
           esc(f.simbolo) + '</td>' +
           '<td>' + p(f.bid) + '</td><td class="tir">' + t(f.tir_bid) + '</td>' +
-          '<td>' + p(f.ask) + '</td><td class="tir">' + t(f.tir_ask) + '</td>' +
-          '<td>' + (f.cable_pct != null
-            ? (f.cable_pct >= 0 ? "+" : "") + f.cable_pct.toFixed(1) + "%" : "—") +
-          '</td></tr>';
+          '<td class="tir">' + t(f.tir_ask) + '</td><td>' + p(f.ask) + '</td></tr>';
       }).join("") + '</tbody></table></div>' +
       '<div class="nota" style="margin-top:8px">Ordenados por duration ' +
       'modificada. Tocá el ticker para ver el detalle y el flujo.<br><br>' +
-      '<b>Cable</b>: cuánto más caro está el dólar cable que el MEP en ese ' +
-      'bono. Las TIR de las C están medidas en cable y las de las D en MEP, ' +
-      'así que no se comparan entre sí. Lo que informa es la dispersión ' +
-      'entre bonos.</div>';
+      'Las TIR de las especies C están medidas en dólar cable y las de las D ' +
+      'en MEP, así que no se comparan entre sí. La solapa Rulo muestra esa ' +
+      'diferencia.</div>';
   }catch(e){
     out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
   }
@@ -1407,6 +1382,68 @@ async function verBono(sim){
   }
 }
 $("#bono-cerrar").addEventListener("click", () => $("#dlg-bono").close());
+
+/* ---------- rulo ---------- */
+$("#r-btn").addEventListener("click", cargarRulo);
+
+async function cargarRulo(){
+  const out = $("#r-out");
+  $("#r-btn").disabled = true;
+  out.innerHTML = '<div class="vacio">Calculando tipos de cambio…</div>';
+  try{
+    const r = await fetch(base + "api/rulo");
+    const d = await r.json();
+    if(!r.ok){
+      out.innerHTML = '<div class="msg error">' + esc(d.error || "Falló.") + '</div>';
+      return;
+    }
+    if(!d.filas.length){
+      out.innerHTML = '<div class="vacio">Sin precios. Probá durante la rueda.</div>';
+      return;
+    }
+
+    let h = "";
+    ["mep","cable"].forEach(k => {
+      const c = d.ciclos[k];
+      if(!c) return;
+      const etq = k === "mep" ? "Dólar MEP" : "Dólar cable";
+      h += '<div class="hallazgo"><h3>' + etq + '</h3>' +
+        (c.hay_rulo && !c.mismo_bono
+          ? '<div class="msg ok" style="margin-bottom:10px">Comprás en ' +
+            esc(c.comprar_en) + ' a ' + precio(c.precio_compra) + ' y vendés en ' +
+            esc(c.vender_en) + ' a ' + precio(c.precio_venta) + ': ' +
+            pct(c.diferencia_pct) + ' antes de comisiones.</div>'
+          : '<div class="nota" style="margin:0 0 10px">Más barato para comprar: ' +
+            esc(c.comprar_en) + ' a ' + precio(c.precio_compra) +
+            '. Más caro para vender: ' + esc(c.vender_en) + ' a ' +
+            precio(c.precio_venta) + '. Diferencia ' + pct(c.diferencia_pct) +
+            ', no alcanza.</div>') +
+        '</div>';
+    });
+
+    h += '<div class="hallazgo"><h3>Por bono</h3><div class="scroll">' +
+      '<table class="tabla"><thead><tr><th>Bono</th><th>MEP compra</th>' +
+      '<th>MEP venta</th><th>Cable compra</th><th>Brecha</th>' +
+      '</tr></thead><tbody>' +
+      d.filas.map(f => {
+        const g = (o,k) => (o && o[k]) ? precio(o[k]) : "—";
+        return '<tr><td>' + esc(f.bono) + '</td>' +
+          '<td>' + g(f.mep,"comprar") + '</td>' +
+          '<td>' + g(f.mep,"vender") + '</td>' +
+          '<td>' + g(f.cable,"comprar") + '</td>' +
+          '<td>' + (f.brecha_pct != null ? pct(f.brecha_pct) : "—") + '</td></tr>';
+      }).join("") + '</tbody></table></div>' +
+      '<div class="nota" style="margin:10px 0 0">Todo calculado contra puntas: ' +
+      'es lo que podrías ejecutar, no un promedio. <b>Brecha</b> es cuánto más ' +
+      'caro sale el dólar cable que el MEP en ese bono.<br><br>' +
+      'Falta descontar comisiones de cada pata y verificar el volumen ' +
+      'disponible en cada punta.</div></div>';
+
+    out.innerHTML = h;
+  }catch(e){
+    out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
+  }finally{ $("#r-btn").disabled = false; }
+}
 
 cargarPanel();
 setInterval(() => { if(vista === "panel") cargarPanel(); }, 30000);

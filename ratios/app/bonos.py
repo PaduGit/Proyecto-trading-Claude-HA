@@ -257,3 +257,77 @@ def detalle(simbolo, cot, liq=None, par_mep=("AL30", "AL30D")):
             "residual": x["residual_previo"],
         } for x in flujo],
     }
+
+
+# =====================================================================
+#  Rulo: tipos de cambio implícitos en cada bono
+# =====================================================================
+
+def _tc(pesos, dolarizada):
+    """Los dos tipos de cambio que salen de un bono contra su especie D o C.
+
+    - comprar: pesos por dólar si comprás el bono en pesos (ask) y vendés
+      la especie dolarizada (bid).
+    - vender: pesos que recibís por dólar si hacés el camino inverso.
+    """
+    ask_p = (pesos or {}).get("venta") or 0
+    bid_p = (pesos or {}).get("compra") or 0
+    ask_d = (dolarizada or {}).get("venta") or 0
+    bid_d = (dolarizada or {}).get("compra") or 0
+    return {
+        "comprar": (ask_p / bid_d) if (ask_p and bid_d) else None,
+        "vender": (bid_p / ask_d) if (bid_p and ask_d) else None,
+        "q_comprar": min((pesos or {}).get("vol_venta") or 0,
+                         (dolarizada or {}).get("vol_compra") or 0),
+        "q_vender": min((pesos or {}).get("vol_compra") or 0,
+                        (dolarizada or {}).get("vol_venta") or 0),
+    }
+
+
+def rulo(cot):
+    """Tipos de cambio implícitos por bono y el ciclo más conveniente.
+
+    Si el bono más barato para comprar dólares está por debajo del más caro
+    para venderlos, hay un rulo: comprás por uno y vendés por el otro.
+    """
+    bonos, _ = cargar()
+    filas = []
+    for base in bonos:
+        p = cot.get(base)
+        if not p:
+            continue
+        f = {"bono": base}
+        for letra, clave in (("D", "mep"), ("C", "cable")):
+            esp = base + letra
+            if cot.get(esp):
+                f[clave] = _tc(p, cot[esp])
+                f[clave]["especie"] = esp
+        if "mep" in f or "cable" in f:
+            # brecha cable/mep del propio bono, con la punta de compra
+            m = (f.get("mep") or {}).get("comprar")
+            c = (f.get("cable") or {}).get("comprar")
+            f["brecha_pct"] = ((c / m - 1) * 100) if (m and c) else None
+            filas.append(f)
+
+    def _mejor(clave, direccion, peor=False):
+        cand = [(f[clave][direccion], f["bono"]) for f in filas
+                if f.get(clave) and f[clave].get(direccion)]
+        if not cand:
+            return None, None
+        return (max(cand) if peor else min(cand))
+
+    ciclos = {}
+    for clave in ("mep", "cable"):
+        barato, b_bono = _mejor(clave, "comprar")
+        caro, c_bono = _mejor(clave, "vender", peor=True)
+        if barato and caro:
+            ciclos[clave] = {
+                "comprar_en": b_bono, "precio_compra": barato,
+                "vender_en": c_bono, "precio_venta": caro,
+                "diferencia_pct": (caro / barato - 1) * 100,
+                "hay_rulo": caro > barato,
+                "mismo_bono": b_bono == c_bono,
+            }
+
+    filas.sort(key=lambda f: ((f.get("mep") or {}).get("comprar") or 9e9))
+    return {"filas": filas, "ciclos": ciclos}

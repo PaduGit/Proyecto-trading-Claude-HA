@@ -26,6 +26,8 @@ al tipear, y los pares recientes como botones.
 
 **Bonos.** TIR en cada punta de los soberanos con cronograma cargado.
 
+**Rulo.** El tipo de cambio implícito en cada bono, en las dos direcciones.
+
 **Posición.** Tu resultado medido en nominales, no en pesos.
 
 **Plazos.** Arbitraje t0/t1 sobre los tickers que configures.
@@ -73,6 +75,20 @@ bono es agregar una entrada al YAML.
 **AO29 tiene la fecha de emisión estimada**: no figura en ese archivo porque es
 posterior al corte. La estructura se dedujo del patrón de AO27/AO28 y de la
 descripción que devuelve IOL. El detalle lo marca con un aviso.
+
+### Rulo: cada bono implica su propio dólar
+
+Comprar un bono en pesos y venderlo en su especie D te da un tipo de cambio.
+Hacerlo al revés te da otro, más bajo, porque los spreads juegan en contra.
+La solapa Rulo muestra los dos por cada bono.
+
+**La oportunidad aparece cuando el bono más barato para comprar dólares queda
+por debajo del más caro para venderlos.** Ahí comprás por uno y vendés por el
+otro. Con las especies C sale el mismo cálculo para el cable.
+
+Todo se calcula contra puntas, no contra el último operado: es lo que
+realmente podrías ejecutar. Lo que todavía falta descontar son las comisiones
+de cada pata y verificar que haya volumen en las puntas.
 
 ### D y C: dos monedas distintas
 
@@ -273,8 +289,9 @@ cuando armemos el detector de rulos vas a tener meses de book acumulado.
   calcular se omiten; el valor de hoy siempre es exacto.
 - **El botón de la notificación necesita WireGuard levantado** si estás fuera
   de casa. La notificación llega igual; lo que no funciona es el link.
-- **El menú de tres puntos** abre en pestaña nueva. El screener corre en un
-  iframe de Ingress y no puede navegar la ventana principal de HA.
+- **No se puede navegar desde el screener.** El iframe de Ingress lo bloquea,
+  así que el menú solo tiene la prueba de notificación. La configuración y el
+  registro están en Ajustes → Apps → Ratios IOL.
 - **El relleno semanal de huecos** usa cierres de IOL, que pueden venir de otro
   plazo. Esos puntos se dibujan punteados en los gráficos.
 
@@ -316,6 +333,6 @@ También conviene revisar, en Ajustes → Apps → Ratios IOL:
 4. ✅ TIR y duration de bonos, gráficos por período, relleno de huecos
 5. Anclajes diarios de TIR: gráfico histórico y alertas sobre rendimiento
 6. Curva TIR contra duration, para ver qué bono se despegó
-7. Detector de ciclos (rulo) sobre puntas, con costos por pata
+7. Rulo: sumar comisiones por pata, volumen ejecutable y ciclos de cuatro patas
 8. Estrategias con opciones
 9. Evaluar la API de ECO Valores (Primary): tiempo real por websocket
