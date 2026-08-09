@@ -1,0 +1,137 @@
+# Cronogramas de bonos soberanos.
+# Fuente: "Estructura financiera de Títulos Públicos", Oficina Nacional de
+# Crédito Público, Ministerio de Economía — archivo al 31/05/2026.
+# Las especies D comparten flujo con su par en pesos: solo cambia el precio.
+
+bonos:
+
+  AL30:
+    nombre: Bono Rep. Argentina USD Step Up 2030
+    ley: argentina
+    moneda: USD
+    emision: 2020-09-04
+    vencimiento: 2030-07-09
+    base: 30/360
+    # 13 cuotas: la primera 4%, las 12 restantes 8%
+    amortizacion:
+      tipo: cuotas
+      fechas_desde: 2024-07-09
+      frecuencia_meses: 6
+      cuotas: [4.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0]
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2021-07-09
+      dias_pago: [01-09, 07-09]
+      tramos:
+        - desde: 2020-09-04
+          tasa: 0.125
+        - desde: 2021-07-09
+          tasa: 0.50
+        - desde: 2023-07-09
+          tasa: 0.75
+        - desde: 2027-07-09
+          tasa: 1.75
+
+  AE38:
+    nombre: Bono Rep. Argentina USD Step Up 2038
+    ley: argentina
+    moneda: USD
+    emision: 2020-09-04
+    vencimiento: 2038-01-09
+    base: 30/360
+    amortizacion:
+      tipo: cuotas
+      fechas_desde: 2027-07-09
+      frecuencia_meses: 6
+      cuotas_iguales: 22
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2021-07-09
+      dias_pago: [01-09, 07-09]
+      tramos:
+        - desde: 2020-09-04
+          tasa: 0.125
+        - desde: 2021-07-09
+          tasa: 2.00
+        - desde: 2022-07-09
+          tasa: 3.875
+        - desde: 2023-07-09
+          tasa: 4.25
+        - desde: 2024-07-09
+          tasa: 5.00
+
+  GD38:
+    nombre: Bono Global Rep. Argentina USD Step Up 2038
+    ley: nueva_york
+    moneda: USD
+    emision: 2020-09-04
+    vencimiento: 2038-01-09
+    base: 30/360
+    amortizacion:
+      tipo: cuotas
+      fechas_desde: 2027-07-09
+      frecuencia_meses: 6
+      cuotas_iguales: 22
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2021-07-09
+      dias_pago: [01-09, 07-09]
+      tramos:
+        - desde: 2020-09-04
+          tasa: 0.125
+        - desde: 2021-07-09
+          tasa: 2.00
+        - desde: 2022-07-09
+          tasa: 3.875
+        - desde: 2023-07-09
+          tasa: 4.25
+        - desde: 2024-07-09
+          tasa: 5.00
+
+  AO28:
+    nombre: Bonar Tesoro Nacional 6% USD 31/10/2028
+    ley: argentina
+    moneda: USD
+    emision: 2026-03-31
+    vencimiento: 2028-10-31
+    base: actual/360
+    resolucion: Res. Conj. 16/2026
+    amortizacion:
+      tipo: bullet          # integra al vencimiento
+    interes:
+      frecuencia_meses: 1   # pagadero mensualmente
+      dia_pago: ultimo_habil
+      tramos:
+        - desde: 2026-03-31
+          tasa: 6.00
+
+  AO29:
+    nombre: Bono Tesoro Nacional 6% USD 31/10/2029
+    ley: argentina
+    moneda: USD
+    emision: 2026-06-30    # PENDIENTE DE CONFIRMAR
+    vencimiento: 2029-10-31
+    base: actual/360
+    verificar: >-
+      No figura en el archivo del Ministerio al 31/05/2026. Estructura
+      deducida de la descripción de IOL y del patrón de AO27/AO28.
+      Confirmar contra la resolución de emisión.
+    amortizacion:
+      tipo: bullet
+    interes:
+      frecuencia_meses: 1
+      dia_pago: ultimo_habil
+      tramos:
+        - desde: 2026-06-30
+          tasa: 6.00
+
+# Las especies en dólares comparten cronograma con la especie en pesos.
+equivalencias:
+  AL30D: AL30
+  AL30C: AL30
+  AE38D: AE38
+  AE38C: AE38
+  GD38D: GD38
+  GD38C: GD38
+  AO28D: AO28
+  AO29D: AO29

@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from flask import Flask, jsonify, request, send_from_directory
 
 import db
+import bonos as BO
 import posicion as P
 from iol import IOLError
 
@@ -25,7 +26,15 @@ def crear_app(monitor):
 
     @app.get("/")
     def index():
-        return send_from_directory(app.static_folder, "index.html")
+        import os
+        ruta = os.path.join(app.static_folder, "index.html")
+        with open(ruta, encoding="utf-8") as f:
+            html = f.read()
+        slug = os.environ.get("HOSTNAME", "") or ""
+        slug = slug.replace("-", "_") if slug else ""
+        cfg_slug = (monitor.cfg.get("addon_slug") or slug or "").strip()
+        html = html.replace("<body>", '<body data-slug="%s">' % cfg_slug, 1)
+        return app.response_class(html, mimetype="text/html")
 
     # -- panel --------------------------------------------------------
 
@@ -62,29 +71,37 @@ def crear_app(monitor):
     @app.get("/api/serie")
     def serie():
         alias = request.args.get("alias", "")
-        modo = request.args.get("modo", "diario")
+        periodo = request.args.get("periodo", "3m")
         par = monitor.par_por_alias(alias)
         if not par:
             return jsonify({"error": "par desconocido"}), 404
 
-        aviso = None
-        if modo == "intra":
-            puntos = [{"x": ts, "y": v}
-                      for ts, v in db.serie_intradiaria(alias, 600)]
-        else:
-            dias = int(request.args.get("dias", 180))
-            desde = (datetime.now().date() - timedelta(days=dias)).isoformat()
-            propia = db.serie_propia_diaria(alias, desde)
-            if len(propia) >= 15:
-                puntos = [{"x": f, "y": v} for f, v in propia]
-            else:
-                puntos = [{"x": f, "y": v} for f, v in
-                          db.serie_ratio_diaria(par["num"], par["den"], desde)]
-                aviso = ("Serie del histórico de IOL: puede mezclar plazos "
-                         "y no ser comparable con el ratio de hoy.")
+        dias = {"hoy": 1, "5d": 5, "1m": 30, "3m": 90,
+                "6m": 180, "1a": 365, "max": 5000}.get(periodo, 90)
+        intradiario = periodo in ("hoy", "5d")
 
+        if intradiario:
+            desde = (datetime.now() - timedelta(days=dias)).isoformat()
+            filas = db.conn().execute(
+                "SELECT ts, ratio, p_num FROM lecturas WHERE alias=? AND ts>=? "
+                "ORDER BY ts", (alias, desde)).fetchall()
+            puntos = [{"x": f["ts"], "y": f["ratio"],
+                       "f": "propia" if f["p_num"] else "iol"} for f in filas]
+        else:
+            desde = (datetime.now().date() - timedelta(days=dias)).isoformat()
+            propia = dict(db.serie_propia_diaria(alias, desde))
+            iol = dict(db.serie_ratio_diaria(par["num"], par["den"], desde))
+            puntos = []
+            for f in sorted(set(propia) | set(iol)):
+                if f in propia:
+                    puntos.append({"x": f, "y": propia[f], "f": "propia"})
+                else:
+                    puntos.append({"x": f, "y": iol[f], "f": "iol"})
+
+        n_iol = sum(1 for p in puntos if p["f"] == "iol")
         return jsonify({
-            "alias": alias, "puntos": puntos, "aviso": aviso,
+            "alias": alias, "puntos": puntos, "periodo": periodo,
+            "n_iol": n_iol, "n_propia": len(puntos) - n_iol,
             "resistencia": par.get("resistencia") or 0,
             "soporte": par.get("soporte") or 0,
         })
@@ -304,6 +321,42 @@ def crear_app(monitor):
         db.borrar_operacion(oid)
         return jsonify({"ok": True})
 
+    # -- bonos --------------------------------------------------------
+
+    def _cot_bonos():
+        """Cotizaciones de las especies con cronograma, desde el panel."""
+        cache = dict(monitor.cotizaciones)
+        faltan = [s for s in BO.especies() if s not in cache]
+        for sim in faltan[:12]:      # tope, para no disparar decenas de requests
+            try:
+                cache[sim] = monitor.iol.cotizacion("bCBA", sim, "t1")
+            except Exception:
+                continue     # una especie sin precio no puede tumbar la tabla
+        return cache
+
+    @app.get("/api/bonos")
+    def bonos_tabla():
+        try:
+            par = (monitor.cfg.get("mep_par_pesos") or "AL30",
+                   monitor.cfg.get("mep_par_usd") or "AL30D")
+            return jsonify(BO.tabla(_cot_bonos(), par_mep=par))
+        except Exception as e:
+            log.exception("tabla de bonos")
+            return jsonify({"error": str(e)}), 500
+
+    @app.get("/api/bonos/<simbolo>")
+    def bono_detalle(simbolo):
+        try:
+            par = (monitor.cfg.get("mep_par_pesos") or "AL30",
+                   monitor.cfg.get("mep_par_usd") or "AL30D")
+            d = BO.detalle(simbolo.upper(), _cot_bonos(), par_mep=par)
+        except Exception as e:
+            log.exception("detalle de bono")
+            return jsonify({"error": str(e)}), 500
+        if not d:
+            return jsonify({"error": "no tengo cronograma de %s" % simbolo}), 404
+        return jsonify(d)
+
     @app.get("/api/alertas")
     def alertas():
         filas = db.alertas_recientes(40)
@@ -468,7 +521,7 @@ def _limpiar(f):
         return {}
     out = {k: f.get(k) for k in
            ("alias", "num", "den", "ratio", "zona", "resistencia", "soporte",
-            "z", "ts", "alertas", "error", "alerta_id", "origen")}
+            "z", "ts", "alertas", "error", "alerta_id", "origen", "cerca")}
     est = f.get("est") or {}
     out["est"] = {k: est.get(k) for k in
                   ("n", "media", "desvio", "min", "max", "fuente", "aviso")}

@@ -187,6 +187,52 @@ dialog::backdrop{background:rgba(0,0,0,.72)}
 dialog h2{font-family:var(--mono);font-size:13px;letter-spacing:.08em;
   text-transform:uppercase;margin:0 0 12px}
 
+/* ---------- menú ---------- */
+.reloj{position:relative}
+.menu{position:absolute;right:0;top:40px;z-index:40;min-width:180px;
+  background:var(--panel);border:1px solid var(--rule);border-radius:5px;
+  padding:6px 0;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+.menu a{display:block;padding:9px 14px;color:var(--bone);text-decoration:none;
+  font-size:13px}
+.menu a:hover,.menu a:focus{background:var(--panel-2);outline:none}
+.menu hr{border:none;border-top:1px solid var(--rule);margin:6px 0}
+.menu .ver{display:block;padding:2px 14px 4px;font-family:var(--mono);
+  font-size:10px;color:var(--muted)}
+
+/* ---------- selector de período ---------- */
+.periodos{display:flex;gap:2px;margin-bottom:10px;flex-wrap:wrap}
+.periodos button{flex:1 0 auto;background:transparent;border:1px solid var(--rule);
+  color:var(--muted);font-family:var(--mono);font-size:10px;padding:5px 8px;
+  border-radius:3px;cursor:pointer;letter-spacing:.05em}
+.periodos button[aria-pressed="true"]{background:var(--panel-2);color:var(--bone)}
+
+/* ---------- aguja próxima al borde ---------- */
+.par.cerca .aguja,.par.cerca .aguja::after{background:var(--amber)}
+
+/* ---------- bonos ---------- */
+.mep{background:var(--panel);border:1px solid var(--rule);border-radius:4px;
+  padding:10px 12px;margin-bottom:10px;font-family:var(--mono);font-size:11px;
+  color:var(--muted);font-variant-numeric:tabular-nums}
+.mep b{color:var(--bone);font-weight:500}
+table.bonos{width:100%;border-collapse:collapse;font-family:var(--mono);
+  font-size:11px;font-variant-numeric:tabular-nums}
+table.bonos th{text-align:right;color:var(--muted);font-weight:500;
+  border-bottom:1px solid var(--rule);padding:6px 3px;font-size:9px;
+  letter-spacing:.05em;text-transform:uppercase}
+table.bonos th:first-child,table.bonos td:first-child{text-align:left}
+table.bonos td{padding:8px 3px;text-align:right;border-bottom:1px solid var(--rule)}
+table.bonos td.tk{color:var(--bone);font-weight:600;cursor:pointer}
+table.bonos td.tk:hover{color:var(--amber)}
+table.bonos tr.usd td.tk{color:var(--sage)}
+table.bonos .tir{color:var(--bone)}
+.chart .linea-iol{fill:none;stroke:var(--muted);stroke-width:1;
+  stroke-dasharray:2 2;opacity:.8}
+.leyenda{display:flex;gap:14px;justify-content:center;font-family:var(--mono);
+  font-size:9px;color:var(--muted);margin-top:4px}
+.leyenda i{display:inline-block;width:14px;height:0;vertical-align:middle;
+  margin-right:4px;border-top:1.5px solid var(--bone)}
+.leyenda i.iol{border-top:1px dashed var(--muted)}
+
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -199,11 +245,21 @@ dialog h2{font-family:var(--mono);font-size:13px;letter-spacing:.08em;
       <div class="hace" id="hace"><b>—</b>conectando</div>
       <button class="refrescar" id="btn-refrescar" title="Actualizar ahora"
               aria-label="Actualizar ahora">↻</button>
+      <button class="refrescar" id="btn-menu" title="Más"
+              aria-label="Más opciones" aria-haspopup="true">⋮</button>
+      <div class="menu" id="menu" hidden role="menu">
+        <a href="#" data-ir="config" role="menuitem">Configuración</a>
+        <a href="#" data-ir="log" role="menuitem">Ver registro</a>
+        <a href="#" data-ir="info" role="menuitem">Información</a>
+        <hr>
+        <span class="ver" id="menu-version">Ratios IOL</span>
+      </div>
     </div>
   </div>
   <nav role="tablist">
     <button role="tab" aria-selected="true" data-vista="panel">Panel</button>
     <button role="tab" aria-selected="false" data-vista="calc">Calcular</button>
+    <button role="tab" aria-selected="false" data-vista="bonos">Bonos</button>
     <button role="tab" aria-selected="false" data-vista="pos">Posición</button>
     <button role="tab" aria-selected="false" data-vista="plazos">Plazos</button>
     <button role="tab" aria-selected="false" data-vista="reg">Registro</button>
@@ -245,6 +301,11 @@ dialog h2{font-family:var(--mono);font-size:13px;letter-spacing:.08em;
       <div class="ancho"><button class="primario" id="c-btn">Calcular ratio</button></div>
     </div>
     <div id="c-out"></div>
+  </section>
+
+  <section id="v-bonos" hidden>
+    <div id="b-mep"></div>
+    <div id="b-out"><div class="vacio">Cargando…</div></div>
   </section>
 
   <section id="v-pos" hidden>
@@ -301,6 +362,12 @@ dialog h2{font-family:var(--mono);font-size:13px;letter-spacing:.08em;
     </details>
   </section>
 </main>
+
+<dialog id="dlg-bono">
+  <h2 id="bono-titulo">Bono</h2>
+  <div id="bono-cuerpo"></div>
+  <button class="secundario" id="bono-cerrar">Cerrar</button>
+</dialog>
 
 <dialog id="dlg-grupo">
   <h2>Nuevo grupo</h2>
@@ -444,8 +511,9 @@ document.querySelectorAll("nav button").forEach(b => {
     document.querySelectorAll("nav button").forEach(x =>
       x.setAttribute("aria-selected", x === b));
     vista = b.dataset.vista;
-    ["panel","calc","pos","plazos","reg","expl"].forEach(v =>
+    ["panel","calc","bonos","pos","plazos","reg","expl"].forEach(v =>
       $("#v-"+v).hidden = (v !== vista));
+    if(vista === "bonos") cargarBonos();
     if(vista === "pos") cargarPosicion();
     if(vista === "reg") cargarRegistro();
     if(vista === "expl") iniciarExplorar();
@@ -513,11 +581,12 @@ function tarjeta(p){
   }
   const est = p.est || {};
   const zona = p.zona === "alta" ? "alta" : p.zona === "baja" ? "baja" : "";
+  const cerca = (!zona && p.cerca) ? " cerca" : "";
   const q = c => (c && (c.vol_compra || c.vol_venta))
     ? " <span style='opacity:.6'>[" + ent(c.vol_compra) + "/" + ent(c.vol_venta) + "]</span>"
     : "";
 
-  return '<div class="par ' + zona + '">' +
+  return '<div class="par ' + zona + cerca + '">' +
     '<div class="par-top"><span class="alias">' + esc(p.alias) + '</span>' +
     (p.alertas ? "" : '<span class="silencio">sin alertas</span>') + '</div>' +
     '<div class="ratio">' + num(p.ratio) + '</div>' +
@@ -531,8 +600,7 @@ function tarjeta(p){
                    : '<span>n <b>' + (est.n||0) + '</b></span>') +
     '</div>' +
     '<div class="acciones">' +
-      '<button onclick="alternar(\'' + esc(p.alias) + '\',\'diario\')">90 días</button>' +
-      '<button onclick="alternar(\'' + esc(p.alias) + '\',\'intra\')">Hoy</button>' +
+      '<button onclick="alternar(\'' + esc(p.alias) + '\')">Gráfico</button>' +
       '<button class="op" onclick="abrirOp(\'' + esc(p.alias) + '\')">Operé</button>' +
     '</div>' +
     '<div class="graf" id="g-' + css(p.alias) + '" hidden></div></div>';
@@ -566,29 +634,44 @@ function riel(lo, hi, valor, sop, res, etiqueta){
     '<div class="aguja" style="left:' + pos(valor) + '%"></div></div>';
 }
 
-async function alternar(alias, modo){
+const PERIODOS = [["hoy","Hoy"],["5d","5 días"],["1m","1 mes"],["3m","3 meses"],
+                  ["6m","6 meses"],["1a","1 año"],["max","Máximo"]];
+
+async function alternar(alias){
   const cont = document.getElementById("g-" + css(alias));
   if(!cont) return;
-  if(abierto[alias] === modo){
+  if(abierto[alias]){
     delete abierto[alias]; cont.hidden = true; cont.innerHTML = ""; return;
   }
-  abierto[alias] = modo;
+  abierto[alias] = "3m";
   cont.hidden = false;
-  cont.innerHTML = '<div class="vacio" style="padding:12px">Cargando…</div>';
-  dibujar(alias, modo);
+  dibujar(alias, "3m");
+}
+
+async function verPeriodo(alias, per){
+  abierto[alias] = per;
+  dibujar(alias, per);
 }
 
 async function dibujar(alias, modo){
   const cont = document.getElementById("g-" + css(alias));
   if(!cont) return;
   cont.hidden = false;
+  const barra = '<div class="periodos">' + PERIODOS.map(([k,t]) =>
+    '<button aria-pressed="' + (k===modo) + '" onclick="verPeriodo(\'' +
+    esc(alias) + '\',\'' + k + '\')">' + t + '</button>').join("") + '</div>';
+  cont.innerHTML = barra + '<div class="vacio" style="padding:12px">Cargando…</div>';
   try{
     const d = await (await fetch(base + "api/serie?alias=" +
-      encodeURIComponent(alias) + "&modo=" + modo)).json();
-    cont.innerHTML = (d.aviso ? '<div class="aviso">' + esc(d.aviso) + '</div>' : "") +
-      grafico(d.puntos, d.resistencia, d.soporte, modo);
+      encodeURIComponent(alias) + "&periodo=" + modo)).json();
+    const leyenda = d.n_iol
+      ? '<div class="leyenda"><span><i></i>lecturas propias</span>' +
+        '<span><i class="iol"></i>histórico de IOL</span></div>'
+      : "";
+    cont.innerHTML = barra + grafico(d.puntos, d.resistencia, d.soporte, modo) +
+      leyenda;
   }catch(e){
-    cont.innerHTML = '<div class="msg error">No se pudo cargar la serie.</div>';
+    cont.innerHTML = barra + '<div class="msg error">No se pudo cargar.</div>';
   }
 }
 
@@ -605,18 +688,33 @@ function grafico(puntos, res, sop, modo){
   const pad=(hi-lo)*0.08 || hi*0.01; lo-=pad; hi+=pad;
   const px=i=>ml+i*(W-ml-mr)/(puntos.length-1);
   const py=v=>mt+(hi-v)/(hi-lo)*(H-mt-mb);
-  const d=puntos.map((p,i)=>(i?"L":"M")+px(i).toFixed(1)+" "+py(p.y).toFixed(1)).join(" ");
+
+  /* dos trazos: lo propio sólido, lo de IOL punteado */
+  const tramos=[]; let actual=null;
+  puntos.forEach((p,i)=>{
+    const f = p.f || "propia";
+    if(!actual || actual.f !== f){
+      if(actual) actual.d += " L"+px(i).toFixed(1)+" "+py(p.y).toFixed(1);
+      actual = {f, d:(actual?"M"+px(i-1).toFixed(1)+" "+py(puntos[i-1].y).toFixed(1)+" L":"M")
+                   + px(i).toFixed(1)+" "+py(p.y).toFixed(1)};
+      tramos.push(actual);
+    } else {
+      actual.d += " L"+px(i).toFixed(1)+" "+py(p.y).toFixed(1);
+    }
+  });
+
   const media=ys.reduce((a,b)=>a+b,0)/ys.length;
   const linea=(v,c,t)=>v?'<line class="'+c+'" x1="'+ml+'" y1="'+py(v)+'" x2="'+
     (W-mr)+'" y2="'+py(v)+'"/><text x="'+(W-mr+4)+'" y="'+(py(v)+3)+'">'+t+'</text>':"";
-  const fmt=s=>modo==="intra"?s.slice(11,16):s.slice(5,10);
+  const corto = s => s.length>10 ? s.slice(11,16) : s.slice(5,10);
+
   return '<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" role="img">'+
     linea(res,"nivel-res",num(res,2))+linea(sop,"nivel-sop",num(sop,2))+
     linea(media,"media",num(media,2))+
-    '<path class="linea" d="'+d+'"/>'+
-    '<text x="'+ml+'" y="'+(H-4)+'">'+fmt(puntos[0].x)+'</text>'+
+    tramos.map(t=>'<path class="'+(t.f==="iol"?"linea-iol":"linea")+'" d="'+t.d+'"/>').join("")+
+    '<text x="'+ml+'" y="'+(H-4)+'">'+corto(puntos[0].x)+'</text>'+
     '<text x="'+(W-mr)+'" y="'+(H-4)+'" text-anchor="end">'+
-    fmt(puntos[puntos.length-1].x)+'</text></svg>';
+    corto(puntos[puntos.length-1].x)+'</text></svg>';
 }
 
 /* ---------- registrar operación ---------- */
@@ -657,6 +755,7 @@ $("#o-guardar").addEventListener("click", async () => {
     if(!r.ok){ $("#o-msg").innerHTML = '<div class="msg error">' +
       esc(d.error || "No se pudo guardar.") + '</div>'; return; }
     $("#dlg-op").close();
+    if(vista === "bonos") cargarBonos();
     if(vista === "pos") cargarPosicion();
     if(vista === "reg") cargarRegistro();
   }catch(e){
@@ -1135,6 +1234,143 @@ $("#m-guardar").addEventListener("click", async () => {
     $("#m-msg").innerHTML = '<div class="msg error">No se pudo guardar.</div>';
   }
 });
+
+/* ---------- menú ---------- */
+$("#btn-menu").addEventListener("click", e => {
+  e.stopPropagation();
+  const m = $("#menu");
+  m.hidden = !m.hidden;
+});
+document.addEventListener("click", () => { $("#menu").hidden = true; });
+document.addEventListener("keydown", e => {
+  if(e.key === "Escape") $("#menu").hidden = true;
+});
+$("#menu").addEventListener("click", e => {
+  const a = e.target.closest("a[data-ir]");
+  if(!a) return;
+  e.preventDefault();
+  $("#menu").hidden = true;
+  irA(a.dataset.ir);
+});
+
+function irA(donde){
+  /* El screener vive en un iframe de Ingress y no puede navegar la ventana
+     principal. Se le pide al padre; si no responde, abrimos pestaña nueva. */
+  const slug = (document.body.dataset.slug || "");
+  const rutas = {
+    config: "/hassio/addon/" + slug + "/config",
+    log:    "/hassio/addon/" + slug + "/logs",
+    info:   "/hassio/addon/" + slug + "/info",
+  };
+  const ruta = rutas[donde] || rutas.info;
+  try{
+    if(window.parent && window.parent !== window){
+      window.parent.postMessage(
+        {type: "navigate", message: {path: ruta}}, "*");
+      return;
+    }
+  }catch(err){ /* cross-origin: caemos a la pestaña nueva */ }
+  window.open(ruta, "_blank", "noopener");
+}
+
+/* ---------- bonos ---------- */
+async function cargarBonos(){
+  const out = $("#b-out"), cab = $("#b-mep");
+  out.innerHTML = '<div class="vacio">Calculando TIRs…</div>';
+  try{
+    const r = await fetch(base + "api/bonos");
+    const d = await r.json();
+    if(!r.ok){
+      cab.innerHTML = "";
+      out.innerHTML = '<div class="msg error">' + esc(d.error || "Falló.") + '</div>';
+      return;
+    }
+    if(!d.filas.length){
+      cab.innerHTML = "";
+      out.innerHTML = '<div class="vacio">Sin precios para los bonos que tengo ' +
+        'cargados. Probá durante la rueda.</div>';
+      return;
+    }
+    const m = d.mep;
+    cab.innerHTML = '<div class="mep">MEP ' + esc(m.par) + ' · ' +
+      'comprar USD <b>' + precio(m.comprar_usd) + '</b> · ' +
+      'vender USD <b>' + precio(m.vender_usd) + '</b>' +
+      (m.completo ? "" : ' <span style="color:var(--amber)">(sin puntas ' +
+        'completas, uso el punto medio)</span>') +
+      '<br>Los precios en pesos se pasan a dólares con el MEP que ' +
+      'corresponde a cada punta.</div>';
+
+    out.innerHTML = '<div class="hallazgo" style="padding:8px 10px">' +
+      '<table class="bonos"><thead><tr><th>Especie</th><th>Bid</th>' +
+      '<th>TIR Bid</th><th>Ask</th><th>TIR Ask</th></tr></thead><tbody>' +
+      d.filas.map(f => {
+        const p = v => v ? (f.moneda === "USD" ? precio(v) : ent(v)) : "—";
+        const t = v => v == null ? "—" : v.toFixed(2) + "%";
+        return '<tr class="' + (f.moneda === "USD" ? "usd" : "") + '">' +
+          '<td class="tk" onclick="verBono(\'' + esc(f.simbolo) + '\')">' +
+          esc(f.simbolo) + '</td>' +
+          '<td>' + p(f.bid) + '</td><td class="tir">' + t(f.tir_bid) + '</td>' +
+          '<td>' + p(f.ask) + '</td><td class="tir">' + t(f.tir_ask) + '</td></tr>';
+      }).join("") + '</tbody></table></div>' +
+      '<div class="nota" style="margin-top:8px">Ordenados por duration ' +
+      'modificada. Tocá el ticker para ver el detalle y el flujo de fondos.</div>';
+  }catch(e){
+    out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
+  }
+}
+
+async function verBono(sim){
+  $("#bono-titulo").textContent = sim;
+  $("#bono-cuerpo").innerHTML = '<div class="vacio">Cargando…</div>';
+  $("#dlg-bono").showModal();
+  try{
+    const r = await fetch(base + "api/bonos/" + encodeURIComponent(sim));
+    const d = await r.json();
+    if(!r.ok){
+      $("#bono-cuerpo").innerHTML = '<div class="msg error">' +
+        esc(d.error) + '</div>';
+      return;
+    }
+    $("#bono-titulo").textContent = sim + " · " + (d.nombre || "");
+    const pp = d.proximo_pago;
+    const val = (v, s, dec) => v == null ? "—" :
+      (dec === 0 ? ent(v) : num(v, dec === undefined ? 2 : dec)) + (s || "");
+
+    $("#bono-cuerpo").innerHTML =
+      (d.aviso ? '<div class="aviso">' + esc(d.aviso) + '</div>' : "") +
+      '<dl class="kv">' +
+      (pp ? '<dt>Próximo pago</dt><dd>' + esc(pp.fecha) + ' · ' +
+        val(pp.total) + (pp.amortizacion ? ' <span style="color:var(--sage)">' +
+        '(renta ' + val(pp.renta) + ' + amort ' + val(pp.amortizacion) + ')</span>'
+        : ' (renta)') + '</dd>' : "") +
+      '<dt>Vencimiento</dt><dd>' + esc(d.vencimiento) +
+        (d.años_al_vto ? ' · ' + val(d.años_al_vto) + ' años' : "") + '</dd>' +
+      '<dt>Duration mod.</dt><dd>' + val(d.md) + '</dd>' +
+      '<dt>Duration</dt><dd>' + val(d.duration) + '</dd>' +
+      '<dt>Residual</dt><dd>' + val(d.residual) + '%</dd>' +
+      '<dt>Cupón vigente</dt><dd>' + val(d.cupon_vigente) + '% anual</dd>' +
+      '<dt>Interés corrido</dt><dd>' + val(d.interes_corrido, "", 4) + '</dd>' +
+      '<dt>Valor técnico</dt><dd>' + val(d.valor_tecnico) + '</dd>' +
+      '<dt>Paridad</dt><dd>' + val(d.paridad) + '%</dd>' +
+      '<dt>Current yield</dt><dd>' + val(d.current_yield) + '%</dd>' +
+      (d.spread_tir != null ? '<dt>Spread TIR</dt><dd>' +
+        val(d.spread_tir) + ' pp entre puntas</dd>' : "") +
+      '<dt>Ley</dt><dd>' + esc(d.ley || "—") + '</dd>' +
+      '</dl>' +
+      '<details class="avanzado"><summary>Flujo de fondos (' +
+        d.flujo.length + ' pagos)</summary><div class="scroll">' +
+      '<table class="tabla"><thead><tr><th>Fecha</th><th>Renta</th>' +
+      '<th>Amort.</th><th>Total</th></tr></thead><tbody>' +
+      d.flujo.map(x => '<tr><td>' + esc(x.fecha) + '</td><td>' +
+        num(x.renta, 3) + '</td><td>' +
+        (x.amortizacion ? num(x.amortizacion, 3) : "—") + '</td><td>' +
+        num(x.total, 3) + '</td></tr>').join("") +
+      '</tbody></table></div></details>';
+  }catch(e){
+    $("#bono-cuerpo").innerHTML = '<div class="msg error">No se pudo cargar.</div>';
+  }
+}
+$("#bono-cerrar").addEventListener("click", () => $("#dlg-bono").close());
 
 cargarPanel();
 setInterval(() => { if(vista === "panel") cargarPanel(); }, 30000);

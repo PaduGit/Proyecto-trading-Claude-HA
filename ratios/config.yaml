@@ -1,5 +1,5 @@
 name: Ratios IOL
-version: "0.3.2"
+version: "0.4.0"
 slug: ratios_iol
 description: Monitor de ratios entre especies, arbitraje de plazos y screener
 url: https://github.com/PaduGit/Proyecto-trading-Claude-HA
@@ -21,6 +21,9 @@ options:
   canal_alertas: ambos
   ha_notify_service: notify.mobile_app_motorola_razr_60_ultra
   panel_path: /5ed1f7ab_ratios_iol
+  addon_slug: 5ed1f7ab_ratios_iol
+  mep_par_pesos: AL30
+  mep_par_usd: AL30D
   telegram_token: ""
   telegram_chat_id: ""
   publicar_sensores: true
@@ -95,6 +98,9 @@ schema:
   canal_alertas: list(ha|telegram|ambos)
   ha_notify_service: str?
   panel_path: str?
+  addon_slug: str?
+  mep_par_pesos: str?
+  mep_par_usd: str?
   telegram_token: password?
   telegram_chat_id: str?
   publicar_sensores: bool

@@ -285,6 +285,7 @@ class Monitor:
 
         estado = {
             "alias": par["alias"], "num": par["num"], "den": par["den"],
+            "cerca": _cerca_del_borde(par, ratio, est),
             "ratio": ratio, "zona": zona, "zona_previa": previa,
             "resistencia": par.get("resistencia") or 0,
             "soporte": par.get("soporte") or 0,
@@ -412,6 +413,42 @@ class Monitor:
         ok = self.ciclo(manual=True)
         return ok, 0
 
+    # -- relleno de huecos --------------------------------------------
+
+    def rellenar_huecos(self):
+        """Días laborables sin lecturas propias se completan con cierres de IOL.
+
+        Pasa cuando se cae internet o la máquina queda apagada. Corre una vez
+        por semana: los cierres de la semana ya están consolidados.
+        """
+        from datetime import date as _date
+        desde = (datetime.now().date() - timedelta(days=180)).isoformat()
+        rellenados = 0
+
+        for par in self.pares:
+            propios = {f for f, _ in db.serie_propia_diaria(par["alias"], desde)}
+            serie = db.serie_ratio_diaria(par["num"], par["den"], desde)
+            for fecha, ratio in serie:
+                if fecha in propios:
+                    continue
+                try:
+                    d = _date.fromisoformat(fecha)
+                except ValueError:
+                    continue
+                if d.weekday() >= 5:
+                    continue
+                vacio = {"ref": 0, "compra": 0, "venta": 0,
+                         "vol_compra": 0, "vol_venta": 0}
+                db.guardar_lectura(par["alias"], ratio, vacio, vacio,
+                                   ts=fecha + "T23:59:00")
+                rellenados += 1
+
+        if rellenados:
+            log.info("relleno semanal: %d días completados con cierres de IOL",
+                     rellenados)
+        db.set_estado("ultimo_relleno", datetime.now().date().isoformat())
+        return rellenados
+
     # -- historico ----------------------------------------------------
 
     def backfill(self):
@@ -482,6 +519,12 @@ class Monitor:
                     self.backfill()
                     db.purgar()
                     ultimo_backfill = hoy
+                    # domingos: completar los días que faltaron
+                    if hoy.weekday() == 6:
+                        try:
+                            self.rellenar_huecos()
+                        except Exception as e:
+                            log.warning("relleno semanal: %s", e)
             except Exception as e:
                 self.ultimo_error = str(e)
                 log.error("ciclo fallo: %s", e)
@@ -493,6 +536,26 @@ class Monitor:
             else:
                 dormir = espera
             time.sleep(dormir)
+
+
+def _cerca_del_borde(par, ratio, est, umbral=0.15):
+    """Devuelve 'alta', 'baja' o None si el ratio entró en el tramo final."""
+    res = par.get("resistencia") or 0
+    sop = par.get("soporte") or 0
+    if res > 0 and sop > 0 and res > sop:
+        ancho = res - sop
+        if ratio >= res - ancho * umbral:
+            return "alta"
+        if ratio <= sop + ancho * umbral:
+            return "baja"
+        return None
+    if est.get("n", 0) >= MIN_MUESTRA_Z and est.get("desvio"):
+        z = (ratio - est["media"]) / est["desvio"]
+        if z >= 1.5:
+            return "alta"
+        if z <= -1.5:
+            return "baja"
+    return None
 
 
 def _stats(valores, fuente):

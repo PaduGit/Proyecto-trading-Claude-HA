@@ -24,6 +24,8 @@ son marcas fijas y la aguja es el precio de ahora. Arriba, cuánto hace de la
 **Calcular.** Dos tickers cualquiera. Los que ya usaste aparecen como sugerencia
 al tipear, y los pares recientes como botones.
 
+**Bonos.** TIR en cada punta de los soberanos con cronograma cargado.
+
 **Posición.** Tu resultado medido en nominales, no en pesos.
 
 **Plazos.** Arbitraje t0/t1 sobre los tickers que configures.
@@ -31,6 +33,55 @@ al tipear, y los pares recientes como botones.
 **Registro.** Tus operaciones y el historial de alertas.
 
 **Explorar.** Consumo de la API y consulta libre de endpoints, solo lectura.
+
+---
+
+## Bonos: TIR en cada punta
+
+Cinco columnas — especie, bid, TIR bid, ask, TIR ask — ordenadas por duration
+modificada. Tocá el ticker y se abre el detalle: próximo pago con monto,
+vencimiento, residual, cupón vigente, paridad, current yield, interés corrido,
+duration y el flujo de fondos completo.
+
+### El MEP no es un número
+
+Si comprás dólares pagás un precio y si los vendés cobrás otro, porque el
+spread del bono queda adentro. Por eso cada punta se convierte con el tipo de
+cambio que le toca:
+
+- **El bid** lo cobrás en pesos, así que para llevarlo a dólares tenés que
+  comprarlos: se usa el MEP de compra (ask en pesos / bid de la especie D).
+- **El ask** lo pagás en pesos, que conseguiste vendiendo dólares: se usa el
+  MEP de venta (bid en pesos / ask de la D).
+
+El resultado es que las especies en pesos muestran spreads de TIR más anchos
+que las D. No es un error: es el costo real de entrar y salir pasando por el
+cambio.
+
+El par de referencia es configurable (`mep_par_pesos` / `mep_par_usd`).
+Por defecto AL30/AL30D, que suele tener el spread más angosto.
+
+### Los cronogramas
+
+Están en `ratios/app/datos/bonos.yaml`, transcritos del archivo "Estructura
+financiera de Títulos Públicos" de la Oficina Nacional de Crédito Público
+(Ministerio de Economía), con corte al 31/05/2026.
+
+Hoy trae AL30, AE38, GD38, AO28 y AO29, más sus especies D y C. Agregar un
+bono es agregar una entrada al YAML.
+
+**AO29 tiene la fecha de emisión estimada**: no figura en ese archivo porque es
+posterior al corte. La estructura se dedujo del patrón de AO27/AO28 y de la
+descripción que devuelve IOL. El detalle lo marca con un aviso.
+
+### Verificación
+
+El flujo del AO29 calculado acá coincide con una planilla de referencia
+independiente: 39 pagos y TIR de 8,44% al mismo precio y fecha. La duration de
+esa planilla no coincide (daba 1,36 contra 2,69), y una tercera fuente daba 2,8,
+del lado de este cálculo.
+
+Contrastá los números con bonarg.com antes de operar sobre ellos.
 
 ---
 
@@ -183,6 +234,7 @@ SQLite en `/data/ratios.db`, que HA conserva entre reinicios.
 - `cierres` — cierres diarios de IOL. No se borran.
 - `alertas` y `operaciones` — historial.
 - `requests` — consumo de la API por día y tipo.
+- `grupos` y `movimientos` — la contabilidad en nominales.
 
 Las puntas se guardan desde el primer día aunque todavía no se usen del todo:
 cuando armemos el detector de rulos vas a tener meses de book acumulado.
@@ -204,6 +256,10 @@ cuando armemos el detector de rulos vas a tener meses de book acumulado.
   calcular se omiten; el valor de hoy siempre es exacto.
 - **El botón de la notificación necesita WireGuard levantado** si estás fuera
   de casa. La notificación llega igual; lo que no funciona es el link.
+- **El menú de tres puntos** navega pidiéndoselo al frame de Home Assistant.
+  Si esa API cambia, cae a abrir una pestaña nueva.
+- **El relleno semanal de huecos** usa cierres de IOL, que pueden venir de otro
+  plazo. Esos puntos se dibujan punteados en los gráficos.
 
 ---
 
@@ -212,6 +268,8 @@ cuando armemos el detector de rulos vas a tener meses de book acumulado.
 1. ✅ Ratios, alertas, screener
 2. ✅ Paneles, notificaciones nativas, arbitraje de plazos, registro
 3. ✅ Posición en nominales, sin dependencias de nube
-4. Comparar todos los ratios de una curva para ver cuál quedó desalineado
-5. Detector de ciclos (rulo) sobre puntas, con costos por pata
-6. Estrategias con opciones
+4. ✅ TIR y duration de bonos, gráficos por período, relleno de huecos
+5. Curva TIR contra duration, para ver qué bono se despegó
+6. Detector de ciclos (rulo) sobre puntas, con costos por pata
+7. Estrategias con opciones
+8. Evaluar la API de ECO Valores (Primary): tiempo real por websocket
