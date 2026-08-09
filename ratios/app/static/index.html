@@ -193,11 +193,12 @@ dialog h2{font-family:var(--mono);font-size:13px;letter-spacing:.08em;
   background:var(--panel);border:1px solid var(--rule);border-radius:5px;
   padding:6px 0;box-shadow:0 8px 24px rgba(0,0,0,.5)}
 .menu a{display:block;padding:9px 14px;color:var(--bone);text-decoration:none;
-  font-size:13px}
+  font-size:13px;cursor:pointer}
+.menu a[aria-disabled]{color:var(--muted);cursor:default}
 .menu a:hover,.menu a:focus{background:var(--panel-2);outline:none}
 .menu hr{border:none;border-top:1px solid var(--rule);margin:6px 0}
-.menu .ver{display:block;padding:2px 14px 4px;font-family:var(--mono);
-  font-size:10px;color:var(--muted)}
+.menu .ver{display:block;padding:4px 14px 6px;font-size:10px;
+  color:var(--muted);line-height:1.35}
 
 /* ---------- selector de período ---------- */
 .periodos{display:flex;gap:2px;margin-bottom:10px;flex-wrap:wrap}
@@ -248,12 +249,14 @@ table.bonos .tir{color:var(--bone)}
       <button class="refrescar" id="btn-menu" title="Más"
               aria-label="Más opciones" aria-haspopup="true">⋮</button>
       <div class="menu" id="menu" hidden role="menu">
-        <a href="#" data-ir="config" role="menuitem">Configuración</a>
-        <a href="#" data-ir="log" role="menuitem">Ver registro</a>
-        <a href="#" data-ir="info" role="menuitem">Información</a>
+        <a id="ir-config" target="_blank" rel="noopener" role="menuitem">Configuración</a>
+        <a id="ir-log" target="_blank" rel="noopener" role="menuitem">Ver registro</a>
+        <a id="ir-info" target="_blank" rel="noopener" role="menuitem">Información</a>
+        <hr>
         <a href="#" id="probar-notif" role="menuitem">Probar notificación</a>
         <hr>
-        <span class="ver" id="menu-version">Ratios IOL</span>
+        <span class="ver">Si no abre, mantené apretado y copiá el enlace:
+          Home Assistant bloquea la navegación desde el panel.</span>
       </div>
     </div>
   </div>
@@ -1240,6 +1243,7 @@ $("#m-guardar").addEventListener("click", async () => {
 $("#btn-menu").addEventListener("click", e => {
   e.stopPropagation();
   const m = $("#menu");
+  if(m.hidden) prepararMenu();
   m.hidden = !m.hidden;
 });
 document.addEventListener("click", () => { $("#menu").hidden = true; });
@@ -1250,26 +1254,30 @@ $("#probar-notif").addEventListener("click", e => {
   e.preventDefault(); e.stopPropagation(); probarNotificacion();
 });
 $("#menu").addEventListener("click", e => {
-  const a = e.target.closest("a[data-ir]");
-  if(!a) return;
-  e.preventDefault();
-  $("#menu").hidden = true;
-  irA(a.dataset.ir);
+  if(e.target.closest("a[href]")) $("#menu").hidden = true;
 });
 
-function irA(donde){
-  /* El screener corre dentro de un iframe de Ingress y no puede navegar la
-     ventana principal de HA. Abrimos pestaña nueva, que funciona siempre. */
+function rutasAddon(){
   const slug = (document.body.dataset.slug || "").trim();
-  if(!slug){ alert("Falta addon_slug en la configuración de la app."); return; }
-  const rutas = {
-    config: "/hassio/addon/" + slug + "/config",
-    log:    "/hassio/addon/" + slug + "/logs",
-    info:   "/hassio/addon/" + slug + "/info",
+  if(!slug) return null;
+  /* dentro del iframe de Ingress, el origen real es el del padre */
+  const origen = (location.ancestorOrigins && location.ancestorOrigins.length
+    ? location.ancestorOrigins[0] : location.origin);
+  return {
+    config: origen + "/hassio/addon/" + slug + "/config",
+    log:    origen + "/hassio/addon/" + slug + "/logs",
+    info:   origen + "/hassio/addon/" + slug + "/info",
   };
-  const origen = (location.ancestorOrigins && location.ancestorOrigins[0])
-    || location.origin;
-  window.open(origen + (rutas[donde] || rutas.info), "_blank", "noopener");
+}
+
+function prepararMenu(){
+  const r = rutasAddon();
+  ["config","log","info"].forEach(k => {
+    const a = document.getElementById("ir-" + k);
+    if(!a) return;
+    if(r){ a.href = r[k]; a.removeAttribute("aria-disabled"); }
+    else { a.removeAttribute("href"); a.setAttribute("aria-disabled","true"); }
+  });
 }
 
 async function probarNotificacion(){
@@ -1283,7 +1291,10 @@ async function probarNotificacion(){
     if(!d.ha_token) falta.push("falta el permiso homeassistant_api: " +
       "desinstalá la app y volvé a instalarla");
     if(!d.telegram_listo) falta.push("Telegram sin configurar");
-    alert("No se pudo enviar. " + (falta.join(". ") || "Mirá el registro."));
+    const env = (d.env_detectadas && d.env_detectadas.length)
+      ? "\n\nVariables que ve el contenedor: " + d.env_detectadas.join(", ")
+      : "\n\nEl contenedor no recibe ninguna variable de token.";
+    alert("No se pudo enviar. " + (falta.join(". ") || "Mirá el registro.") + env);
   }catch(e){ alert("No se pudo probar."); }
 }
 

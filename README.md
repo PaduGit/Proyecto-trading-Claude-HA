@@ -284,10 +284,22 @@ cuando armemos el detector de rulos vas a tener meses de book acumulado.
 
 Menú ⋮ → **Probar notificación**. Te dice qué falta.
 
-El caso más común es que falte el token del Supervisor. Eso pasa cuando la app
-se actualizó desde una versión que no pedía `homeassistant_api`: el permiso se
-fija al construir el contenedor. Se arregla desinstalando la app y volviéndola
-a instalar (los datos viven en `/data` y no se pierden).
+Hay dos caminos para hablarle a Home Assistant, y la app usa el que esté.
+
+**Por el Supervisor (automático).** Requiere `homeassistant_api`, que la app ya
+declara. Si el diagnóstico dice que no llega el token, probá desinstalar y
+reinstalar: el permiso se fija al construir el contenedor.
+
+**Con un token propio (respaldo).** No depende de los permisos del add-on.
+En Home Assistant: tocá tu usuario abajo a la izquierda → pestaña Seguridad →
+al final, **Tokens de acceso de larga duración** → Crear. Copiá el token y
+pegalo en `ha_token` en la configuración de la app.
+
+Si el add-on no resuelve el nombre `homeassistant`, cargá también `ha_url` con
+la dirección de tu instalación, por ejemplo `http://192.168.1.10:8123`.
+
+Este camino tiene una ventaja: el token es tuyo y lo podés revocar cuando
+quieras desde la misma pantalla.
 
 También conviene revisar, en Ajustes → Apps → Ratios IOL:
 

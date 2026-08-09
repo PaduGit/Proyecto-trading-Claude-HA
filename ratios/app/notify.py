@@ -8,6 +8,7 @@ import requests
 log = logging.getLogger("notify")
 
 SUPERVISOR = "http://supervisor/core/api"
+CORE_DIRECTO = "http://homeassistant:8123/api"
 
 
 class Notificador:
@@ -23,17 +24,31 @@ class Notificador:
         self.token_sup = (os.environ.get("SUPERVISOR_TOKEN")
                           or os.environ.get("HASSIO_TOKEN") or "")
 
+        # respaldo: token de larga duración creado por el usuario en su perfil.
+        # No depende de los permisos del add-on.
+        self.token_largo = (cfg.get("ha_token") or "").strip()
+        self.url_core = (cfg.get("ha_url") or "").strip().rstrip("/")
+
+        if self.token_largo:
+            self.token = self.token_largo
+            self.base_api = (self.url_core + "/api") if self.url_core else CORE_DIRECTO
+            self.via = "token propio"
+        else:
+            self.token = self.token_sup
+            self.base_api = SUPERVISOR
+            self.via = "supervisor"
+
         self.tg_ok = bool(self.tg_token and self.tg_chat)
-        self.ha_ok = bool(self.servicio_ha and self.token_sup)
+        self.ha_ok = bool(self.servicio_ha and self.token)
 
         if self.canal in ("ha", "ambos") and not self.ha_ok:
             falta = []
             if not self.servicio_ha:
                 falta.append("ha_notify_service en la configuración")
-            if not self.token_sup:
-                falta.append("el token del Supervisor: la app necesita "
-                             "homeassistant_api. Desinstalala y volvé a "
-                             "instalarla para que tome el permiso")
+            if not self.token:
+                falta.append("un token. O el add-on no recibe el del "
+                             "Supervisor, o cargá ha_token en la configuración "
+                             "(Perfil → Tokens de acceso de larga duración)")
             log.warning("Notificación de HA sin configurar. Falta %s",
                         "; ".join(falta))
         if self.canal in ("telegram", "ambos") and not self.tg_ok:
@@ -78,8 +93,8 @@ class Notificador:
                 {"action": "URI", "title": "Ver screener", "uri": self.panel}]
         try:
             r = requests.post(
-                "%s/services/notify/%s" % (SUPERVISOR, servicio),
-                headers={"Authorization": "Bearer " + self.token_sup,
+                "%s/services/notify/%s" % (self.base_api, servicio),
+                headers={"Authorization": "Bearer " + self.token,
                          "Content-Type": "application/json"},
                 json=datos, timeout=15)
             if r.status_code >= 300:
@@ -107,10 +122,17 @@ class Notificador:
 
     def diagnostico(self):
         """Para el botón de prueba: qué está y qué falta."""
+        # nombres (no valores) de las variables que podrían traer el token
+        candidatas = sorted(k for k in os.environ
+                            if "TOKEN" in k.upper() or "SUPERVISOR" in k.upper()
+                            or "HASSIO" in k.upper())
         return {
+            "env_detectadas": candidatas,
             "canal": self.canal,
             "ha_servicio": self.servicio_ha or None,
-            "ha_token": bool(self.token_sup),
+            "ha_token": bool(self.token),
+            "via": self.via,
+            "api": self.base_api,
             "ha_listo": self.ha_ok,
             "telegram_listo": self.tg_ok,
             "panel_path": self.panel or None,
@@ -126,13 +148,13 @@ class Notificador:
 
     def publicar_sensor(self, alias, estado, atributos):
         """Expone el ratio como sensor de HA para dashboards y automatizaciones."""
-        if not self.token_sup:
+        if not self.token:
             return False
         eid = "sensor.ratio_" + _slug(alias)
         try:
             r = requests.post(
-                "%s/states/%s" % (SUPERVISOR, eid),
-                headers={"Authorization": "Bearer " + self.token_sup,
+                "%s/states/%s" % (self.base_api, eid),
+                headers={"Authorization": "Bearer " + self.token,
                          "Content-Type": "application/json"},
                 json={"state": round(estado, 6) if estado else None,
                       "attributes": atributos},
