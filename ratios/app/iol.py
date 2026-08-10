@@ -200,5 +200,6 @@ def normalizar(d, simbolo):
         "ref": medio or ultimo,
         "variacion": _f(d.get("variacionPorcentual")) or _f(d.get("variacion")),
         "volumen": _f(d.get("volumenNominal")) or _f(d.get("cantidadOperada")),
+        "lote": _f(d.get("unitsPerLot")) or _f(d.get("laminaMinima")) or 0,
         "moneda": d.get("moneda") or "",
     }

@@ -69,12 +69,26 @@ Están en `ratios/app/datos/bonos.yaml`, transcritos del archivo "Estructura
 financiera de Títulos Públicos" de la Oficina Nacional de Crédito Público
 (Ministerio de Economía), con corte al 31/05/2026.
 
-Hoy trae AL30, AE38, GD38, AO28 y AO29, más sus especies D y C. Agregar un
-bono es agregar una entrada al YAML.
+Los soberanos en dólares están completos: los diez del canje 2020 (AL29, AL30,
+AL35, AE38, AL41 y sus pares GD29, GD30, GD35, GD38, GD41, GD46) más los
+Bonares del Tesoro 2026 (AO27, AO28, AO29). Con sus especies D y C son 39.
 
-**AO29 tiene la fecha de emisión estimada**: no figura en ese archivo porque es
-posterior al corte. La estructura se dedujo del patrón de AO27/AO28 y de la
-descripción que devuelve IOL. El detalle lo marca con un aviso.
+Agregar un bono es agregar una entrada al YAML.
+
+**Dos avisos que la app marca en el detalle:**
+
+*AO29* tiene la fecha de emisión estimada: es posterior al corte del archivo.
+La estructura se dedujo del patrón de AO27 y AO28.
+
+*GD35* está descrito en el archivo oficial con la amortización del 2030 (13
+cuotas de 4%+8%), que parece un error de copiado: su par por ley argentina, el
+AL35, dice 10 cuotas iguales desde enero de 2031. Se usa esa.
+
+### La TIR del último operado
+
+La primera columna es la TIR calculada sobre el último precio. Sirve fuera de
+rueda, cuando no hay puntas. Si ese precio no es de hoy, la columna aparece
+atenuada: el bono no operó y el número puede estar viejo.
 
 ### Rulo: cada bono implica su propio dólar
 
@@ -87,8 +101,11 @@ por debajo del más caro para venderlos.** Ahí comprás por uno y vendés por e
 otro. Con las especies C sale el mismo cálculo para el cable.
 
 Todo se calcula contra puntas, no contra el último operado: es lo que
-realmente podrías ejecutar. Lo que todavía falta descontar son las comisiones
-de cada pata y verificar que haya volumen en las puntas.
+realmente podrías ejecutar.
+
+`rulo_umbral_pct` define desde qué diferencia se considera oportunidad. Por
+defecto 0,6%, que con comisiones de 0,15% cubre las cuatro patas. Una
+diferencia positiva pero menor se muestra igual, aclarando que no alcanza.
 
 ### D y C: dos monedas distintas
 
@@ -184,6 +201,11 @@ pares:
     soporte: 1.36
     alertas: true
 ```
+
+`factor` normaliza pares con láminas distintas: si un nominal de uno equivale
+a tres del otro, poné 3. Si no lo cargás, se deduce de los nominales por lámina
+que informe la API. **Al cambiarlo, la serie histórica de ese par queda
+calculada con el factor viejo.**
 
 `histeresis_pct` define cuánto tiene que retroceder el ratio para considerar que
 salió de zona. En 0.5 significa medio por ciento. Sirve para que un movimiento

@@ -1,9 +1,34 @@
 # Cronogramas de bonos soberanos.
+#
 # Fuente: "Estructura financiera de Títulos Públicos", Oficina Nacional de
 # Crédito Público, Ministerio de Economía — archivo al 31/05/2026.
-# Las especies D comparten flujo con su par en pesos: solo cambia el precio.
+#
+# Las especies D (dólar MEP) y C (cable) comparten el flujo con su par en
+# pesos: cambia dónde liquidan, no lo que paga el bono.
 
 bonos:
+
+  # ---------------------------------------------------------------
+  # Canje 2020 — ley argentina
+  # ---------------------------------------------------------------
+
+  AL29:
+    nombre: Bono Rep. Argentina USD 1% 2029
+    ley: argentina
+    moneda: USD
+    emision: 2020-09-04
+    vencimiento: 2029-07-09
+    base: 30/360
+    amortizacion:
+      tipo: cuotas
+      fechas_desde: 2025-01-09
+      frecuencia_meses: 6
+      cuotas_iguales: 10
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2021-07-09
+      tramos:
+        - {desde: 2020-09-04, tasa: 1.00}
 
   AL30:
     nombre: Bono Rep. Argentina USD Step Up 2030
@@ -12,7 +37,6 @@ bonos:
     emision: 2020-09-04
     vencimiento: 2030-07-09
     base: 30/360
-    # 13 cuotas: la primera 4%, las 12 restantes 8%
     amortizacion:
       tipo: cuotas
       fechas_desde: 2024-07-09
@@ -21,16 +45,35 @@ bonos:
     interes:
       frecuencia_meses: 6
       primer_pago: 2021-07-09
-      dias_pago: [01-09, 07-09]
       tramos:
-        - desde: 2020-09-04
-          tasa: 0.125
-        - desde: 2021-07-09
-          tasa: 0.50
-        - desde: 2023-07-09
-          tasa: 0.75
-        - desde: 2027-07-09
-          tasa: 1.75
+        - {desde: 2020-09-04, tasa: 0.125}
+        - {desde: 2021-07-09, tasa: 0.50}
+        - {desde: 2023-07-09, tasa: 0.75}
+        - {desde: 2027-07-09, tasa: 1.75}
+
+  AL35:
+    nombre: Bono Rep. Argentina USD Step Up 2035
+    ley: argentina
+    moneda: USD
+    emision: 2020-09-04
+    vencimiento: 2035-07-09
+    base: 30/360
+    amortizacion:
+      tipo: cuotas
+      fechas_desde: 2031-01-09
+      frecuencia_meses: 6
+      cuotas_iguales: 10
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2021-07-09
+      tramos:
+        - {desde: 2020-09-04, tasa: 0.125}
+        - {desde: 2021-07-09, tasa: 1.125}
+        - {desde: 2022-07-09, tasa: 1.50}
+        - {desde: 2023-07-09, tasa: 3.625}
+        - {desde: 2024-07-09, tasa: 4.125}
+        - {desde: 2027-07-09, tasa: 4.75}
+        - {desde: 2028-07-09, tasa: 5.00}
 
   AE38:
     nombre: Bono Rep. Argentina USD Step Up 2038
@@ -47,18 +90,105 @@ bonos:
     interes:
       frecuencia_meses: 6
       primer_pago: 2021-07-09
-      dias_pago: [01-09, 07-09]
       tramos:
-        - desde: 2020-09-04
-          tasa: 0.125
-        - desde: 2021-07-09
-          tasa: 2.00
-        - desde: 2022-07-09
-          tasa: 3.875
-        - desde: 2023-07-09
-          tasa: 4.25
-        - desde: 2024-07-09
-          tasa: 5.00
+        - {desde: 2020-09-04, tasa: 0.125}
+        - {desde: 2021-07-09, tasa: 2.00}
+        - {desde: 2022-07-09, tasa: 3.875}
+        - {desde: 2023-07-09, tasa: 4.25}
+        - {desde: 2024-07-09, tasa: 5.00}
+
+  AL41:
+    nombre: Bono Rep. Argentina USD Step Up 2041
+    ley: argentina
+    moneda: USD
+    emision: 2020-09-04
+    vencimiento: 2041-07-09
+    base: 30/360
+    amortizacion:
+      tipo: cuotas
+      fechas_desde: 2028-01-09
+      frecuencia_meses: 6
+      cuotas_iguales: 28
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2021-07-09
+      tramos:
+        - {desde: 2020-09-04, tasa: 0.125}
+        - {desde: 2021-07-09, tasa: 2.50}
+        - {desde: 2022-07-09, tasa: 3.50}
+        - {desde: 2029-07-09, tasa: 4.875}
+
+  # ---------------------------------------------------------------
+  # Canje 2020 — ley Nueva York
+  # ---------------------------------------------------------------
+
+  GD29:
+    nombre: Bono Global Rep. Argentina USD 1% 2029
+    ley: nueva_york
+    moneda: USD
+    emision: 2020-09-04
+    vencimiento: 2029-07-09
+    base: 30/360
+    amortizacion:
+      tipo: cuotas
+      fechas_desde: 2025-01-09
+      frecuencia_meses: 6
+      cuotas_iguales: 10
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2021-07-09
+      tramos:
+        - {desde: 2020-09-04, tasa: 1.00}
+
+  GD30:
+    nombre: Bono Global Rep. Argentina USD Step Up 2030
+    ley: nueva_york
+    moneda: USD
+    emision: 2020-09-04
+    vencimiento: 2030-07-09
+    base: 30/360
+    amortizacion:
+      tipo: cuotas
+      fechas_desde: 2024-07-09
+      frecuencia_meses: 6
+      cuotas: [4.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0]
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2021-07-09
+      tramos:
+        - {desde: 2020-09-04, tasa: 0.125}
+        - {desde: 2021-07-09, tasa: 0.50}
+        - {desde: 2023-07-09, tasa: 0.75}
+        - {desde: 2027-07-09, tasa: 1.75}
+
+  GD35:
+    nombre: Bono Global Rep. Argentina USD Step Up 2035
+    ley: nueva_york
+    moneda: USD
+    emision: 2020-09-04
+    vencimiento: 2035-07-09
+    base: 30/360
+    verificar: >-
+      El archivo del Ministerio describe la amortización del 2030 (13 cuotas
+      de 4%+8%), que parece un error de copiado: el AL35, su par por ley
+      argentina, dice 10 cuotas iguales desde enero de 2031. Se usa esa.
+      También hay un salto en los tramos de tasa entre 2028 y 2029.
+    amortizacion:
+      tipo: cuotas
+      fechas_desde: 2031-01-09
+      frecuencia_meses: 6
+      cuotas_iguales: 10
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2021-07-09
+      tramos:
+        - {desde: 2020-09-04, tasa: 0.125}
+        - {desde: 2021-07-09, tasa: 1.125}
+        - {desde: 2022-07-09, tasa: 1.50}
+        - {desde: 2023-07-09, tasa: 3.625}
+        - {desde: 2024-07-09, tasa: 4.125}
+        - {desde: 2027-07-09, tasa: 4.75}
+        - {desde: 2029-07-09, tasa: 5.00}
 
   GD38:
     nombre: Bono Global Rep. Argentina USD Step Up 2038
@@ -75,18 +205,76 @@ bonos:
     interes:
       frecuencia_meses: 6
       primer_pago: 2021-07-09
-      dias_pago: [01-09, 07-09]
       tramos:
-        - desde: 2020-09-04
-          tasa: 0.125
-        - desde: 2021-07-09
-          tasa: 2.00
-        - desde: 2022-07-09
-          tasa: 3.875
-        - desde: 2023-07-09
-          tasa: 4.25
-        - desde: 2024-07-09
-          tasa: 5.00
+        - {desde: 2020-09-04, tasa: 0.125}
+        - {desde: 2021-07-09, tasa: 2.00}
+        - {desde: 2022-07-09, tasa: 3.875}
+        - {desde: 2023-07-09, tasa: 4.25}
+        - {desde: 2024-07-09, tasa: 5.00}
+
+  GD41:
+    nombre: Bono Global Rep. Argentina USD Step Up 2041
+    ley: nueva_york
+    moneda: USD
+    emision: 2020-09-04
+    vencimiento: 2041-07-09
+    base: 30/360
+    amortizacion:
+      tipo: cuotas
+      fechas_desde: 2028-01-09
+      frecuencia_meses: 6
+      cuotas_iguales: 28
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2021-07-09
+      tramos:
+        - {desde: 2020-09-04, tasa: 0.125}
+        - {desde: 2021-07-09, tasa: 2.50}
+        - {desde: 2022-07-09, tasa: 3.50}
+        - {desde: 2029-07-09, tasa: 4.875}
+
+  GD46:
+    nombre: Bono Global Rep. Argentina USD Step Up 2046
+    ley: nueva_york
+    moneda: USD
+    emision: 2020-09-04
+    vencimiento: 2046-07-09
+    base: 30/360
+    amortizacion:
+      tipo: cuotas
+      fechas_desde: 2025-01-09
+      frecuencia_meses: 6
+      cuotas_iguales: 44
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2021-07-09
+      tramos:
+        - {desde: 2020-09-04, tasa: 0.125}
+        - {desde: 2021-07-09, tasa: 1.125}
+        - {desde: 2022-07-09, tasa: 1.50}
+        - {desde: 2023-07-09, tasa: 3.625}
+        - {desde: 2024-07-09, tasa: 4.125}
+        - {desde: 2027-07-09, tasa: 4.375}
+        - {desde: 2028-07-09, tasa: 5.00}
+
+  # ---------------------------------------------------------------
+  # Bonares del Tesoro 2026 — bullet, cupón mensual
+  # ---------------------------------------------------------------
+
+  AO27:
+    nombre: Bonar Tesoro Nacional 6% USD 29/10/2027
+    ley: argentina
+    moneda: USD
+    emision: 2026-02-27
+    vencimiento: 2027-10-29
+    base: actual/360
+    resolucion: Res. Conj. 11/2026
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 1
+      dia_pago: ultimo_habil
+      tramos:
+        - {desde: 2026-02-27, tasa: 6.00}
 
   AO28:
     nombre: Bonar Tesoro Nacional 6% USD 31/10/2028
@@ -96,42 +284,55 @@ bonos:
     vencimiento: 2028-10-31
     base: actual/360
     resolucion: Res. Conj. 16/2026
-    amortizacion:
-      tipo: bullet          # integra al vencimiento
+    amortizacion: {tipo: bullet}
     interes:
-      frecuencia_meses: 1   # pagadero mensualmente
+      frecuencia_meses: 1
       dia_pago: ultimo_habil
       tramos:
-        - desde: 2026-03-31
-          tasa: 6.00
+        - {desde: 2026-03-31, tasa: 6.00}
 
   AO29:
     nombre: Bono Tesoro Nacional 6% USD 31/10/2029
     ley: argentina
     moneda: USD
-    emision: 2026-06-30    # PENDIENTE DE CONFIRMAR
+    emision: 2026-06-30
     vencimiento: 2029-10-31
     base: actual/360
     verificar: >-
-      No figura en el archivo del Ministerio al 31/05/2026. Estructura
-      deducida de la descripción de IOL y del patrón de AO27/AO28.
-      Confirmar contra la resolución de emisión.
-    amortizacion:
-      tipo: bullet
+      No figura en el archivo del Ministerio al 31/05/2026 porque es
+      posterior al corte. La estructura se dedujo del patrón de AO27 y AO28
+      y de la descripción que devuelve IOL. La fecha de emisión es estimada:
+      no afecta la TIR ni la duration, pero conviene confirmarla.
+    amortizacion: {tipo: bullet}
     interes:
       frecuencia_meses: 1
       dia_pago: ultimo_habil
       tramos:
-        - desde: 2026-06-30
-          tasa: 6.00
+        - {desde: 2026-06-30, tasa: 6.00}
 
-# Las especies en dólares comparten cronograma con la especie en pesos.
 equivalencias:
+  AL29D: AL29
+  AL29C: AL29
   AL30D: AL30
   AL30C: AL30
+  AL35D: AL35
+  AL35C: AL35
   AE38D: AE38
   AE38C: AE38
+  AL41D: AL41
+  AL41C: AL41
+  GD29D: GD29
+  GD29C: GD29
+  GD30D: GD30
+  GD30C: GD30
+  GD35D: GD35
+  GD35C: GD35
   GD38D: GD38
   GD38C: GD38
+  GD41D: GD41
+  GD41C: GD41
+  GD46D: GD46
+  GD46C: GD46
+  AO27D: AO27
   AO28D: AO28
   AO29D: AO29

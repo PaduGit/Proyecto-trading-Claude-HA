@@ -158,6 +158,7 @@ table.tabla th{text-align:right;color:var(--muted);font-weight:500;
 table.tabla th:first-child,table.tabla td:first-child{text-align:left}
 table.tabla td{padding:6px 4px;text-align:right;border-bottom:1px solid var(--rule)}
 table.tabla tr.si td{color:var(--sage)}
+table.tabla tr.flojo td{opacity:.55}
 table.tabla tr.dolar td:first-child{color:var(--amber)}
 .scroll{max-height:60vh;overflow:auto;-webkit-overflow-scrolling:touch}
 
@@ -179,7 +180,9 @@ table.tabla tr.dolar td:first-child{color:var(--amber)}
   letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
 pre.crudo{background:var(--ink);border:1px solid var(--rule);border-radius:3px;
   padding:10px;font-family:var(--mono);font-size:10px;color:var(--muted);
-  overflow:auto;max-height:40vh;white-space:pre-wrap;word-break:break-word;margin:0}
+  overflow:auto;max-height:75vh;white-space:pre-wrap;word-break:break-word;
+  margin:0;-webkit-overflow-scrolling:touch}
+pre.crudo.completo{max-height:none}
 
 dialog{background:var(--panel);color:var(--bone);border:1px solid var(--rule);
   border-radius:6px;padding:16px;width:min(92vw,420px);max-height:86vh}
@@ -226,6 +229,7 @@ table.bonos td.tk{color:var(--bone);font-weight:600;cursor:pointer}
 table.bonos td.tk:hover{color:var(--amber)}
 table.bonos tr.usd td.tk{color:var(--sage)}
 table.bonos .tir{color:var(--bone)}
+table.bonos .tir.viejo{color:var(--muted);font-style:italic}
 .chart .linea-iol{fill:none;stroke:var(--muted);stroke-width:1;
   stroke-dasharray:2 2;opacity:.8}
 .leyenda{display:flex;gap:14px;justify-content:center;font-family:var(--mono);
@@ -504,8 +508,17 @@ let abierto = {};
 let ultimoEstado = null;
 let opCtx = {};
 
-const num = (v,d=4) => (v==null?0:v).toLocaleString("es-AR",
-  {minimumFractionDigits:d, maximumFractionDigits:d});
+/* Cifras significativas: 1,3095 -> 1,310 y 1530,7481 -> 1531.
+   Cada ratio con la precisión que necesita, sin decimales de más. */
+const num = (v, sig=4) => {
+  if(v == null || !isFinite(v)) return "—";
+  const a = Math.abs(v);
+  if(a === 0) return "0";
+  const ent = Math.max(1, Math.floor(Math.log10(a)) + 1);
+  const dec = Math.max(0, Math.min(8, sig - ent));
+  return v.toLocaleString("es-AR",
+    {minimumFractionDigits:dec, maximumFractionDigits:dec});
+};
 const precio = v => (v==null?0:v).toLocaleString("es-AR",
   {minimumFractionDigits:2, maximumFractionDigits:2});
 const ent = v => (v==null?0:v).toLocaleString("es-AR",{maximumFractionDigits:0});
@@ -851,10 +864,12 @@ async function calcularPlazos(){
       '<div class="hallazgo"><div class="scroll"><table class="tabla"><thead><tr>' +
       '<th>Ticker</th><th>Compra t0</th><th>Venta t1</th><th>Neto</th>' +
       '<th>Caución</th><th>Cant.</th></tr></thead><tbody>' +
-      d.filas.map(f => f.error
+      d.filas.slice().sort((a,b) =>
+        (b.conviene?1:0) - (a.conviene?1:0) ||
+        (b.neto_pct ?? -999) - (a.neto_pct ?? -999)).map(f => f.error
         ? '<tr><td>' + esc(f.ticker) + '</td><td colspan="5" style="text-align:left;' +
           'color:var(--muted)">' + esc(f.error) + '</td></tr>'
-        : '<tr class="' + (f.conviene ? "si" : "") + '"><td>' + esc(f.ticker) + '</td>' +
+        : '<tr class="' + (f.conviene ? "si" : "flojo") + '"><td>' + esc(f.ticker) + '</td>' +
           '<td>' + precio(f.compra_t0) + '</td><td>' + precio(f.venta_t1) + '</td>' +
           '<td>' + pct(f.neto_pct) + '</td><td>' + pct(f.caucion_dia_pct) + '</td>' +
           '<td>' + ent(f.ejecutable) + '</td></tr>').join("") +
@@ -1007,7 +1022,9 @@ $("#e-path-btn").addEventListener("click", async () => {
     const r = await fetch(base + "api/explorar/raw?path=" + encodeURIComponent(path));
     const d = await r.json();
     out.innerHTML = r.ok
-      ? '<pre class="crudo">' + esc(JSON.stringify(d.respuesta, null, 2)) + '</pre>'
+      ? '<button class="secundario" onclick="this.nextElementSibling.classList.toggle(\'completo\')">' +
+        'Ver completa / plegar</button><pre class="crudo">' +
+        esc(JSON.stringify(d.respuesta, null, 2)) + '</pre>'
       : '<div class="msg error">' + esc(d.error || "Falló.") + '</div>';
   }catch(e){ out.innerHTML = '<div class="msg error">No se pudo consultar.</div>'; }
 });
@@ -1306,19 +1323,24 @@ async function cargarBonos(){
       'corresponde a cada punta.</div>';
 
     out.innerHTML = '<div class="hallazgo" style="padding:8px 10px">' +
-      '<table class="bonos"><thead><tr><th>Especie</th><th>Bid</th>' +
-      '<th>TIR Bid</th><th>TIR Ask</th><th>Ask</th></tr></thead><tbody>' +
+      '<table class="bonos"><thead><tr><th>Especie</th>' +
+      '<th>TIR Last</th><th>Bid</th><th>TIR Bid</th><th>TIR Ask</th><th>Ask</th>' +
+      '</tr></thead><tbody>' +
       d.filas.map(f => {
         const p = v => v ? (f.moneda === "USD" ? precio(v) : ent(v)) : "—";
         const t = v => v == null ? "—" : v.toFixed(2) + "%";
         return '<tr class="' + (f.moneda === "USD" ? "usd" : "") + '">' +
           '<td class="tk" onclick="verBono(\'' + esc(f.simbolo) + '\')">' +
           esc(f.simbolo) + '</td>' +
+          '<td class="tir' + (f.last_viejo ? " viejo" : "") + '">' +
+            t(f.tir_last) + '</td>' +
           '<td>' + p(f.bid) + '</td><td class="tir">' + t(f.tir_bid) + '</td>' +
           '<td class="tir">' + t(f.tir_ask) + '</td><td>' + p(f.ask) + '</td></tr>';
       }).join("") + '</tbody></table></div>' +
       '<div class="nota" style="margin-top:8px">Ordenados por duration ' +
-      'modificada. Tocá el ticker para ver el detalle y el flujo.<br><br>' +
+      'modificada. Tocá el ticker para ver el detalle y el flujo. ' +
+      'La TIR del último operado sirve cuando no hay puntas; atenuada ' +
+      'significa que ese precio no es de hoy.<br><br>' +
       'Las TIR de las especies C están medidas en dólar cable y las de las D ' +
       'en MEP, así que no se comparan entre sí. La solapa Rulo muestra esa ' +
       'diferencia.</div>';
@@ -1413,7 +1435,11 @@ async function cargarRulo(){
             esc(c.comprar_en) + ' a ' + precio(c.precio_compra) + ' y vendés en ' +
             esc(c.vender_en) + ' a ' + precio(c.precio_venta) + ': ' +
             pct(c.diferencia_pct) + ' antes de comisiones.</div>'
-          : '<div class="nota" style="margin:0 0 10px">Más barato para comprar: ' +
+          : '<div class="nota" style="margin:0 0 10px">' +
+            (c.diferencia_pct > 0 && !c.hay_rulo
+              ? 'La diferencia es positiva pero no llega al umbral de ' +
+                c.umbral_pct + '%, así que no cubre las comisiones.<br>' : '') +
+            'Más barato para comprar: ' +
             esc(c.comprar_en) + ' a ' + precio(c.precio_compra) +
             '. Más caro para vender: ' + esc(c.vender_en) + ' a ' +
             precio(c.precio_venta) + '. Diferencia ' + pct(c.diferencia_pct) +

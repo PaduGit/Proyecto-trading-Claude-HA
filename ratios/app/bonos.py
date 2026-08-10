@@ -135,6 +135,8 @@ def fila(simbolo, info, cot, mep, liq=None):
         "tir_bid": tir_bid,
         "tir_ask": tir_ask,
         "tir_last": tir_last,
+        "last_viejo": bool(cot.get("fecha") and str(cot["fecha"])[:10] <
+                           liq.isoformat()),
         "md": md,
         "vencimiento": str(cfg["vencimiento"])[:10],
     }
@@ -284,7 +286,7 @@ def _tc(pesos, dolarizada):
     }
 
 
-def rulo(cot):
+def rulo(cot, umbral_pct=0.6):
     """Tipos de cambio implícitos por bono y el ciclo más conveniente.
 
     Si el bono más barato para comprar dólares está por debajo del más caro
@@ -325,7 +327,8 @@ def rulo(cot):
                 "comprar_en": b_bono, "precio_compra": barato,
                 "vender_en": c_bono, "precio_venta": caro,
                 "diferencia_pct": (caro / barato - 1) * 100,
-                "hay_rulo": caro > barato,
+                "umbral_pct": umbral_pct,
+                "hay_rulo": (caro / barato - 1) * 100 >= umbral_pct,
                 "mismo_bono": b_bono == c_bono,
             }
 

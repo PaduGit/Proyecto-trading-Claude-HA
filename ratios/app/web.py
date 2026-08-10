@@ -360,7 +360,8 @@ def crear_app(monitor):
     @app.get("/api/rulo")
     def rulo_tabla():
         try:
-            return jsonify(BO.rulo(_cot_bonos()))
+            umbral = float(monitor.cfg.get("rulo_umbral_pct") or 0.6)
+            return jsonify(BO.rulo(_cot_bonos(), umbral))
         except Exception as e:
             log.exception("rulo")
             return jsonify({"error": str(e)}), 500

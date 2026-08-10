@@ -64,6 +64,7 @@ def validar(cfg):
             "mercado": (p.get("mercado") or "bCBA").strip(),
             "plazo": (p.get("plazo") or "t1").strip(),
             "resistencia": r, "soporte": s,
+            "factor": float(p.get("factor") or 0) or None,
             "alertas": bool(p.get("alertas", True)),
         })
     if not limpios:

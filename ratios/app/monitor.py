@@ -56,6 +56,23 @@ class Monitor:
 
     # -- helpers ------------------------------------------------------
 
+    def _factor(self, par, num, den):
+        """Normaliza pares con láminas distintas.
+
+        Si el par declara 'factor', manda ese. Si no, se deduce de los
+        nominales por lámina que informa la API, cuando ambos los traen.
+        """
+        f = par.get("factor")
+        if f:
+            try:
+                return float(f)
+            except (TypeError, ValueError):
+                return 1.0
+        ln, ld = num.get("lote") or 0, den.get("lote") or 0
+        if ln and ld and ln != ld:
+            return ld / ln
+        return 1.0
+
     def par_por_alias(self, alias):
         for p in self.pares:
             if p["alias"] == alias:
@@ -258,7 +275,7 @@ class Monitor:
         if not num or not den or not num["ref"] or not den["ref"]:
             raise IOLError("sin precio para %s o %s" % (par["num"], par["den"]))
 
-        ratio = num["ref"] / den["ref"]
+        ratio = num["ref"] / den["ref"] * self._factor(par, num, den)
         est = self.estadistica(par)
         previa = self._zona_actual.get(par["alias"], "normal")
         zona, nivel = self._zona(par, ratio, est)
@@ -286,6 +303,7 @@ class Monitor:
         estado = {
             "alias": par["alias"], "num": par["num"], "den": par["den"],
             "cerca": _cerca_del_borde(par, ratio, est),
+            "factor": self._factor(par, num, den),
             "ratio": ratio, "zona": zona, "zona_previa": previa,
             "resistencia": par.get("resistencia") or 0,
             "soporte": par.get("soporte") or 0,

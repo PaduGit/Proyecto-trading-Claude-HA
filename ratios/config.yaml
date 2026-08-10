@@ -1,5 +1,5 @@
 name: Ratios IOL
-version: "0.6.0"
+version: "0.7.0"
 slug: ratios_iol
 description: Monitor de ratios entre especies, arbitraje de plazos y screener
 url: https://github.com/PaduGit/Proyecto-trading-Claude-HA
@@ -35,6 +35,7 @@ options:
   market_close: "17:15"
   timezone: America/Argentina/Buenos_Aires
   histeresis_pct: 0.5
+  rulo_umbral_pct: 0.6
   tasa_caucion_anual: 0
   paneles:
     - instrumento: Bonos
@@ -114,6 +115,7 @@ schema:
   market_close: str
   timezone: str
   histeresis_pct: float(0,10)
+  rulo_umbral_pct: float(0,20)
   tasa_caucion_anual: float(0,500)
   paneles:
     - instrumento: str
@@ -134,4 +136,5 @@ schema:
       plazo: str
       resistencia: float
       soporte: float
+      factor: float?
       alertas: bool
