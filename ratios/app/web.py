@@ -34,7 +34,9 @@ def crear_app(monitor):
         slug = os.environ.get("HOSTNAME", "") or ""
         slug = slug.replace("-", "_") if slug else ""
         cfg_slug = (monitor.cfg.get("addon_slug") or slug or "").strip()
-        html = html.replace("<body>", '<body data-slug="%s">' % cfg_slug, 1)
+        html = html.replace(
+            "<body>",
+            '<body data-slug="%s" data-version="%s">' % (cfg_slug, _version()), 1)
         return app.response_class(html, mimetype="text/html")
 
     # -- panel --------------------------------------------------------
@@ -520,6 +522,20 @@ def crear_app(monitor):
 
 
 # -- auxiliares -------------------------------------------------------
+
+def _version():
+    """Lee la versión del config.yaml del add-on: una sola fuente de verdad."""
+    import os
+    ruta = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.yaml")
+    try:
+        with open(ruta, encoding="utf-8") as f:
+            for linea in f:
+                if linea.startswith("version:"):
+                    return linea.split(":", 1)[1].strip().strip('"\'')
+    except Exception:
+        pass
+    return ""
+
 
 def _recordar_par(num, den, mercado, plazo):
     import json

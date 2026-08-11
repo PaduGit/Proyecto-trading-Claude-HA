@@ -34,6 +34,8 @@ header{position:sticky;top:0;z-index:20;background:rgba(14,20,27,.94);
 .hrow{display:flex;align-items:center;justify-content:space-between;gap:10px}
 h1{font-family:var(--mono);font-size:15px;font-weight:600;
   letter-spacing:.14em;text-transform:uppercase;margin:0}
+.ver-app{font-size:9px;font-weight:400;letter-spacing:.06em;
+  color:var(--muted);text-transform:none;margin-left:2px}
 .reloj{display:flex;align-items:center;gap:8px}
 .hace{font-family:var(--mono);font-size:11px;color:var(--muted);
   font-variant-numeric:tabular-nums;text-align:right;line-height:1.25}
@@ -247,7 +249,7 @@ table.bonos .tir.viejo{color:var(--muted);font-style:italic}
 
 <header>
   <div class="hrow">
-    <h1>Ratios</h1>
+    <h1>Ratios <span class="ver-app" id="ver-app"></span></h1>
     <div class="reloj">
       <div class="hace" id="hace"><b>—</b>conectando</div>
       <button class="refrescar" id="btn-refrescar" title="Actualizar ahora"
@@ -1636,6 +1638,8 @@ async function cargarRulo(){
     out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
   }finally{ $("#r-btn").disabled = false; }
 }
+
+$("#ver-app").textContent = document.body.dataset.version || "";
 
 cargarPanel();
 setInterval(() => { if(vista === "panel") cargarPanel(); }, 30000);
