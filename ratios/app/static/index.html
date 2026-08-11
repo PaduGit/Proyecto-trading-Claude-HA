@@ -1285,10 +1285,16 @@ $("#probar-cer").addEventListener("click", async e => {
   try{
     const d = await (await fetch(base + "api/cer/probar",
       {method:"POST"})).json();
-    alert(d.dias_traidos
-      ? "El BCRA respondió: " + d.dias_traidos + " días de CER guardados.\n" +
-        "CER vigente: " + (d.vigente ?? "—")
-      : "El BCRA no respondió.\n\n" + (d.error || "sin detalle"));
+    if(d.dias_traidos){
+      alert("El BCRA respondió: " + d.dias_traidos + " días guardados.\n" +
+            "CER vigente: " + (d.vigente ?? "—") + "\n" +
+            "En la base: " + (d.rango || "—") + "\n\n" +
+            (d.bonos || []).join("\n"));
+    } else {
+      alert("No se pudo obtener el CER.\n\n" + (d.error || "sin detalle") +
+            (d.respuesta ? "\n\nRespuesta del BCRA:\n" +
+             d.respuesta.slice(0,300) : ""));
+    }
   }catch(err){ alert("No se pudo probar."); }
 });
 

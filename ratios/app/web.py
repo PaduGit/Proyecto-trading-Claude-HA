@@ -399,9 +399,25 @@ def crear_app(monitor):
         CER.reintentar_ya()
         hoy = _d.today()
         n = CER.descargar((hoy - _t(days=30)).isoformat(), hoy.isoformat())
-        return jsonify({"dias_traidos": n, "vigente": CER.vigente(),
+        bonos_cfg, _ = BO.cargar()
+        act = CER.vigente()
+        det = []
+        for tk, cfg in bonos_cfg.items():
+            if (cfg.get("ajuste") or "").lower() != "cer":
+                continue
+            emi = str(cfg.get("emision"))[:10]
+            base = cfg.get("cer_base") or CER.base_de(emi)
+            det.append("%s emi %s base %s factor %s" % (
+                tk, emi, round(base, 2) if base else "?",
+                round(act / base, 4) if (base and act) else "?"))
+        rango = db.conn().execute(
+            "SELECT MIN(fecha) a, MAX(fecha) b, COUNT(*) n FROM cer").fetchone()
+        return jsonify({"dias_traidos": n, "vigente": act,
                         "error": CER.ultimo_error,
-                        "respuesta": CER.ultima_respuesta})
+                        "respuesta": CER.ultima_respuesta,
+                        "rango": "%s a %s (%s días)" % (
+                            rango["a"], rango["b"], rango["n"]),
+                        "bonos": det})
 
     @app.get("/api/notificaciones/diagnostico")
     def notif_diag():

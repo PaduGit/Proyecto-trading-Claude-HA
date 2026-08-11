@@ -109,6 +109,15 @@ falla.
 Si el BCRA no responde, la app espera cinco minutos antes de reintentar para
 no golpearlo en cada consulta.
 
+**La serie se descarga por tramos anuales.** El BCRA acota cuántos días
+devuelve por pedido, así que pedirle cuatro años de una no funciona. Al
+arrancar cubre desde la emisión más vieja de los bonos cargados hasta hoy, y
+después solo agrega lo que falte.
+
+Si para una fecha el CER más cercano quedó a más de quince días, la app no
+calcula la TIR de ese bono. Un coeficiente viejo daría un número disparatado
+sin que se note.
+
 Cargados: TZXA7, TZXS8, TZXM9 y TX31 desde la fuente oficial. **TZXD8 tiene
 fechas estimadas**: no hay ningún Boncer cupón cero con vencimiento en
 diciembre de 2028 en el archivo al 31/05/2026.
