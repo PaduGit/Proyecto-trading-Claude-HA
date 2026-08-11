@@ -92,6 +92,20 @@ def fechas_interes(esp, hasta):
     return out
 
 
+def _pegar_a_cupon(amorts, pagos_int, tolerancia=3):
+    """Alinea la fecha de amortización con la del cupón más cercano."""
+    if not pagos_int:
+        return amorts
+    out = {}
+    for f, c in amorts.items():
+        cerca = min(pagos_int, key=lambda p: abs((p - f).days))
+        if abs((cerca - f).days) <= tolerancia:
+            out[cerca] = out.get(cerca, 0.0) + c
+        else:
+            out[f] = out.get(f, 0.0) + c
+    return out
+
+
 def flujo(esp, desde=None):
     """Flujo futuro por cada 100 de valor nominal original.
 
@@ -104,6 +118,9 @@ def flujo(esp, desde=None):
     base = esp.get("base", "30/360")
     tramos = esp["interes"]["tramos"]
 
+    # si una amortización cae a uno o dos días de un cupón, es el mismo
+    # servicio: los prospectos redondean distinto la fecha de cada pata
+    amorts = _pegar_a_cupon(amorts, pagos_int)
     todas = sorted(set(list(amorts) + pagos_int))
     residual = 100.0
     anterior = _fecha(esp["emision"])

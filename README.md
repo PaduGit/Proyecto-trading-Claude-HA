@@ -63,6 +63,17 @@ cambio.
 El par de referencia es configurable (`mep_par_pesos` / `mep_par_usd`).
 Por defecto AL30/AL30D, que suele tener el spread más angosto.
 
+### De dónde salen los datos
+
+El archivo "Estructura financiera de Títulos Públicos" del Ministerio sale una
+vez por mes y a veces trae errores. Para los instrumentos nuevos conviene el
+**llamado a licitación**, que se publica en argentina.gob.ar con las
+condiciones completas: emisión, vencimiento, amortización y ajuste.
+
+Ojo con una limitación: cada llamado detalla solo los instrumentos **nuevos**.
+Las reaperturas se mencionan sin condiciones, porque ya se publicaron cuando el
+bono nació.
+
 ### Los cronogramas
 
 Están en `ratios/app/datos/bonos.yaml`, transcritos del archivo "Estructura
@@ -118,9 +129,30 @@ Si para una fecha el CER más cercano quedó a más de quince días, la app no
 calcula la TIR de ese bono. Un coeficiente viejo daría un número disparatado
 sin que se note.
 
-Cargados: TZXA7, TZXS8, TZXM9 y TX31 desde la fuente oficial. **TZXD8 tiene
-fechas estimadas**: no hay ningún Boncer cupón cero con vencimiento en
-diciembre de 2028 en el archivo al 31/05/2026.
+Cargados: TZXA7, TZXS8, TZXM9, TZXD8 y TX31.
+
+**Dos correcciones sobre el archivo del Ministerio:**
+
+*TX31* figura como "integra al vencimiento", pero el flujo real muestra diez
+cuotas iguales desde mayo de 2027, con la renta decreciendo sobre el residual.
+Con bullet la renta sería constante. Se usa el cronograma real.
+
+*TZXD8* no está en el archivo al 31/05/2026 porque se emitió después. Las
+fechas —emisión 30/06/2026, vencimiento 15/12/2028— salen del llamado a
+licitación del 24 de junio.
+
+### Verificado contra una fuente independiente
+
+| | app | referencia |
+|---|---|---|
+| TX31 TIR real | 9,22% | 9,22% |
+| TX31 duration mod. | 2,55 | 2,55 |
+| TX31 valor técnico | 1.736,09 | 1.736,08 |
+| TZXD8 TIR real | 8,60% | 8,60% |
+| TZXD8 duration mod. | 2,16 | 2,16 |
+
+El valor técnico es la prueba más exigente: valida el cronograma, el CER base
+y el rezago de diez días hábiles a la vez.
 
 ### Familias
 

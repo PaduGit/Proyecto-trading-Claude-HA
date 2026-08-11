@@ -384,7 +384,16 @@ bonos:
     base: 30/360
     resolucion: RESFC-2022-40-APN-SH#MEC
     cer_base: 0
-    amortizacion: {tipo: bullet}
+    corregido: >-
+      El archivo del Ministerio dice "integra al vencimiento", pero el flujo
+      real muestra 10 cuotas iguales de amortización desde mayo de 2027, con
+      la renta decreciendo de 21,70 a 2,17 sobre residual. Con bullet la
+      renta sería constante. Se usa el cronograma real.
+    amortizacion:
+      tipo: cuotas
+      fechas_desde: 2027-05-31
+      frecuencia_meses: 6
+      cuotas_iguales: 10
     interes:
       frecuencia_meses: 6
       primer_pago: 2022-11-30
@@ -392,22 +401,19 @@ bonos:
         - {desde: 2022-05-31, tasa: 2.50}
 
   TZXD8:
-    nombre: Boncer 0% diciembre 2028
+    nombre: Boncer 0% 15/12/2028
     ley: argentina
     moneda: ARS
     ajuste: cer
     emision: 2026-06-30
-    vencimiento: 2028-12-29
+    vencimiento: 2028-12-15
     base: 30/360
+    resolucion: Licitación del 24/06/2026, liquidación 30/06/2026
     cer_base: 0
-    verificar: >-
-      No figura en el archivo del Ministerio al 31/05/2026: no hay ningún
-      Boncer cupón cero con vencimiento en diciembre de 2028. Emisión y
-      vencimiento son estimados. Confirmar antes de usar esta TIR.
     amortizacion: {tipo: bullet}
     interes:
       frecuencia_meses: 6
-      primer_pago: 2028-12-29
+      primer_pago: 2028-12-15
       tramos:
         - {desde: 2026-06-30, tasa: 0.0}
 
