@@ -8,6 +8,7 @@ RUN apk add --no-cache python3 py3-pip tzdata \
        requests==2.32.3 flask==3.0.3 waitress==3.0.0 pyyaml==6.0.2
 
 COPY app /app
+COPY config.yaml /config.yaml
 COPY run.sh /run.sh
 RUN chmod a+x /run.sh
 

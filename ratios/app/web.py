@@ -526,14 +526,18 @@ def crear_app(monitor):
 def _version():
     """Lee la versión del config.yaml del add-on: una sola fuente de verdad."""
     import os
-    ruta = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.yaml")
-    try:
-        with open(ruta, encoding="utf-8") as f:
-            for linea in f:
-                if linea.startswith("version:"):
-                    return linea.split(":", 1)[1].strip().strip('"\'')
-    except Exception:
-        pass
+    candidatas = [
+        "/config.yaml",                                    # copiado por el Dockerfile
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.yaml"),
+    ]
+    for ruta in candidatas:
+        try:
+            with open(ruta, encoding="utf-8") as f:
+                for linea in f:
+                    if linea.startswith("version:"):
+                        return linea.split(":", 1)[1].strip().strip('"\'')
+        except Exception:
+            continue
     return ""
 
 

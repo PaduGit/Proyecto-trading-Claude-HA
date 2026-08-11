@@ -1311,10 +1311,14 @@ async function probarNotificacion(){
     if(!d.ha_token) falta.push("falta el permiso homeassistant_api: " +
       "desinstalá la app y volvé a instalarla");
     if(!d.telegram_listo) falta.push("Telegram sin configurar");
-    const env = (d.env_detectadas && d.env_detectadas.length)
-      ? "\n\nVariables que ve el contenedor: " + d.env_detectadas.join(", ")
-      : "\n\nEl contenedor no recibe ninguna variable de token.";
-    alert("No se pudo enviar. " + (falta.join(". ") || "Mirá el registro.") + env);
+    let txt = "No se pudo enviar.";
+    if(falta.length) txt += " " + falta.join(". ") + ".";
+    if(d.error_ha) txt += "\n\nAl llamar a Home Assistant:\n" + d.error_ha;
+    else if(d.ha_listo) txt += "\n\nHome Assistant aceptó la llamada pero " +
+      "no llegó nada. Revisá que el servicio " + (d.servicio_final || "?") +
+      " sea el correcto en Herramientas de desarrollo → Acciones.";
+    txt += "\n\nVía: " + (d.via || "?") + " · " + (d.api || "?");
+    alert(txt);
   }catch(e){ alert("No se pudo probar."); }
 }
 
@@ -1360,7 +1364,9 @@ async function cargarBonos(){
       '<th>TIR Last</th><th>Bid</th><th>TIR Bid</th><th>TIR Ask</th><th>Ask</th>' +
       '</tr></thead><tbody>' +
       filtrarFamilia(d.filas).map(f => {
-        const p = v => v ? (f.moneda === "USD" ? precio(v) : ent(v)) : "—";
+        /* los bonos en pesos cotizan en miles y no necesitan decimales;
+           los dolarizados y los CER sí */
+        const p = v => !v ? "—" : (Math.abs(v) < 10000 ? precio(v) : ent(v));
         const t = v => v == null ? "—" : v.toFixed(2) + "%";
         const clase = f.moneda === "USD" ? "usd"
                     : f.moneda === "CER" ? "cer" : "";

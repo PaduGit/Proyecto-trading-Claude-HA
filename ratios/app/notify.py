@@ -39,6 +39,7 @@ class Notificador:
             self.via = "supervisor"
 
         self.tg_ok = bool(self.tg_token and self.tg_chat)
+        self.error_ha = None
         self.ha_ok = bool(self.servicio_ha and self.token)
 
         if self.canal in ("ha", "ambos") and not self.ha_ok:
@@ -98,11 +99,16 @@ class Notificador:
                          "Content-Type": "application/json"},
                 json=datos, timeout=15)
             if r.status_code >= 300:
-                log.error("HA notify %s: %s", r.status_code, r.text[:180])
+                self.error_ha = "%s -> HTTP %s: %s" % (
+                    self.base_api, r.status_code, r.text[:160])
+                log.error("HA notify %s", self.error_ha)
                 return False
+            self.error_ha = None
             return True
         except Exception as e:
-            log.error("HA notify fallo: %s", e)
+            self.error_ha = "%s -> %s: %s" % (
+                self.base_api, type(e).__name__, str(e)[:200])
+            log.error("HA notify %s", self.error_ha)
             return False
 
     # -- api ----------------------------------------------------------
@@ -136,6 +142,8 @@ class Notificador:
             "ha_listo": self.ha_ok,
             "telegram_listo": self.tg_ok,
             "panel_path": self.panel or None,
+            "error_ha": self.error_ha,
+            "servicio_final": (self.servicio_ha or "").replace("notify.", ""),
         }
 
     def probar(self):
