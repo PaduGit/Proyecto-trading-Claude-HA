@@ -289,6 +289,9 @@ def detalle(simbolo, cot, liq=None, par_mep=("AL30", "AL30D"), cer_actual=0):
     residual = m.get("residual") or RF.residual(cfg, liq)
     corrido = m.get("interes_corrido") or RF.interes_corrido(cfg, liq)
     tecnico = residual + corrido
+    fcer = factor_cer(cfg, cer_actual)
+    if fcer and fcer != 1.0:
+        tecnico *= fcer
     cupon = m.get("cupon_vigente") or 0
 
     return {
@@ -306,7 +309,9 @@ def detalle(simbolo, cot, liq=None, par_mep=("AL30", "AL30D"), cer_actual=0):
         "residual": residual,
         "interes_corrido": corrido,
         "valor_tecnico": tecnico,
-        "paridad": (precio_usd / tecnico * 100) if tecnico else None,
+        "paridad": ((f["last"] if fcer != 1.0 else precio_usd) / tecnico * 100)
+                   if tecnico else None,
+        "cer_factor": fcer if fcer != 1.0 else None,
         "cupon_vigente": cupon,
         "current_yield": (residual * cupon / 100.0 / precio_usd * 100)
                          if precio_usd else None,

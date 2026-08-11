@@ -1430,6 +1430,7 @@ async function verBono(sim){
       '<dt>Cupón vigente</dt><dd>' + val(d.cupon_vigente) + '% anual</dd>' +
       '<dt>Interés corrido</dt><dd>' + val(d.interes_corrido, "", 4) + '</dd>' +
       '<dt>Valor técnico</dt><dd>' + val(d.valor_tecnico) + '</dd>' +
+      (d.cer_factor ? '<dt>Factor CER</dt><dd>' + val(d.cer_factor, "", 4) + '</dd>' : "") +
       '<dt>Paridad</dt><dd>' + val(d.paridad) + '%</dd>' +
       '<dt>Current yield</dt><dd>' + val(d.current_yield) + '%</dd>' +
       (d.spread_tir != null ? '<dt>Spread TIR</dt><dd>' +
