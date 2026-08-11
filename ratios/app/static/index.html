@@ -256,6 +256,7 @@ table.bonos .tir.viejo{color:var(--muted);font-style:italic}
               aria-label="Más opciones" aria-haspopup="true">⋮</button>
       <div class="menu" id="menu" hidden role="menu">
         <a href="#" id="probar-notif" role="menuitem">Probar notificación</a>
+        <a href="#" id="probar-cer" role="menuitem">Probar CER (BCRA)</a>
         <hr>
         <span class="ver">Configuración y registro: Ajustes → Apps → Ratios IOL.
           Desde acá no se puede navegar; Home Assistant lo bloquea.</span>
@@ -1278,6 +1279,18 @@ document.addEventListener("keydown", e => {
 $("#probar-notif").addEventListener("click", e => {
   e.preventDefault(); e.stopPropagation(); probarNotificacion();
 });
+$("#probar-cer").addEventListener("click", async e => {
+  e.preventDefault(); e.stopPropagation();
+  $("#menu").hidden = true;
+  try{
+    const d = await (await fetch(base + "api/cer/probar",
+      {method:"POST"})).json();
+    alert(d.dias_traidos
+      ? "El BCRA respondió: " + d.dias_traidos + " días de CER guardados.\n" +
+        "CER vigente: " + (d.vigente ?? "—")
+      : "El BCRA no respondió.\n\n" + (d.error || "sin detalle"));
+  }catch(err){ alert("No se pudo probar."); }
+});
 
 async function probarNotificacion(){
   $("#menu").hidden = true;
@@ -1324,6 +1337,7 @@ async function cargarBonos(){
       '<br>Los precios en pesos se pasan a dólares con el MEP que ' +
       'corresponde a cada punta.</div>';
 
+    window._filasBonos = d.filas;
     const sinCer = d.filas.filter(f => f.falta_cer).map(f => f.simbolo);
     out.innerHTML =
       (sinCer.length
@@ -1332,11 +1346,12 @@ async function cargarBonos(){
           'si el BCRA no responde, podés cargar <b>cer_actual</b> en la ' +
           'configuración como respaldo.</div>'
         : "") +
+      selectorFamilias(d.filas) +
       '<div class="hallazgo" style="padding:8px 10px">' +
       '<table class="bonos"><thead><tr><th>Especie</th>' +
       '<th>TIR Last</th><th>Bid</th><th>TIR Bid</th><th>TIR Ask</th><th>Ask</th>' +
       '</tr></thead><tbody>' +
-      d.filas.map(f => {
+      filtrarFamilia(d.filas).map(f => {
         const p = v => v ? (f.moneda === "USD" ? precio(v) : ent(v)) : "—";
         const t = v => v == null ? "—" : v.toFixed(2) + "%";
         const clase = f.moneda === "USD" ? "usd"
@@ -1358,7 +1373,12 @@ async function cargarBonos(){
       'diferencia.</div>' +
       '<button class="secundario" id="b-curva" style="margin-top:10px">' +
       'Ver curva</button><div id="b-curva-out"></div>';
-    $("#b-curva").addEventListener("click", () => dibujarCurva(d.filas));
+    $("#b-curva").addEventListener("click", () => {
+      const c = $("#b-curva-out");
+      const abierto = c.dataset.abierto === "1";
+      c.dataset.abierto = abierto ? "" : "1";
+      if(abierto) c.innerHTML = ""; else dibujarCurva();
+    });
   }catch(e){
     out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
   }
@@ -1421,65 +1441,128 @@ async function verBono(sim){
 $("#bono-cerrar").addEventListener("click", () => $("#dlg-bono").close());
 
 /* ---------- curva TIR vs duration ---------- */
-let curvaFamilia = "ARS";
+let familiaSel = "todos";
 
-function dibujarCurva(filas){
+const FAMILIAS = [
+  ["ARS-AR", "Pesos · ley arg.", "#E9E5DC"],
+  ["ARS-NY", "Pesos · ley NY",   "#9BB4C7"],
+  ["USD-AR", "USD · ley arg.",   "#6FA88C"],
+  ["USD-NY", "USD · ley NY",     "#C6A24B"],
+  ["CER",    "CER",              "#B98BC9"],
+];
+
+function familiasPresentes(filas){
+  return FAMILIAS.filter(([k]) => filas.some(f => f.familia === k));
+}
+
+function selectorFamilias(filas){
+  const disp = familiasPresentes(filas);
+  if(disp.length < 2) return "";
+  return '<div class="periodos">' +
+    '<button aria-pressed="' + (familiaSel === "todos") +
+      '" onclick="elegirFamilia(\'todos\')">Todos</button>' +
+    disp.map(([k,t]) => '<button aria-pressed="' + (k===familiaSel) +
+      '" onclick="elegirFamilia(\'' + k + '\')">' + t + '</button>').join("") +
+    '</div>';
+}
+
+function elegirFamilia(f){
+  familiaSel = f;
+  cargarBonos();
+}
+
+function filtrarFamilia(filas){
+  return familiaSel === "todos" ? filas
+       : filas.filter(f => f.familia === familiaSel);
+}
+
+/* ---------- curva TIR vs duration ---------- */
+
+function ajuste(puntos){
+  const n = puntos.length;
+  if(n < 2) return null;
+  const xs = puntos.map(p=>p.md), ys = puntos.map(p=>p.tir_last);
+  const sx=xs.reduce((a,b)=>a+b,0), sy=ys.reduce((a,b)=>a+b,0);
+  const sxy=puntos.reduce((a,p)=>a+p.md*p.tir_last,0);
+  const sxx=xs.reduce((a,b)=>a+b*b,0);
+  const den=(n*sxx-sx*sx)||1;
+  const pend=(n*sxy-sx*sy)/den;
+  const ord=(sy-pend*sx)/n;
+  return v => ord + pend*v;
+}
+
+function dibujarCurva(){
   const cont = $("#b-curva-out");
-  const fams = [["ARS","Pesos"],["USD","Dólares"],["CER","CER"]];
-  const puntos = filas.filter(f =>
-    f.moneda === curvaFamilia && f.md != null && f.tir_last != null);
+  const filas = (window._filasBonos || []).filter(f =>
+    f.md != null && f.tir_last != null);
+  const usar = filtrarFamilia(filas);
 
-  const barra = '<div class="periodos" style="margin-top:10px">' +
-    fams.map(([k,t]) => '<button aria-pressed="' + (k===curvaFamilia) +
-      '" onclick="curvaFamilia=\'' + k + '\';dibujarCurva(window._filasBonos)">' +
-      t + '</button>').join("") + '</div>';
-  window._filasBonos = filas;
-
-  if(puntos.length < 3){
-    cont.innerHTML = barra + '<div class="vacio" style="padding:14px">' +
+  if(usar.length < 3){
+    cont.innerHTML = '<div class="vacio" style="padding:14px">' +
       'Hacen falta al menos tres bonos con precio para dibujar la curva.</div>';
     return;
   }
 
   const W=320,H=190,ml=30,mr=10,mt=14,mb=26;
-  const xs = puntos.map(p=>p.md), ys = puntos.map(p=>p.tir_last);
+  const xs=usar.map(p=>p.md), ys=usar.map(p=>p.tir_last);
   let x0=Math.min(...xs), x1=Math.max(...xs);
   let y0=Math.min(...ys), y1=Math.max(...ys);
-  const px_=(x1-x0)*0.1||0.5, py_=(y1-y0)*0.15||0.5;
+  const px_=(x1-x0)*0.12||0.5, py_=(y1-y0)*0.18||0.5;
   x0-=px_; x1+=px_; y0-=py_; y1+=py_;
   const X=v=>ml+(v-x0)/(x1-x0)*(W-ml-mr);
   const Y=v=>mt+(y1-v)/(y1-y0)*(H-mt-mb);
 
-  /* ajuste lineal por mínimos cuadrados: la curva de referencia */
-  const n=puntos.length;
-  const sx=xs.reduce((a,b)=>a+b,0), sy=ys.reduce((a,b)=>a+b,0);
-  const sxy=puntos.reduce((a,p)=>a+p.md*p.tir_last,0);
-  const sxx=xs.reduce((a,b)=>a+b*b,0);
-  const pend=(n*sxy-sx*sy)/(n*sxx-sx*sx||1), ord=(sy-pend*sx)/n;
-  const fit=v=>ord+pend*v;
+  /* una recta de ajuste por familia: mezclarlas no significaría nada */
+  const grupos = familiaSel === "todos"
+    ? familiasPresentes(usar).map(([k,t,col]) =>
+        ({k, t, col, pts: usar.filter(f => f.familia === k)}))
+    : [{k: familiaSel, t: "", col: "var(--bone)", pts: usar}];
 
-  const marcas = puntos.map(p => {
-    const resid = p.tir_last - fit(p.md);
-    const col = resid > 0.15 ? "var(--sage)" : resid < -0.15 ? "var(--coral)" : "var(--bone)";
-    return '<circle cx="' + X(p.md).toFixed(1) + '" cy="' + Y(p.tir_last).toFixed(1) +
-      '" r="3" fill="' + col + '"/>' +
-      '<text x="' + (X(p.md)+5).toFixed(1) + '" y="' + (Y(p.tir_last)+3).toFixed(1) +
-      '" style="font-size:7px">' + esc(p.simbolo) + '</text>';
-  }).join("");
+  let svg = "";
+  grupos.forEach(g => {
+    if(g.pts.length >= 2){
+      const fit = ajuste(g.pts);
+      if(fit) svg += '<line x1="'+X(x0)+'" y1="'+Y(fit(x0))+'" x2="'+X(x1)+
+        '" y2="'+Y(fit(x1))+'" stroke="'+g.col+'" stroke-width="1" ' +
+        'stroke-dasharray="1 3" opacity=".7"/>';
+    }
+    const fit = ajuste(g.pts);
+    g.pts.forEach(p => {
+      let col = g.col;
+      if(familiaSel !== "todos" && fit){
+        const r = p.tir_last - fit(p.md);
+        col = r > 0.15 ? "var(--sage)" : r < -0.15 ? "var(--coral)" : "var(--bone)";
+      }
+      svg += '<circle cx="'+X(p.md).toFixed(1)+'" cy="'+Y(p.tir_last).toFixed(1)+
+        '" r="3" fill="'+col+'"/>';
+      if(familiaSel !== "todos")
+        svg += '<text x="'+(X(p.md)+5).toFixed(1)+'" y="'+(Y(p.tir_last)+3).toFixed(1)+
+          '" style="font-size:7px">'+esc(p.simbolo)+'</text>';
+    });
+  });
 
-  cont.innerHTML = barra +
+  const leyenda = familiaSel === "todos"
+    ? '<div class="leyenda" style="flex-wrap:wrap">' + grupos.map(g =>
+        '<span><i style="border-top-color:'+g.col+'"></i>'+esc(g.t)+'</span>'
+      ).join("") + '</div>'
+    : "";
+
+  cont.innerHTML =
     '<svg class="chart" viewBox="0 0 '+W+' '+H+'" style="height:190px" role="img">' +
-    '<line class="media" x1="'+X(x0)+'" y1="'+Y(fit(x0))+'" x2="'+X(x1)+
-      '" y2="'+Y(fit(x1))+'"/>' +
-    marcas +
+    svg +
     '<text x="2" y="'+(mt+4)+'" style="font-size:8px">'+y1.toFixed(1)+'%</text>' +
     '<text x="2" y="'+(H-mb+4)+'" style="font-size:8px">'+y0.toFixed(1)+'%</text>' +
     '<text x="'+ml+'" y="'+(H-6)+'" style="font-size:8px">'+x0.toFixed(1)+' años</text>' +
     '<text x="'+(W-mr)+'" y="'+(H-6)+'" text-anchor="end" style="font-size:8px">'+
-      x1.toFixed(1)+'</text></svg>' +
+      x1.toFixed(1)+'</text></svg>' + leyenda +
     '<div class="nota">TIR del último operado contra duration modificada. ' +
-    'La línea es el ajuste de todos los puntos. En verde los que rinden más de ' +
-    'lo que la curva sugiere para su plazo, en rojo los que rinden menos.</div>';
+    (familiaSel === "todos"
+      ? 'Una recta de ajuste por familia. Ley argentina y ley Nueva York van ' +
+        'separadas: la diferencia entre ambas es riesgo legal, no pendiente ' +
+        'de curva. Elegí una familia para ver los tickers y quién se despega.'
+      : 'En verde los que rinden más de lo que la curva sugiere para su ' +
+        'plazo, en rojo los que rinden menos.') +
+    '</div>';
 }
 
 /* ---------- rulo ---------- */

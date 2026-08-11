@@ -385,10 +385,22 @@ def crear_app(monitor):
                     "cer_base": base,
                     "factor": (actual / base) if (base and actual) else None,
                 })
-            return jsonify({"vigente": actual, "rezago_habiles": CER.REZAGO_HABILES,
+            return jsonify({"vigente": actual,
+                            "rezago_habiles": CER.REZAGO_HABILES,
+                            "ultimo_error": CER.ultimo_error,
                             "bonos": det})
         except Exception as e:
             return jsonify({"error": str(e)}), 502
+
+    @app.post("/api/cer/probar")
+    def cer_probar():
+        """Fuerza una consulta al BCRA y devuelve el error si falla."""
+        from datetime import date as _d, timedelta as _t
+        CER.reintentar_ya()
+        hoy = _d.today()
+        n = CER.descargar((hoy - _t(days=30)).isoformat(), hoy.isoformat())
+        return jsonify({"dias_traidos": n, "vigente": CER.vigente(),
+                        "error": CER.ultimo_error})
 
     @app.get("/api/notificaciones/diagnostico")
     def notif_diag():

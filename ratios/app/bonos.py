@@ -81,6 +81,15 @@ def calcular_mep(cot, par_pesos="AL30", par_usd="AL30D"):
 
 # -- tabla -------------------------------------------------------------
 
+def _familia(cfg, info):
+    """Agrupa para la curva. Ley argentina y ley NY no se mezclan:
+    la diferencia entre ambas es riesgo legal, no pendiente de curva."""
+    if (cfg.get("ajuste") or "").lower() == "cer":
+        return "CER"
+    ley = "AR" if (cfg.get("ley") or "").startswith("arg") else "NY"
+    return "%s-%s" % (info["moneda"], ley)
+
+
 def _tir(esp_cfg, precio, liq, filas):
     if not precio:
         return None
@@ -142,6 +151,7 @@ def fila(simbolo, info, cot, mep, liq=None, cer_actual=0):
                 "q_ask": cot.get("vol_venta") or 0,
                 "tir_bid": None, "tir_ask": None, "tir_last": None,
                 "md": None, "last_viejo": False,
+                "ley": cfg.get("ley"), "familia": "CER",
                 "falta_cer": True,
                 "vencimiento": str(cfg["vencimiento"])[:10],
             }
@@ -175,6 +185,8 @@ def fila(simbolo, info, cot, mep, liq=None, cer_actual=0):
     return {
         "simbolo": simbolo,
         "moneda": "CER" if es_cer else info["moneda"],
+        "ley": cfg.get("ley"),
+        "familia": _familia(cfg, info),
         "falta_cer": False,
         "cronograma": info["cronograma"],
         "bid": bid, "ask": ask, "last": last,

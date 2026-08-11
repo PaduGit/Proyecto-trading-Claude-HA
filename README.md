@@ -102,21 +102,46 @@ Si el BCRA no responde, esos bonos aparecen atenuados y sin TIR. Como respaldo
 se puede cargar `cer_actual` en la configuración y `cer_base` de cada bono en
 el YAML; si están, mandan sobre lo que traiga la API.
 
-El estado del CER se puede consultar en `/api/cer`.
+El estado del CER se puede consultar en `/api/cer`, y el menú ⋮ tiene
+**Probar CER (BCRA)**, que fuerza una consulta y devuelve el error exacto si
+falla.
+
+Si el BCRA no responde, la app espera cinco minutos antes de reintentar para
+no golpearlo en cada consulta.
 
 Cargados: TZXA7, TZXS8, TZXM9 y TX31 desde la fuente oficial. **TZXD8 tiene
 fechas estimadas**: no hay ningún Boncer cupón cero con vencimiento en
 diciembre de 2028 en el archivo al 31/05/2026.
 
+### Familias
+
+Arriba de la tabla hay un selector que agrupa por moneda y legislación:
+
+- Pesos · ley argentina
+- Pesos · ley NY
+- USD · ley argentina
+- USD · ley NY
+- CER
+
+**Ley argentina y ley Nueva York van separadas a propósito.** La diferencia
+entre un AL41 y un GD41 —misma duration, distinto rendimiento— es riesgo legal,
+no pendiente de curva. Si se ajustara una recta sobre los dos juntos, todos los
+AL parecerían baratos y todos los GD caros, cuando en realidad estás midiendo
+la brecha por legislación.
+
+El selector manda sobre la tabla y sobre el gráfico a la vez.
+
 ### La curva
 
-El botón "Ver curva" al pie de la tabla dibuja TIR contra duration modificada,
-con un ajuste lineal de todos los puntos. Los que quedan por encima de la línea
-rinden más de lo que su plazo justifica; los de abajo, menos.
+El botón "Ver curva" dibuja TIR contra duration modificada.
 
-Se puede cambiar entre pesos, dólares y CER. **No mezcles familias**: una TIR
-en dólares y una en CER están medidas en monedas distintas y compararlas no
-significa nada.
+Con una familia elegida, cada punto lleva su ticker y se colorea según se
+despegue del ajuste: verde si rinde más de lo que su plazo justifica, rojo si
+rinde menos.
+
+Con "Todos", se superponen todas las familias con una recta de ajuste cada una
+y sin etiquetas, para que se lea en el celular. Sirve para ver los spreads
+entre curvas de un vistazo.
 
 ### La TIR del último operado
 

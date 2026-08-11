@@ -15,7 +15,20 @@ import db
 log = logging.getLogger("cer")
 
 BASE = "https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/30"
+BASE_V3 = "https://api.bcra.gob.ar/estadisticas/v3.0/monetarias/30"
 REZAGO_HABILES = 10     # el capital ajusta por el CER de 10 días hábiles antes
+
+# El BCRA rechaza pedidos sin User-Agent de navegador.
+CABECERAS = {
+    "User-Agent": ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"),
+    "Accept": "application/json",
+    "Accept-Language": "es-AR,es;q=0.9",
+}
+
+ultimo_error = None
+_ultimo_fallo = None
+ESPERA_TRAS_FALLO = 300   # segundos
 
 ESQUEMA = """
 CREATE TABLE IF NOT EXISTS cer (
@@ -43,19 +56,56 @@ def _de_la_base(desde, hasta):
         (desde, hasta))}
 
 
+def _intentar(url, params, verify):
+    return requests.get(url, params=params, headers=CABECERAS,
+                        timeout=30, verify=verify)
+
+
+def reintentar_ya():
+    """Limpia el enfriamiento: lo usa el botón de prueba."""
+    global _ultimo_fallo
+    _ultimo_fallo = None
+
+
 def descargar(desde, hasta, verificar_ssl=True):
-    """Trae un rango del BCRA y lo guarda. Devuelve cuántos días sumó."""
-    try:
-        r = requests.get(BASE, params={"desde": desde, "hasta": hasta,
-                                       "limit": 3000},
-                         timeout=30, verify=verificar_ssl)
-        if r.status_code != 200:
-            log.warning("BCRA %s: %s", r.status_code, r.text[:150])
-            return 0
-        d = r.json() or {}
-    except Exception as e:
-        log.warning("BCRA no respondió (%s): %s", desde, e)
+    """Trae un rango del BCRA y lo guarda. Devuelve cuántos días sumó.
+
+    Prueba v4, después v3, y si el certificado falla reintenta sin
+    verificarlo: los sitios del Estado suelen tener la cadena incompleta.
+    """
+    global ultimo_error, _ultimo_fallo
+    from datetime import datetime as _dt
+
+    # si el BCRA acaba de fallar, no lo golpeamos en cada consulta
+    if _ultimo_fallo and (_dt.now() - _ultimo_fallo).total_seconds() < ESPERA_TRAS_FALLO:
         return 0
+
+    params = {"desde": desde, "hasta": hasta, "limit": 3000}
+    d = None
+    intentos = [(BASE, True), (BASE_V3, True), (BASE, False), (BASE_V3, False)]
+    if not verificar_ssl:
+        intentos = [(BASE, False), (BASE_V3, False)]
+
+    for url, verify in intentos:
+        try:
+            r = _intentar(url, params, verify)
+            if r.status_code == 200:
+                d = r.json() or {}
+                ultimo_error = None
+                if not verify:
+                    log.info("CER: el BCRA respondió sin verificar el "
+                             "certificado (cadena incompleta de su lado)")
+                break
+            ultimo_error = "%s -> HTTP %s: %s" % (url, r.status_code, r.text[:120])
+            log.warning("BCRA %s", ultimo_error)
+        except Exception as e:
+            ultimo_error = "%s -> %s: %s" % (url, type(e).__name__, str(e)[:160])
+            log.warning("BCRA %s", ultimo_error)
+
+    if d is None:
+        _ultimo_fallo = _dt.now()
+        return 0
+    _ultimo_fallo = None
 
     filas = []
     for x in (d.get("results") or []):
