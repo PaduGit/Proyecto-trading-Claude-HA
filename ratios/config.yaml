@@ -36,6 +36,7 @@ options:
   timezone: America/Argentina/Buenos_Aires
   histeresis_pct: 0.5
   rulo_umbral_pct: 0.6
+  cer_actual: 0
   tasa_caucion_anual: 0
   paneles:
     - instrumento: Bonos
@@ -116,6 +117,7 @@ schema:
   timezone: str
   histeresis_pct: float(0,10)
   rulo_umbral_pct: float(0,20)
+  cer_actual: float(0,100000)
   tasa_caucion_anual: float(0,500)
   paneles:
     - instrumento: str

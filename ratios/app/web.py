@@ -339,7 +339,8 @@ def crear_app(monitor):
         try:
             par = (monitor.cfg.get("mep_par_pesos") or "AL30",
                    monitor.cfg.get("mep_par_usd") or "AL30D")
-            return jsonify(BO.tabla(_cot_bonos(), par_mep=par))
+            cer = float(monitor.cfg.get("cer_actual") or 0)
+            return jsonify(BO.tabla(_cot_bonos(), par_mep=par, cer_actual=cer))
         except Exception as e:
             log.exception("tabla de bonos")
             return jsonify({"error": str(e)}), 500
@@ -349,7 +350,9 @@ def crear_app(monitor):
         try:
             par = (monitor.cfg.get("mep_par_pesos") or "AL30",
                    monitor.cfg.get("mep_par_usd") or "AL30D")
-            d = BO.detalle(simbolo.upper(), _cot_bonos(), par_mep=par)
+            cer = float(monitor.cfg.get("cer_actual") or 0)
+            d = BO.detalle(simbolo.upper(), _cot_bonos(), par_mep=par,
+                           cer_actual=cer)
         except Exception as e:
             log.exception("detalle de bono")
             return jsonify({"error": str(e)}), 500

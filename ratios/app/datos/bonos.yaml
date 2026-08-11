@@ -310,6 +310,107 @@ bonos:
       tramos:
         - {desde: 2026-06-30, tasa: 6.00}
 
+  # ---------------------------------------------------------------
+  # Ajustables por CER
+  #
+  # El capital se ajusta por el CER de 10 días hábiles antes de cada
+  # fecha. La TIR que se calcula es REAL: el flujo se expresa en
+  # unidades CER, así que el resultado es la tasa por encima de la
+  # inflación. Eso es la X de "CER + X%".
+  #
+  # cer_base es el coeficiente a la fecha de emisión. Hasta que se
+  # conecte la API del BCRA, se carga a mano acá y el valor de hoy
+  # en la opción cer_actual de la configuración.
+  # ---------------------------------------------------------------
+
+  TZXA7:
+    nombre: Boncer 0% 30/04/2027
+    ley: argentina
+    moneda: ARS
+    ajuste: cer
+    emision: 2025-11-28
+    vencimiento: 2027-04-30
+    base: 30/360
+    resolucion: Res.Conj. Nº 60-E/2024
+    cer_base: 0
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2027-04-30
+      tramos:
+        - {desde: 2025-11-28, tasa: 0.0}
+
+  TZXS8:
+    nombre: Boncer 0% 29/09/2028
+    ley: argentina
+    moneda: ARS
+    ajuste: cer
+    emision: 2026-03-31
+    vencimiento: 2028-09-29
+    base: 30/360
+    resolucion: Res.Conj. Nº 16-E/2026
+    cer_base: 0
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2028-09-29
+      tramos:
+        - {desde: 2026-03-31, tasa: 0.0}
+
+  TZXM9:
+    nombre: Boncer 0% 28/03/2029
+    ley: argentina
+    moneda: ARS
+    ajuste: cer
+    emision: 2026-04-01
+    vencimiento: 2029-03-28
+    base: 30/360
+    resolucion: Res.Conj. Nº 16-E/2026
+    cer_base: 0
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2029-03-28
+      tramos:
+        - {desde: 2026-04-01, tasa: 0.0}
+
+  TX31:
+    nombre: Boncer 2,50% 30/11/2031
+    ley: argentina
+    moneda: ARS
+    ajuste: cer
+    emision: 2022-05-31
+    vencimiento: 2031-11-30
+    base: 30/360
+    resolucion: RESFC-2022-40-APN-SH#MEC
+    cer_base: 0
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2022-11-30
+      tramos:
+        - {desde: 2022-05-31, tasa: 2.50}
+
+  TZXD8:
+    nombre: Boncer 0% diciembre 2028
+    ley: argentina
+    moneda: ARS
+    ajuste: cer
+    emision: 2026-06-30
+    vencimiento: 2028-12-29
+    base: 30/360
+    cer_base: 0
+    verificar: >-
+      No figura en el archivo del Ministerio al 31/05/2026: no hay ningún
+      Boncer cupón cero con vencimiento en diciembre de 2028. Emisión y
+      vencimiento son estimados. Confirmar antes de usar esta TIR.
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2028-12-29
+      tramos:
+        - {desde: 2026-06-30, tasa: 0.0}
+
 equivalencias:
   AL29D: AL29
   AL29C: AL29

@@ -37,8 +37,9 @@ def especies():
     """Todas las especies con cronograma conocido: en pesos y dolarizadas."""
     bonos, equiv = cargar()
     out = {}
-    for tk in bonos:
-        out[tk] = {"cronograma": tk, "moneda": "ARS"}
+    for tk, cfg in bonos.items():
+        out[tk] = {"cronograma": tk,
+                   "moneda": "CER" if (cfg.get("ajuste") or "") == "cer" else "ARS"}
     for esp, base in equiv.items():
         if base in bonos:
             out[esp] = {"cronograma": base,
@@ -86,7 +87,22 @@ def _tir(esp_cfg, precio, liq, filas):
     return r * 100 if r is not None else None
 
 
-def fila(simbolo, info, cot, mep, liq=None):
+def factor_cer(cfg, cer_actual=0):
+    """Cuánto se ajustó el capital desde la emisión.
+
+    El precio en pesos dividido por este factor queda expresado en
+    unidades CER, que es donde vive el flujo. Descontando ahí, la TIR
+    que sale es real: la X de "CER + X%".
+    """
+    if (cfg.get("ajuste") or "").lower() != "cer":
+        return 1.0
+    base = float(cfg.get("cer_base") or 0)
+    if not base or not cer_actual:
+        return 0.0        # sin datos: no se puede calcular
+    return float(cer_actual) / base
+
+
+def fila(simbolo, info, cot, mep, liq=None, cer_actual=0):
     """Una fila de la tabla, con TIR en cada punta."""
     liq = liq or date.today()
     bonos, _ = cargar()
@@ -98,7 +114,24 @@ def fila(simbolo, info, cot, mep, liq=None):
     ask = cot.get("venta") or 0
     last = cot.get("ultimo") or 0
 
-    if info["moneda"] == "USD":
+    es_cer = (cfg.get("ajuste") or "").lower() == "cer"
+
+    if es_cer:
+        f = factor_cer(cfg, cer_actual)
+        if not f:
+            return {
+                "simbolo": simbolo, "moneda": "CER", "cronograma": info["cronograma"],
+                "bid": bid, "ask": ask, "last": last,
+                "bid_usd": 0, "ask_usd": 0,
+                "q_bid": cot.get("vol_compra") or 0,
+                "q_ask": cot.get("vol_venta") or 0,
+                "tir_bid": None, "tir_ask": None, "tir_last": None,
+                "md": None, "last_viejo": False,
+                "falta_cer": True,
+                "vencimiento": str(cfg["vencimiento"])[:10],
+            }
+        bid_usd, ask_usd, last_usd = bid / f, ask / f, last / f
+    elif info["moneda"] == "USD":
         bid_usd, ask_usd, last_usd = bid, ask, last
         tc_bid = tc_ask = 1.0
     else:
@@ -126,7 +159,8 @@ def fila(simbolo, info, cot, mep, liq=None):
 
     return {
         "simbolo": simbolo,
-        "moneda": info["moneda"],
+        "moneda": "CER" if es_cer else info["moneda"],
+        "falta_cer": False,
         "cronograma": info["cronograma"],
         "bid": bid, "ask": ask, "last": last,
         "bid_usd": bid_usd, "ask_usd": ask_usd,
@@ -142,7 +176,7 @@ def fila(simbolo, info, cot, mep, liq=None):
     }
 
 
-def tabla(cot, liq=None, par_mep=("AL30", "AL30D")):
+def tabla(cot, liq=None, par_mep=("AL30", "AL30D"), cer_actual=0):
     """Todas las especies conocidas que tengan precio, ordenadas por MD."""
     liq = liq or date.today()
     mep = calcular_mep(cot, *par_mep)
@@ -152,7 +186,7 @@ def tabla(cot, liq=None, par_mep=("AL30", "AL30D")):
         if not c or not (c.get("compra") or c.get("venta") or c.get("ultimo")):
             continue
         try:
-            f = fila(sim, info, c, mep, liq)
+            f = fila(sim, info, c, mep, liq, cer_actual)
         except Exception as e:
             log.warning("%s: %s", sim, e)
             continue
@@ -162,6 +196,7 @@ def tabla(cot, liq=None, par_mep=("AL30", "AL30D")):
     _brechas(filas)
     filas.sort(key=lambda f: (f["md"] is None, f["md"] or 0, f["simbolo"]))
     return {"mep": mep, "filas": filas,
+            "cer_actual": cer_actual,
             "liquidacion": liq.isoformat(),
             "sin_precio": [s for s in especies() if s not in cot]}
 
@@ -197,7 +232,7 @@ def _brechas(filas):
             c["cable_pct"] = impl
 
 
-def detalle(simbolo, cot, liq=None, par_mep=("AL30", "AL30D")):
+def detalle(simbolo, cot, liq=None, par_mep=("AL30", "AL30D"), cer_actual=0):
     """Lo que se muestra al tocar el ticker."""
     liq = liq or date.today()
     esps = especies()
@@ -208,7 +243,7 @@ def detalle(simbolo, cot, liq=None, par_mep=("AL30", "AL30D")):
     cfg = bonos[info["cronograma"]]
 
     mep = calcular_mep(cot, *par_mep)
-    f = fila(simbolo, info, cot.get(simbolo) or {}, mep, liq)
+    f = fila(simbolo, info, cot.get(simbolo) or {}, mep, liq, cer_actual)
     if not f:
         return None
 
@@ -216,7 +251,7 @@ def detalle(simbolo, cot, liq=None, par_mep=("AL30", "AL30D")):
     if simbolo.endswith(("D", "C")):
         otra = simbolo[:-1] + ("C" if simbolo.endswith("D") else "D")
         if otra in esps and cot.get(otra):
-            g = fila(otra, esps[otra], cot[otra], mep, liq)
+            g = fila(otra, esps[otra], cot[otra], mep, liq, cer_actual)
             if g:
                 _brechas([f, g])
 
@@ -233,6 +268,9 @@ def detalle(simbolo, cot, liq=None, par_mep=("AL30", "AL30D")):
         "simbolo": simbolo,
         "nombre": cfg.get("nombre"),
         "ley": cfg.get("ley"),
+        "ajuste": cfg.get("ajuste"),
+        "cer_base": cfg.get("cer_base"),
+        "factor_cer": factor_cer(cfg, cer_actual) or None,
         "moneda_flujo": cfg.get("moneda"),
         "aviso": cfg.get("verificar"),
         "fila": f,

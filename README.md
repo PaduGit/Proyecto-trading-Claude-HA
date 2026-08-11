@@ -84,6 +84,36 @@ La estructura se dedujo del patrón de AO27 y AO28.
 cuotas de 4%+8%), que parece un error de copiado: su par por ley argentina, el
 AL35, dice 10 cuotas iguales desde enero de 2031. Se usa esa.
 
+### Bonos CER
+
+El capital se ajusta por el CER de diez días hábiles antes de cada fecha. La
+app calcula la **TIR real**: convierte el precio en pesos a unidades CER y
+descuenta ahí, así que el resultado es la tasa por encima de la inflación —
+la X de "CER + X%". No hace falta proyectar inflación.
+
+Para eso necesita dos números:
+
+- **`cer_actual`** en la configuración de la app: el coeficiente de hoy.
+- **`cer_base`** de cada bono en `datos/bonos.yaml`: el coeficiente a la fecha
+  de emisión.
+
+Hasta que se conecte la API del BCRA, ambos se cargan a mano. Mientras falten,
+esos bonos aparecen atenuados y sin TIR, con un aviso arriba de la tabla.
+
+Cargados: TZXA7, TZXS8, TZXM9 y TX31 desde la fuente oficial. **TZXD8 tiene
+fechas estimadas**: no hay ningún Boncer cupón cero con vencimiento en
+diciembre de 2028 en el archivo al 31/05/2026.
+
+### La curva
+
+El botón "Ver curva" al pie de la tabla dibuja TIR contra duration modificada,
+con un ajuste lineal de todos los puntos. Los que quedan por encima de la línea
+rinden más de lo que su plazo justifica; los de abajo, menos.
+
+Se puede cambiar entre pesos, dólares y CER. **No mezcles familias**: una TIR
+en dólares y una en CER están medidas en monedas distintas y compararlas no
+significa nada.
+
 ### La TIR del último operado
 
 La primera columna es la TIR calculada sobre el último precio. Sirve fuera de
@@ -298,6 +328,10 @@ cuando armemos el detector de rulos vas a tener meses de book acumulado.
 
 ## Limitaciones conocidas
 
+- **El límite de IOL son 25.000 llamadas al mes bonificadas.** Con paneles y
+  refresco de 300 segundos el consumo ronda las 3.500, así que hay margen de
+  sobra. Pasado el límite el excedente cuesta poco y se acredita contra
+  comisiones. El contador está en la solapa Explorar.
 - **El delay de la API no está medido.** Para ratios lentos no importa; para
   arbitrajes de plazo puede ser determinante.
 - **IOL es la fuente de datos, no donde operás.** Los precios de tu ALyC pueden
