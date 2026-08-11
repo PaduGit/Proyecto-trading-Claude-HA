@@ -1328,9 +1328,9 @@ async function cargarBonos(){
     out.innerHTML =
       (sinCer.length
         ? '<div class="aviso">Sin TIR para ' + sinCer.map(esc).join(", ") +
-          ': falta el coeficiente CER. Cargá <b>cer_actual</b> en la ' +
-          'configuración de la app y <b>cer_base</b> de cada bono en ' +
-          'datos/bonos.yaml.</div>'
+          ': no se pudo obtener el CER del BCRA. Mirá el registro de la app; ' +
+          'si el BCRA no responde, podés cargar <b>cer_actual</b> en la ' +
+          'configuración como respaldo.</div>'
         : "") +
       '<div class="hallazgo" style="padding:8px 10px">' +
       '<table class="bonos"><thead><tr><th>Especie</th>' +
@@ -1355,7 +1355,10 @@ async function cargarBonos(){
       'significa que ese precio no es de hoy.<br><br>' +
       'Las TIR de las especies C están medidas en dólar cable y las de las D ' +
       'en MEP, así que no se comparan entre sí. La solapa Rulo muestra esa ' +
-      'diferencia.</div>';
+      'diferencia.</div>' +
+      '<button class="secundario" id="b-curva" style="margin-top:10px">' +
+      'Ver curva</button><div id="b-curva-out"></div>';
+    $("#b-curva").addEventListener("click", () => dibujarCurva(d.filas));
   }catch(e){
     out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
   }

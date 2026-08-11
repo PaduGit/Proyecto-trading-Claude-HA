@@ -91,14 +91,18 @@ app calcula la **TIR real**: convierte el precio en pesos a unidades CER y
 descuenta ahí, así que el resultado es la tasa por encima de la inflación —
 la X de "CER + X%". No hace falta proyectar inflación.
 
-Para eso necesita dos números:
+**El CER lo trae del BCRA solo.** Serie 30 de estadísticas monetarias, que es
+pública y no necesita credenciales. Con la fecha de emisión que ya está en el
+YAML, la app calcula el coeficiente base de cada bono. Se cachea en la base:
+el CER de una fecha pasada no cambia, así que se consulta una vez.
 
-- **`cer_actual`** en la configuración de la app: el coeficiente de hoy.
-- **`cer_base`** de cada bono en `datos/bonos.yaml`: el coeficiente a la fecha
-  de emisión.
+Respeta el rezago de diez días hábiles con que ajusta el capital.
 
-Hasta que se conecte la API del BCRA, ambos se cargan a mano. Mientras falten,
-esos bonos aparecen atenuados y sin TIR, con un aviso arriba de la tabla.
+Si el BCRA no responde, esos bonos aparecen atenuados y sin TIR. Como respaldo
+se puede cargar `cer_actual` en la configuración y `cer_base` de cada bono en
+el YAML; si están, mandan sobre lo que traiga la API.
+
+El estado del CER se puede consultar en `/api/cer`.
 
 Cargados: TZXA7, TZXS8, TZXM9 y TX31 desde la fuente oficial. **TZXD8 tiene
 fechas estimadas**: no hay ningún Boncer cupón cero con vencimiento en

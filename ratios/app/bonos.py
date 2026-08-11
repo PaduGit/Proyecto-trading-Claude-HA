@@ -11,6 +11,7 @@ from datetime import date
 
 import yaml
 
+import cer as CER
 import renta_fija as RF
 
 log = logging.getLogger("bonos")
@@ -93,12 +94,26 @@ def factor_cer(cfg, cer_actual=0):
     El precio en pesos dividido por este factor queda expresado en
     unidades CER, que es donde vive el flujo. Descontando ahí, la TIR
     que sale es real: la X de "CER + X%".
+
+    La base sale del BCRA con la fecha de emisión. Si el YAML trae
+    cer_base cargado a mano, ese manda.
     """
     if (cfg.get("ajuste") or "").lower() != "cer":
         return 1.0
     base = float(cfg.get("cer_base") or 0)
+    if not base:
+        try:
+            base = CER.base_de(cfg.get("emision")) or 0
+        except Exception as e:
+            log.debug("CER base: %s", e)
+            base = 0
+    if not cer_actual:
+        try:
+            cer_actual = CER.vigente() or 0
+        except Exception:
+            cer_actual = 0
     if not base or not cer_actual:
-        return 0.0        # sin datos: no se puede calcular
+        return 0.0
     return float(cer_actual) / base
 
 

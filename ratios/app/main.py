@@ -7,6 +7,7 @@ import sys
 import threading
 import time
 
+import cer
 import db
 from iol import IOL
 from monitor import Monitor
@@ -103,6 +104,7 @@ def main():
     cfg = validar(cargar_opciones())
     db.init()
     db.init_posicion()
+    cer.init()
 
     notif = Notificador(cfg)
     iol = IOL(cfg["iol_user"], cfg["iol_pass"])
@@ -112,6 +114,21 @@ def main():
              len(cfg["pares"]), len(cfg.get("paneles") or []),
              cfg.get("poll_seconds", 600))
 
+    def _sincronizar_cer():
+        try:
+            import bonos as BO
+            bonos_cfg, _ = BO.cargar()
+            faltan = cer.sincronizar(bonos_cfg)
+            if faltan:
+                log.warning("CER incompleto para: %s. Los bonos ajustables "
+                            "van a aparecer sin TIR.", ", ".join(faltan))
+            else:
+                v = cer.vigente()
+                log.info("CER vigente: %s", v)
+        except Exception as e:
+            log.warning("no se pudo sincronizar el CER: %s", e)
+
+    threading.Thread(target=_sincronizar_cer, daemon=True, name="cer").start()
     threading.Thread(target=monitor.loop, daemon=True, name="monitor").start()
 
     app = crear_app(monitor)

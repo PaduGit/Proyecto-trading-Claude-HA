@@ -9,6 +9,7 @@ from flask import Flask, jsonify, request, send_from_directory
 
 import db
 import bonos as BO
+import cer as CER
 import posicion as P
 from iol import IOLError
 
@@ -368,6 +369,26 @@ def crear_app(monitor):
         except Exception as e:
             log.exception("rulo")
             return jsonify({"error": str(e)}), 500
+
+    @app.get("/api/cer")
+    def cer_estado():
+        try:
+            bonos_cfg, _ = BO.cargar()
+            actual = CER.vigente()
+            det = []
+            for tk, cfg in bonos_cfg.items():
+                if (cfg.get("ajuste") or "").lower() != "cer":
+                    continue
+                base = cfg.get("cer_base") or CER.base_de(cfg.get("emision"))
+                det.append({
+                    "ticker": tk, "emision": str(cfg.get("emision"))[:10],
+                    "cer_base": base,
+                    "factor": (actual / base) if (base and actual) else None,
+                })
+            return jsonify({"vigente": actual, "rezago_habiles": CER.REZAGO_HABILES,
+                            "bonos": det})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 502
 
     @app.get("/api/notificaciones/diagnostico")
     def notif_diag():
