@@ -1,12 +1,12 @@
-"""Coeficiente de Estabilización de Referencia, desde la API del BCRA.
+"""Coeficiente de Estabilizacion de Referencia, desde la API del BCRA.
 
-Serie 30 de estadísticas monetarias, base 2/2/2002 = 1. Es pública y no
+Serie 30 de estadisticas monetarias, base 2/2/2002 = 1. Es publica y no
 necesita credenciales. Se cachea en la base: el CER de una fecha pasada no
-cambia nunca, así que se consulta una vez.
+cambia nunca, asi que se consulta una vez.
 """
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import requests
 
@@ -16,9 +16,9 @@ log = logging.getLogger("cer")
 
 BASE = "https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/30"
 BASE_V3 = "https://api.bcra.gob.ar/estadisticas/v3.0/monetarias/30"
-REZAGO_HABILES = 10     # el capital ajusta por el CER de 10 días hábiles antes
+REZAGO_HABILES = 10
+ESPERA_TRAS_FALLO = 300
 
-# El BCRA rechaza pedidos sin User-Agent de navegador.
 CABECERAS = {
     "User-Agent": ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
                    "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"),
@@ -27,8 +27,8 @@ CABECERAS = {
 }
 
 ultimo_error = None
+ultima_respuesta = None
 _ultimo_fallo = None
-ESPERA_TRAS_FALLO = 300   # segundos
 
 ESQUEMA = """
 CREATE TABLE IF NOT EXISTS cer (
@@ -44,40 +44,54 @@ def init():
     c.commit()
 
 
+def reintentar_ya():
+    global _ultimo_fallo
+    _ultimo_fallo = None
+
+
 def _guardar(filas):
     c = db.conn()
     c.executemany("INSERT OR REPLACE INTO cer (fecha, valor) VALUES (?,?)", filas)
     c.commit()
 
 
-def _de_la_base(desde, hasta):
-    return {r["fecha"]: r["valor"] for r in db.conn().execute(
-        "SELECT fecha, valor FROM cer WHERE fecha BETWEEN ? AND ?",
-        (desde, hasta))}
+def _extraer(d):
+    """Saca (fecha, valor) del JSON del BCRA.
 
+    La v3 devuelve los valores sueltos en 'results'; la v4 los anida en
+    'detalle'. Recorremos la estructura sin asumir cual vino.
+    """
+    filas = []
 
-def _intentar(url, params, verify):
-    return requests.get(url, params=params, headers=CABECERAS,
-                        timeout=30, verify=verify)
+    def _mirar(x):
+        if isinstance(x, list):
+            for y in x:
+                _mirar(y)
+            return
+        if not isinstance(x, dict):
+            return
+        f, v = x.get("fecha"), x.get("valor")
+        if f is not None and v is not None:
+            try:
+                val = float(v)
+            except (TypeError, ValueError):
+                val = 0
+            if val > 0:
+                filas.append((str(f)[:10], val))
+        for k in ("detalle", "results", "datos", "data"):
+            if k in x:
+                _mirar(x[k])
 
-
-def reintentar_ya():
-    """Limpia el enfriamiento: lo usa el botón de prueba."""
-    global _ultimo_fallo
-    _ultimo_fallo = None
+    _mirar(d)
+    return sorted({f: v for f, v in filas}.items())
 
 
 def descargar(desde, hasta, verificar_ssl=True):
-    """Trae un rango del BCRA y lo guarda. Devuelve cuántos días sumó.
+    """Trae un rango del BCRA y lo guarda. Devuelve cuantos dias sumo."""
+    global ultimo_error, ultima_respuesta, _ultimo_fallo
 
-    Prueba v4, después v3, y si el certificado falla reintenta sin
-    verificarlo: los sitios del Estado suelen tener la cadena incompleta.
-    """
-    global ultimo_error, _ultimo_fallo
-    from datetime import datetime as _dt
-
-    # si el BCRA acaba de fallar, no lo golpeamos en cada consulta
-    if _ultimo_fallo and (_dt.now() - _ultimo_fallo).total_seconds() < ESPERA_TRAS_FALLO:
+    if _ultimo_fallo and \
+            (datetime.now() - _ultimo_fallo).total_seconds() < ESPERA_TRAS_FALLO:
         return 0
 
     params = {"desde": desde, "hasta": hasta, "limit": 3000}
@@ -88,13 +102,14 @@ def descargar(desde, hasta, verificar_ssl=True):
 
     for url, verify in intentos:
         try:
-            r = _intentar(url, params, verify)
+            r = requests.get(url, params=params, headers=CABECERAS,
+                             timeout=30, verify=verify)
             if r.status_code == 200:
                 d = r.json() or {}
+                ultima_respuesta = str(r.text)[:400]
                 ultimo_error = None
                 if not verify:
-                    log.info("CER: el BCRA respondió sin verificar el "
-                             "certificado (cadena incompleta de su lado)")
+                    log.info("CER: el BCRA respondio sin verificar el certificado")
                 break
             ultimo_error = "%s -> HTTP %s: %s" % (url, r.status_code, r.text[:120])
             log.warning("BCRA %s", ultimo_error)
@@ -103,22 +118,20 @@ def descargar(desde, hasta, verificar_ssl=True):
             log.warning("BCRA %s", ultimo_error)
 
     if d is None:
-        _ultimo_fallo = _dt.now()
+        _ultimo_fallo = datetime.now()
         return 0
-    _ultimo_fallo = None
 
-    filas = []
-    for x in (d.get("results") or []):
-        f = str(x.get("fecha") or "")[:10]
-        try:
-            v = float(x.get("valor"))
-        except (TypeError, ValueError):
-            continue
-        if f and v > 0:
-            filas.append((f, v))
+    filas = _extraer(d)
     if filas:
+        _ultimo_fallo = None
         _guardar(filas)
-        log.info("CER: +%d días entre %s y %s", len(filas), desde, hasta)
+        log.info("CER: +%d dias entre %s y %s (ultimo %s = %s)",
+                 len(filas), desde, hasta, filas[-1][0], filas[-1][1])
+    else:
+        ultimo_error = ("el BCRA respondio pero no encontre valores. "
+                        "Claves recibidas: %s" % list(d)[:8])
+        log.warning("CER: %s", ultimo_error)
+        _ultimo_fallo = datetime.now()
     return len(filas)
 
 
@@ -127,15 +140,10 @@ def valor(f, verificar_ssl=True):
     if isinstance(f, date):
         f = f.isoformat()
     r = db.conn().execute(
-        "SELECT valor FROM cer WHERE fecha <= ? ORDER BY fecha DESC LIMIT 1",
+        "SELECT fecha, valor FROM cer WHERE fecha <= ? ORDER BY fecha DESC LIMIT 1",
         (f,)).fetchone()
-    if r:
-        # si el más cercano quedó a más de una semana, falta descargar
-        r2 = db.conn().execute(
-            "SELECT fecha FROM cer WHERE fecha <= ? ORDER BY fecha DESC LIMIT 1",
-            (f,)).fetchone()
-        if r2 and (date.fromisoformat(f) - date.fromisoformat(r2["fecha"])).days <= 7:
-            return r["valor"]
+    if r and (date.fromisoformat(f) - date.fromisoformat(r["fecha"])).days <= 7:
+        return r["valor"]
 
     d = date.fromisoformat(f)
     descargar((d - timedelta(days=20)).isoformat(), f, verificar_ssl)
@@ -155,20 +163,20 @@ def _restar_habiles(f, n):
 
 
 def vigente(al=None, verificar_ssl=True):
-    """CER que se aplica hoy: el de 10 días hábiles antes."""
+    """CER que se aplica hoy: el de 10 dias habiles antes."""
     al = al or date.today()
     return valor(_restar_habiles(al, REZAGO_HABILES), verificar_ssl)
 
 
 def base_de(emision, verificar_ssl=True):
-    """CER a la fecha de emisión de un bono, para el ajuste del capital."""
+    """CER a la fecha de emision de un bono."""
     if isinstance(emision, str):
         emision = date.fromisoformat(emision[:10])
     return valor(_restar_habiles(emision, REZAGO_HABILES), verificar_ssl)
 
 
 def sincronizar(bonos, verificar_ssl=True):
-    """Se asegura de tener el CER de cada emisión y el de hoy."""
+    """Se asegura de tener el CER de cada emision y el de hoy."""
     faltan = []
     for tk, cfg in (bonos or {}).items():
         if (cfg.get("ajuste") or "").lower() != "cer":

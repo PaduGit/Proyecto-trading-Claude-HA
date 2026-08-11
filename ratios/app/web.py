@@ -400,7 +400,8 @@ def crear_app(monitor):
         hoy = _d.today()
         n = CER.descargar((hoy - _t(days=30)).isoformat(), hoy.isoformat())
         return jsonify({"dias_traidos": n, "vigente": CER.vigente(),
-                        "error": CER.ultimo_error})
+                        "error": CER.ultimo_error,
+                        "respuesta": CER.ultima_respuesta})
 
     @app.get("/api/notificaciones/diagnostico")
     def notif_diag():
