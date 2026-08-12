@@ -9,6 +9,7 @@ import time
 
 import cer
 import db
+import historico
 import respaldo
 from iol import IOL
 from monitor import Monitor
@@ -111,6 +112,7 @@ def main():
     db.init()
     db.init_posicion()
     cer.init()
+    historico.init()
 
     notif = Notificador(cfg)
     iol = IOL(cfg["iol_user"], cfg["iol_pass"])

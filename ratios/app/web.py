@@ -10,6 +10,7 @@ from flask import Flask, jsonify, request, send_from_directory
 import db
 import bonos as BO
 import cer as CER
+import historico as H
 import posicion as P
 import respaldo
 from iol import IOLError
@@ -421,6 +422,32 @@ def crear_app(monitor):
                         "rango": "%s a %s (%s días)" % (
                             rango["a"], rango["b"], rango["n"]),
                         "bonos": det})
+
+    @app.get("/api/bonos/<simbolo>/historico")
+    def bono_historico(simbolo):
+        periodo = request.args.get("periodo", "1a")
+        dias = {"3m": 90, "6m": 180, "1a": 365, "2a": 730,
+                "max": 5000}.get(periodo, 365)
+        desde = (datetime.now().date() - timedelta(days=dias)).isoformat()
+        try:
+            puntos = H.serie(simbolo.upper(), desde)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        return jsonify({"simbolo": simbolo.upper(), "periodo": periodo,
+                        "puntos": puntos})
+
+    @app.get("/api/historico/estado")
+    def historico_estado():
+        return jsonify(H.resumen())
+
+    @app.post("/api/historico/reconstruir")
+    def historico_reconstruir():
+        sim = (request.args.get("simbolo") or "").upper() or None
+        try:
+            n = H.reconstruir(monitor.iol, sim)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        return jsonify({"puntos": n, "estado": H.resumen()})
 
     @app.get("/api/posicion/exportar")
     def exportar_posicion():

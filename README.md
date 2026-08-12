@@ -163,29 +163,25 @@ TX31 a 1.464 da 9,01% en los dos lados.
 El valor técnico es la prueba más exigente: valida el cronograma, el CER base
 y el rezago de diez días hábiles a la vez.
 
-### Familias
+### Filtros
 
-Arriba de la tabla hay un selector que agrupa por moneda y legislación:
+Arriba de la tabla hay tres filtros independientes:
 
-- Pesos · ley argentina
-- Pesos · ley NY
-- MEP · ley argentina
-- MEP · ley NY
-- Cable · ley argentina
-- Cable · ley NY
-- CER
+**Ley** — todas, argentina, Nueva York.
+**Tipo** — todos, hard dollar, CER, tasa fija en pesos, duales.
+**Moneda de cotización** — todas, pesos, D (MEP), C (cable).
 
-**Ley argentina y ley Nueva York van separadas a propósito.** La diferencia
-entre un AL41 y un GD41 —misma duration, distinto rendimiento— es riesgo legal,
-no pendiente de curva. Si se ajustara una recta sobre los dos juntos, todos los
-AL parecerían baratos y todos los GD caros, cuando en realidad estás midiendo
-la brecha por legislación.
+Se combinan: podés ver, por ejemplo, todos los hard dollar ley argentina sin
+importar en qué moneda coticen. Solo aparecen las opciones que tienen bonos
+cargados, así que no hay chips muertos.
 
-**Las especies C también van aparte.** Liquidan en dólar cable, que es otra
-moneda que el MEP de las D. Si se mezclan, la curva queda desplazada porque el
-cable cotiza más caro.
+El resumen debajo dice cuántas especies quedaron de cuántas.
 
-El selector manda sobre la tabla y sobre el gráfico a la vez.
+Los filtros mandan sobre la tabla y sobre el gráfico a la vez.
+
+**Por qué importa separar:** la diferencia entre un AL41 y un GD41 —misma
+duration, distinto rendimiento— es riesgo legal, no pendiente de curva. Y una
+especie C liquida en cable, que es otra moneda que el MEP de las D.
 
 ### La curva
 
@@ -195,9 +191,12 @@ Con una familia elegida, cada punto lleva su ticker y se colorea según se
 despegue del ajuste: verde si rinde más de lo que su plazo justifica, rojo si
 rinde menos.
 
-Con "Todos", se superponen todas las familias con una recta de ajuste cada una
-y sin etiquetas, para que se lea en el celular. Sirve para ver los spreads
-entre curvas de un vistazo.
+**Si la selección deja más de una moneda de cotización**, cada una se ajusta
+por separado y el gráfico lo avisa: una TIR en pesos y una en MEP no son
+comparables. Para ver quién se despega hay que elegir una sola moneda.
+
+Con pocos bonos en pantalla se muestran los tickers; con muchos se omiten para
+que se lea en el celular.
 
 ### La TIR del último operado
 
@@ -435,6 +434,43 @@ cuando armemos el detector de rulos vas a tener meses de book acumulado.
   registro están en Ajustes → Apps → Ratios IOL.
 - **El relleno semanal de huecos** usa cierres de IOL, que pueden venir de otro
   plazo. Esos puntos se dibujan punteados en los gráficos.
+
+---
+
+## Histórico de TIR
+
+Cada bono guarda una serie diaria con precio, TIR, duration modificada,
+residual y CER de esa fecha. Se ve en el panel emergente al tocar el ticker,
+con selector de período de tres meses a máximo.
+
+**El punto clave es que cada día se calcula con los datos de ese día**: el
+residual que tenía entonces, el flujo que le quedaba por delante y el CER
+vigente en esa fecha. No es la TIR de hoy proyectada hacia atrás.
+
+### Cómo se arma
+
+La primera vez que arranca, la app reconstruye desde enero de 2023 con los
+cierres de IOL. Son unas 30 llamadas y tarda algunos minutos; corre en segundo
+plano y queda marcado para no repetirse. Después agrega un punto por día al
+cerrar la rueda.
+
+Se puede forzar con `POST /api/historico/reconstruir`, y consultar el estado
+en `/api/historico/estado`.
+
+### Qué queda afuera
+
+Los bonos hard dollar que cotizan **en pesos** no se reconstruyen: para
+convertir el precio de una fecha pasada haría falta el MEP de ese día, que no
+tenemos hacia atrás. Sí se reconstruyen las especies D y C, y todas las CER.
+
+De ahí en adelante sí se guardan todas, porque el MEP del día está disponible.
+
+### Si se pierde
+
+La serie vive en `/data/ratios.db`, que se borra al desinstalar la app. Pero
+es **reconstruible**: se arma con precios de IOL y cronogramas del repositorio,
+así que la app la vuelve a generar sola. Lo irrecuperable sigue siendo la
+posición, y para eso está el exportar.
 
 ---
 

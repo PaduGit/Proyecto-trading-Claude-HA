@@ -81,6 +81,27 @@ def calcular_mep(cot, par_pesos="AL30", par_usd="AL30D"):
 
 # -- tabla -------------------------------------------------------------
 
+def _tipo(cfg):
+    """hard_dollar | cer | tasa_fija | dual. Se puede fijar en el YAML."""
+    t = (cfg.get("tipo") or "").strip().lower()
+    if t:
+        return t
+    if (cfg.get("ajuste") or "").lower() == "cer":
+        return "cer"
+    if (cfg.get("moneda") or "").upper() == "USD":
+        return "hard_dollar"
+    return "tasa_fija"
+
+
+def _moneda_cotiza(info, simbolo):
+    """En qué moneda liquida la especie: ARS, MEP o CABLE."""
+    if simbolo.endswith("D"):
+        return "MEP"
+    if simbolo.endswith("C"):
+        return "CABLE"
+    return "ARS"
+
+
 def _familia(cfg, info, simbolo=""):
     """Agrupa para la curva.
 
@@ -161,6 +182,9 @@ def fila(simbolo, info, cot, mep, liq=None, cer_actual=0):
                 "tir_bid": None, "tir_ask": None, "tir_last": None,
                 "md": None, "last_viejo": False,
                 "ley": cfg.get("ley"), "familia": "CER",
+                "tipo": _tipo(cfg),
+                "moneda_cotiza": _moneda_cotiza(info, simbolo),
+                "ley_cod": "AR" if (cfg.get("ley") or "").startswith("arg") else "NY",
                 "falta_cer": True,
                 "vencimiento": str(cfg["vencimiento"])[:10],
             }
@@ -196,6 +220,9 @@ def fila(simbolo, info, cot, mep, liq=None, cer_actual=0):
         "moneda": "CER" if es_cer else info["moneda"],
         "ley": cfg.get("ley"),
         "familia": _familia(cfg, info, simbolo),
+        "tipo": _tipo(cfg),
+        "moneda_cotiza": _moneda_cotiza(info, simbolo),
+        "ley_cod": "AR" if (cfg.get("ley") or "").startswith("arg") else "NY",
         "falta_cer": False,
         "cronograma": info["cronograma"],
         "bid": bid, "ask": ask, "last": last,

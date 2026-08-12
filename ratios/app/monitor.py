@@ -431,6 +431,41 @@ class Monitor:
         ok = self.ciclo(manual=True)
         return ok, 0
 
+    # -- historico de bonos -------------------------------------------
+
+    def cerrar_dia_bonos(self):
+        """Un punto de TIR y duration por bono, con el cierre de hoy."""
+        try:
+            import historico as H
+            import bonos as BO
+            with self.lock:
+                cot = dict(self.cotizaciones)
+            if not cot:
+                return 0
+            mep = (BO.calcular_mep(cot).get("medio") or 0) or None
+            n = H.agregar_hoy(cot, mep)
+            if n:
+                log.info("histórico de bonos: +%d puntos", n)
+            return n
+        except Exception as e:
+            log.warning("no se pudo cerrar el día de bonos: %s", e)
+            return 0
+
+    def reconstruir_historico(self):
+        """Backfill inicial. Corre una vez y queda marcado."""
+        try:
+            import historico as H
+            if db.get_estado("hist_bonos_hasta"):
+                return 0
+            log.info("reconstruyendo el histórico de bonos desde %s "
+                     "(esto tarda unos minutos)", H.DESDE)
+            n = H.reconstruir(self.iol)
+            log.info("histórico de bonos: %d puntos calculados", n)
+            return n
+        except Exception as e:
+            log.warning("no se pudo reconstruir el histórico: %s", e)
+            return 0
+
     # -- relleno de huecos --------------------------------------------
 
     def rellenar_huecos(self):
@@ -521,6 +556,9 @@ class Monitor:
         except Exception as e:
             log.warning("backfill incompleto: %s", e)
 
+        threading.Thread(target=self.reconstruir_historico,
+                         daemon=True, name="hist-bonos").start()
+
         ultimo_backfill = datetime.now().date()
         espera = int(self.cfg.get("poll_seconds", 600))
 
@@ -535,6 +573,7 @@ class Monitor:
                 hoy = datetime.now().date()
                 if hoy != ultimo_backfill and datetime.now().hour >= 18:
                     self.backfill()
+                    self.cerrar_dia_bonos()
                     db.purgar()
                     ultimo_backfill = hoy
                     # domingos: completar los días que faltaron

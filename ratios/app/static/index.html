@@ -205,6 +205,14 @@ dialog h2{font-family:var(--mono);font-size:13px;letter-spacing:.08em;
 .menu .ver{display:block;padding:4px 14px 6px;font-size:10px;
   color:var(--muted);line-height:1.35}
 
+/* ---------- filtros ---------- */
+.filtro-fila{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.filtro-etq{font-family:var(--mono);font-size:9px;color:var(--muted);
+  letter-spacing:.1em;text-transform:uppercase;width:52px;flex:none}
+.filtro-fila .periodos{flex:1}
+.resumen{font-family:var(--mono);font-size:10px;color:var(--muted);
+  margin:2px 0 10px}
+
 /* ---------- selector de período ---------- */
 .periodos{display:flex;gap:2px;margin-bottom:10px;flex-wrap:wrap}
 .periodos button{flex:1 0 auto;background:transparent;border:1px solid var(--rule);
@@ -1429,6 +1437,8 @@ async function cargarBonos(){
           'configuración como respaldo.</div>'
         : "") +
       selectorFamilias(d.filas) +
+      '<div class="resumen">' + filtrarFamilia(d.filas).length + ' de ' +
+        d.filas.length + ' especies</div>' +
       '<div class="hallazgo" style="padding:8px 10px">' +
       '<table class="bonos"><thead><tr><th>Especie</th>' +
       '<th>TIR Last</th><th class="hbid">Bid</th><th class="hbid">TIR Bid</th>' +
@@ -1515,6 +1525,7 @@ async function verBono(sim){
           esc(d.fila.par_dolarizado || "") + '</dd>' : "") +
       '<dt>Ley</dt><dd>' + esc(d.ley || "—") + '</dd>' +
       '</dl>' +
+      '<div class="graf" id="bono-hist"></div>' +
       '<details class="avanzado"><summary>Flujo de fondos (' +
         d.flujo.length + ' pagos)</summary><div class="scroll">' +
       '<table class="tabla"><thead><tr><th>Fecha</th><th>Renta</th>' +
@@ -1524,11 +1535,178 @@ async function verBono(sim){
         (x.amortizacion ? num(x.amortizacion, 3) : "—") + '</td><td>' +
         num(x.total, 3) + '</td></tr>').join("") +
       '</tbody></table></div></details>';
+    graficarTir(sim);
   }catch(e){
     $("#bono-cuerpo").innerHTML = '<div class="msg error">No se pudo cargar.</div>';
   }
 }
 $("#bono-cerrar").addEventListener("click", () => $("#dlg-bono").close());
+
+/* --- histórico de TIR --- */
+const PERIODOS_TIR = [["3m","3 meses"],["6m","6 meses"],["1a","1 año"],
+                      ["2a","2 años"],["max","Máximo"]];
+
+async function graficarTir(sim, periodo){
+  const cont = $("#bono-hist");
+  if(!cont) return;
+  periodo = periodo || "1a";
+  const barra = '<div class="periodos">' + PERIODOS_TIR.map(([k,t]) =>
+    '<button aria-pressed="' + (k===periodo) + '" onclick="graficarTir(\'' +
+    esc(sim) + '\',\'' + k + '\')">' + t + '</button>').join("") + '</div>';
+  cont.innerHTML = barra + '<div class="vacio" style="padding:12px">Cargando…</div>';
+
+  try{
+    const d = await (await fetch(base + "api/bonos/" +
+      encodeURIComponent(sim) + "/historico?periodo=" + periodo)).json();
+    if(!d.puntos || d.puntos.length < 2){
+      cont.innerHTML = barra + '<div class="vacio" style="padding:12px">' +
+        'Todavía no hay serie para este bono. El histórico se reconstruye ' +
+        'la primera vez que arranca la app y tarda unos minutos.</div>';
+      return;
+    }
+    cont.innerHTML = barra +
+      grafico(d.puntos.map(p => ({x:p.fecha, y:p.tir, f:"propia"})), 0, 0, "diario") +
+      '<div class="nota">TIR histórica calculada con el cierre de cada día, ' +
+      'el residual y el CER que correspondían a esa fecha.</div>';
+  }catch(e){
+    cont.innerHTML = barra + '<div class="msg error">No se pudo cargar.</div>';
+  }
+}
+
+/* ---------- curva TIR vs duration ---------- */
+const filtro = {ley: "todas", tipo: "todos", moneda: "todas"};
+
+const LEYES = [["todas","Todas"],["AR","Argentina"],["NY","Nueva York"]];
+const TIPOS = [["todos","Todos"],["hard_dollar","Hard dollar"],["cer","CER"],
+               ["tasa_fija","Tasa fija $"],["dual","Duales"]];
+const MONEDAS = [["todas","Todas"],["ARS","Pesos"],["MEP","D · MEP"],
+                 ["CABLE","C · Cable"]];
+
+/* color por moneda de cotización, para el gráfico con varias series */
+const COLOR_MONEDA = {ARS:"#E9E5DC", MEP:"#6FA88C", CABLE:"#7FA6B8"};
+
+function selectorFamilias(filas){
+  const fila = (etq, opciones, clave) => {
+    /* solo se ofrecen las opciones que tienen bonos */
+    const hay = k => k === "todas" || k === "todos" ||
+      filas.some(f => (clave === "ley" ? f.ley_cod
+                     : clave === "tipo" ? f.tipo
+                     : f.moneda_cotiza) === k);
+    const disp = opciones.filter(([k]) => hay(k));
+    if(disp.length < 3) return "";
+    return '<div class="filtro-fila"><span class="filtro-etq">' + etq + '</span>' +
+      '<div class="periodos" style="margin:0">' +
+      disp.map(([k,t]) => '<button aria-pressed="' + (filtro[clave]===k) +
+        '" onclick="elegirFiltro(\'' + clave + '\',\'' + k + '\')">' +
+        t + '</button>').join("") + '</div></div>';
+  };
+  return fila("Ley", LEYES, "ley") +
+         fila("Tipo", TIPOS, "tipo") +
+         fila("Moneda", MONEDAS, "moneda");
+}
+
+function elegirFiltro(clave, valor){
+  filtro[clave] = valor;
+  cargarBonos();
+}
+
+function filtrarFamilia(filas){
+  return filas.filter(f =>
+    (filtro.ley === "todas" || f.ley_cod === filtro.ley) &&
+    (filtro.tipo === "todos" || f.tipo === filtro.tipo) &&
+    (filtro.moneda === "todas" || f.moneda_cotiza === filtro.moneda));
+}
+
+/* ---------- curva TIR vs duration ---------- */
+
+function ajuste(puntos){
+  const n = puntos.length;
+  if(n < 2) return null;
+  const xs = puntos.map(p=>p.md), ys = puntos.map(p=>p.tir_last);
+  const sx=xs.reduce((a,b)=>a+b,0), sy=ys.reduce((a,b)=>a+b,0);
+  const sxy=puntos.reduce((a,p)=>a+p.md*p.tir_last,0);
+  const sxx=xs.reduce((a,b)=>a+b*b,0);
+  const den=(n*sxx-sx*sx)||1;
+  const pend=(n*sxy-sx*sy)/den;
+  const ord=(sy-pend*sx)/n;
+  return v => ord + pend*v;
+}
+
+function dibujarCurva(){
+  const cont = $("#b-curva-out");
+  const filas = (window._filasBonos || []).filter(f =>
+    f.md != null && f.tir_last != null);
+  const usar = filtrarFamilia(filas);
+
+  if(usar.length < 3){
+    cont.innerHTML = '<div class="vacio" style="padding:14px">' +
+      'Hacen falta al menos tres bonos con precio en esta selección.</div>';
+    return;
+  }
+
+  /* cada moneda de cotización es una unidad distinta: no se ajusta
+     una sola recta sobre pesos, MEP y cable juntos */
+  const monedas = [...new Set(usar.map(f => f.moneda_cotiza))];
+  const mezcla = monedas.length > 1;
+
+  const W=320,H=190,ml=30,mr=10,mt=14,mb=26;
+  const xs=usar.map(p=>p.md), ys=usar.map(p=>p.tir_last);
+  let x0=Math.min(...xs), x1=Math.max(...xs);
+  let y0=Math.min(...ys), y1=Math.max(...ys);
+  const px_=(x1-x0)*0.12||0.5, py_=(y1-y0)*0.18||0.5;
+  x0-=px_; x1+=px_; y0-=py_; y1+=py_;
+  const X=v=>ml+(v-x0)/(x1-x0)*(W-ml-mr);
+  const Y=v=>mt+(y1-v)/(y1-y0)*(H-mt-mb);
+
+  const grupos = monedas.map(mon => ({
+    mon, col: COLOR_MONEDA[mon] || "var(--bone)",
+    pts: usar.filter(f => f.moneda_cotiza === mon),
+  }));
+
+  let svg = "";
+  grupos.forEach(g => {
+    const fit = ajuste(g.pts);
+    if(fit && g.pts.length >= 2)
+      svg += '<line x1="'+X(x0)+'" y1="'+Y(fit(x0))+'" x2="'+X(x1)+
+        '" y2="'+Y(fit(x1))+'" stroke="'+g.col+'" stroke-width="1" ' +
+        'stroke-dasharray="1 3" opacity=".7"/>';
+    g.pts.forEach(p => {
+      let col = g.col;
+      if(!mezcla && fit){
+        const r = p.tir_last - fit(p.md);
+        col = r > 0.15 ? "var(--sage)" : r < -0.15 ? "var(--coral)" : "var(--bone)";
+      }
+      svg += '<circle cx="'+X(p.md).toFixed(1)+'" cy="'+Y(p.tir_last).toFixed(1)+
+        '" r="3" fill="'+col+'"/>';
+      if(usar.length <= 14)
+        svg += '<text x="'+(X(p.md)+5).toFixed(1)+'" y="'+(Y(p.tir_last)+3).toFixed(1)+
+          '" style="font-size:7px">'+esc(p.simbolo)+'</text>';
+    });
+  });
+
+  const nombreMon = m => (MONEDAS.find(x => x[0] === m) || [,m])[1];
+  const leyenda = mezcla
+    ? '<div class="leyenda" style="flex-wrap:wrap">' + grupos.map(g =>
+        '<span><i style="border-top-color:'+g.col+'"></i>'+
+        esc(nombreMon(g.mon))+'</span>').join("") + '</div>'
+    : "";
+
+  cont.innerHTML =
+    (mezcla ? '<div class="aviso">Hay ' + monedas.length + ' monedas de ' +
+      'cotización en esta selección. Cada una se ajusta por separado: una ' +
+      'TIR en pesos y una en MEP no son comparables. Elegí una moneda para ' +
+      'ver quién se despega.</div>' : "") +
+    '<svg class="chart" viewBox="0 0 '+W+' '+H+'" style="height:190px" role="img">' +
+    svg +
+    '<text x="2" y="'+(mt+4)+'" style="font-size:8px">'+y1.toFixed(1)+'%</text>' +
+    '<text x="2" y="'+(H-mb+4)+'" style="font-size:8px">'+y0.toFixed(1)+'%</text>' +
+    '<text x="'+ml+'" y="'+(H-6)+'" style="font-size:8px">'+x0.toFixed(1)+' años</text>' +
+    '<text x="'+(W-mr)+'" y="'+(H-6)+'" text-anchor="end" style="font-size:8px">'+
+      x1.toFixed(1)+'</text></svg>' + leyenda +
+    '<div class="nota">TIR del último operado contra duration modificada.' +
+    (mezcla ? "" : ' En verde los que rinden más de lo que la curva sugiere ' +
+      'para su plazo, en rojo los que rinden menos.') + '</div>';
+}
 
 /* ---------- curva TIR vs duration ---------- */
 let familiaSel = "todos";
