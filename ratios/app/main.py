@@ -9,6 +9,7 @@ import time
 
 import cer
 import db
+import respaldo
 from iol import IOL
 from monitor import Monitor
 from notify import Notificador
@@ -101,7 +102,12 @@ def validar(cfg):
 
 
 def main():
-    cfg = validar(cargar_opciones())
+    cfg = cargar_opciones()
+    cfg, repuestos = respaldo.restaurar_si_vacio(cfg)
+    if repuestos:
+        log.warning("Se restauraron del respaldo: %s. Revisá la "
+                    "configuración de la app.", ", ".join(repuestos))
+    cfg = validar(cfg)
     db.init()
     db.init_posicion()
     cer.init()
@@ -128,6 +134,7 @@ def main():
         except Exception as e:
             log.warning("no se pudo sincronizar el CER: %s", e)
 
+    respaldo.guardar_config(cfg)
     threading.Thread(target=_sincronizar_cer, daemon=True, name="cer").start()
     threading.Thread(target=monitor.loop, daemon=True, name="monitor").start()
 

@@ -11,6 +11,7 @@ import db
 import bonos as BO
 import cer as CER
 import posicion as P
+import respaldo
 from iol import IOLError
 
 log = logging.getLogger("web")
@@ -420,6 +421,23 @@ def crear_app(monitor):
                         "rango": "%s a %s (%s días)" % (
                             rango["a"], rango["b"], rango["n"]),
                         "bonos": det})
+
+    @app.get("/api/posicion/exportar")
+    def exportar_posicion():
+        try:
+            return jsonify(respaldo.exportar_posicion())
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.post("/api/posicion/importar")
+    def importar_posicion():
+        d = request.get_json(silent=True) or {}
+        try:
+            r = respaldo.importar_posicion(
+                d.get("datos"), bool(d.get("reemplazar")))
+        except Exception as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify(r)
 
     @app.get("/api/notificaciones/diagnostico")
     def notif_diag():

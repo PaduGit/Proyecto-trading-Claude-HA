@@ -81,13 +81,22 @@ def calcular_mep(cot, par_pesos="AL30", par_usd="AL30D"):
 
 # -- tabla -------------------------------------------------------------
 
-def _familia(cfg, info):
-    """Agrupa para la curva. Ley argentina y ley NY no se mezclan:
-    la diferencia entre ambas es riesgo legal, no pendiente de curva."""
+def _familia(cfg, info, simbolo=""):
+    """Agrupa para la curva.
+
+    Ley argentina y ley NY van separadas: la diferencia entre ambas es
+    riesgo legal, no pendiente de curva.
+
+    Las especies C también van aparte: liquidan en dólar cable, que es
+    otra moneda que el MEP de las D. Mezclarlas desplaza la curva.
+    """
     if (cfg.get("ajuste") or "").lower() == "cer":
         return "CER"
     ley = "AR" if (cfg.get("ley") or "").startswith("arg") else "NY"
-    return "%s-%s" % (info["moneda"], ley)
+    moneda = info["moneda"]
+    if moneda == "USD" and simbolo.endswith("C"):
+        moneda = "CABLE"
+    return "%s-%s" % (moneda, ley)
 
 
 def _tir(esp_cfg, precio, liq, filas):
@@ -186,7 +195,7 @@ def fila(simbolo, info, cot, mep, liq=None, cer_actual=0):
         "simbolo": simbolo,
         "moneda": "CER" if es_cer else info["moneda"],
         "ley": cfg.get("ley"),
-        "familia": _familia(cfg, info),
+        "familia": _familia(cfg, info, simbolo),
         "falta_cer": False,
         "cronograma": info["cronograma"],
         "bid": bid, "ask": ask, "last": last,
@@ -289,6 +298,7 @@ def detalle(simbolo, cot, liq=None, par_mep=("AL30", "AL30D"), cer_actual=0):
     residual = m.get("residual") or RF.residual(cfg, liq)
     corrido = m.get("interes_corrido") or RF.interes_corrido(cfg, liq)
     tecnico = residual + corrido
+    # en un bono CER el valor tecnico va ajustado por el coeficiente
     fcer = factor_cer(cfg, cer_actual)
     if fcer and fcer != 1.0:
         tecnico *= fcer
@@ -312,6 +322,9 @@ def detalle(simbolo, cot, liq=None, par_mep=("AL30", "AL30D"), cer_actual=0):
         "paridad": ((f["last"] if fcer != 1.0 else precio_usd) / tecnico * 100)
                    if tecnico else None,
         "cer_factor": fcer if fcer != 1.0 else None,
+        "cer_base_fecha": (CER._restar_habiles(
+            RF._fecha(cfg["emision"]), CER.REZAGO_HABILES).isoformat()
+            if (cfg.get("ajuste") or "").lower() == "cer" else None),
         "cupon_vigente": cupon,
         "current_yield": (residual * cupon / 100.0 / precio_usd * 100)
                          if precio_usd else None,

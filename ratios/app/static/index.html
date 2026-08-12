@@ -233,6 +233,13 @@ table.bonos tr.usd td.tk{color:var(--sage)}
 table.bonos tr.cer td.tk{color:var(--amber)}
 table.bonos tr.sindato td{opacity:.5}
 table.bonos .tir{color:var(--bone)}
+/* convención de mercado: la compra del lado verde, la venta del rojo */
+table.bonos td.bid,table.bonos td.tbid{background:rgba(111,168,140,.10)}
+table.bonos td.ask,table.bonos td.task{background:rgba(223,113,104,.10)}
+table.bonos td.bid{border-left:2px solid rgba(111,168,140,.45)}
+table.bonos td.ask{border-right:2px solid rgba(223,113,104,.45)}
+table.bonos th.hbid{color:var(--sage)}
+table.bonos th.hask{color:var(--coral)}
 table.bonos .tir.viejo{color:var(--muted);font-style:italic}
 .chart .linea-iol{fill:none;stroke:var(--muted);stroke-width:1;
   stroke-dasharray:2 2;opacity:.8}
@@ -330,6 +337,19 @@ table.bonos .tir.viejo{color:var(--muted);font-style:italic}
     <div id="pos-out"></div>
     <button class="secundario" id="pos-nuevo" style="margin-top:14px">
       + Nuevo grupo</button>
+    <details class="avanzado">
+      <summary>Respaldo</summary>
+      <p class="nota" style="margin-top:10px">Copiá este texto y guardalo
+        afuera. Si algún día hay que reconstruir, lo pegás acá y volvés
+        a tener los grupos y movimientos.</p>
+      <button class="secundario" id="pos-exportar">Exportar</button>
+      <textarea id="pos-texto" style="width:100%;min-height:110px;
+        background:var(--panel);border:1px solid var(--rule);color:var(--bone);
+        font-family:var(--mono);font-size:10px;padding:8px;border-radius:3px;
+        margin-top:8px" placeholder="Pegá acá un respaldo para importarlo"></textarea>
+      <button class="secundario" id="pos-importar">Importar lo pegado</button>
+      <div id="pos-msg"></div>
+    </details>
   </section>
 
   <section id="v-plazos" hidden>
@@ -1160,6 +1180,56 @@ async function borrarGrupo(gid){
   cargarPosicion();
 }
 
+/* --- respaldo --- */
+$("#pos-exportar").addEventListener("click", async () => {
+  try{
+    const d = await (await fetch(base + "api/posicion/exportar")).json();
+    $("#pos-texto").value = JSON.stringify(d);
+    $("#pos-texto").select();
+    $("#pos-msg").innerHTML = '<div class="msg ok">Listo. Copialo y ' +
+      'guardalo en algún lado seguro.</div>';
+  }catch(e){
+    $("#pos-msg").innerHTML = '<div class="msg error">No se pudo exportar.</div>';
+  }
+});
+
+$("#pos-importar").addEventListener("click", async () => {
+  const txt = $("#pos-texto").value.trim();
+  if(!txt){
+    $("#pos-msg").innerHTML = '<div class="msg">Pegá primero un respaldo.</div>';
+    return;
+  }
+  let datos;
+  try{ datos = JSON.parse(txt); }
+  catch(e){
+    $("#pos-msg").innerHTML = '<div class="msg error">Eso no es un ' +
+      'respaldo válido.</div>';
+    return;
+  }
+  const reemplazar = confirm(
+    "¿Reemplazar los grupos que ya existan con el mismo nombre?\n\n" +
+    "Aceptar: los borra y los vuelve a crear.\n" +
+    "Cancelar: los deja como están y solo agrega los nuevos.");
+  try{
+    const r = await fetch(base + "api/posicion/importar", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({datos, reemplazar})});
+    const d = await r.json();
+    if(!r.ok){
+      $("#pos-msg").innerHTML = '<div class="msg error">' +
+        esc(d.error || "No se pudo importar.") + '</div>';
+      return;
+    }
+    $("#pos-msg").innerHTML = '<div class="msg ok">' + d.grupos_creados +
+      ' grupo(s) y ' + d.movimientos + ' movimiento(s) importados' +
+      (d.grupos_salteados ? ', ' + d.grupos_salteados + ' salteado(s)' : "") +
+      '.</div>';
+    cargarPosicion();
+  }catch(e){
+    $("#pos-msg").innerHTML = '<div class="msg error">No se pudo importar.</div>';
+  }
+});
+
 /* --- crear grupo --- */
 $("#pos-nuevo").addEventListener("click", () => {
   $("#g-nombre").value = ""; $("#g-tickers").value = "";
@@ -1361,7 +1431,8 @@ async function cargarBonos(){
       selectorFamilias(d.filas) +
       '<div class="hallazgo" style="padding:8px 10px">' +
       '<table class="bonos"><thead><tr><th>Especie</th>' +
-      '<th>TIR Last</th><th>Bid</th><th>TIR Bid</th><th>TIR Ask</th><th>Ask</th>' +
+      '<th>TIR Last</th><th class="hbid">Bid</th><th class="hbid">TIR Bid</th>' +
+      '<th class="hask">TIR Ask</th><th class="hask">Ask</th>' +
       '</tr></thead><tbody>' +
       filtrarFamilia(d.filas).map(f => {
         /* los bonos en pesos cotizan en miles y no necesitan decimales;
@@ -1375,8 +1446,10 @@ async function cargarBonos(){
           esc(f.simbolo) + '</td>' +
           '<td class="tir' + (f.last_viejo ? " viejo" : "") + '">' +
             t(f.tir_last) + '</td>' +
-          '<td>' + p(f.bid) + '</td><td class="tir">' + t(f.tir_bid) + '</td>' +
-          '<td class="tir">' + t(f.tir_ask) + '</td><td>' + p(f.ask) + '</td></tr>';
+          '<td class="bid">' + p(f.bid) + '</td>' +
+          '<td class="tir tbid">' + t(f.tir_bid) + '</td>' +
+          '<td class="tir task">' + t(f.tir_ask) + '</td>' +
+          '<td class="ask">' + p(f.ask) + '</td></tr>';
       }).join("") + '</tbody></table></div>' +
       '<div class="nota" style="margin-top:8px">Ordenados por duration ' +
       'modificada. Tocá el ticker para ver el detalle y el flujo. ' +
@@ -1430,7 +1503,9 @@ async function verBono(sim){
       '<dt>Cupón vigente</dt><dd>' + val(d.cupon_vigente) + '% anual</dd>' +
       '<dt>Interés corrido</dt><dd>' + val(d.interes_corrido, "", 4) + '</dd>' +
       '<dt>Valor técnico</dt><dd>' + val(d.valor_tecnico) + '</dd>' +
-      (d.cer_factor ? '<dt>Factor CER</dt><dd>' + val(d.cer_factor, "", 4) + '</dd>' : "") +
+      (d.cer_factor ? '<dt>Factor CER</dt><dd>' + val(d.cer_factor, "", 4) +
+        (d.cer_base_fecha ? ' <span style="color:var(--muted)">(base ' +
+          esc(d.cer_base_fecha) + ')</span>' : "") + '</dd>' : "") +
       '<dt>Paridad</dt><dd>' + val(d.paridad) + '%</dd>' +
       '<dt>Current yield</dt><dd>' + val(d.current_yield) + '%</dd>' +
       (d.spread_tir != null ? '<dt>Spread TIR</dt><dd>' +
@@ -1459,11 +1534,13 @@ $("#bono-cerrar").addEventListener("click", () => $("#dlg-bono").close());
 let familiaSel = "todos";
 
 const FAMILIAS = [
-  ["ARS-AR", "Pesos · ley arg.", "#E9E5DC"],
-  ["ARS-NY", "Pesos · ley NY",   "#9BB4C7"],
-  ["USD-AR", "USD · ley arg.",   "#6FA88C"],
-  ["USD-NY", "USD · ley NY",     "#C6A24B"],
-  ["CER",    "CER",              "#B98BC9"],
+  ["ARS-AR",   "Pesos · ley arg.", "#E9E5DC"],
+  ["ARS-NY",   "Pesos · ley NY",   "#9BB4C7"],
+  ["USD-AR",   "MEP · ley arg.",   "#6FA88C"],
+  ["USD-NY",   "MEP · ley NY",     "#C6A24B"],
+  ["CABLE-AR", "Cable · ley arg.", "#7FA6B8"],
+  ["CABLE-NY", "Cable · ley NY",   "#C98A6B"],
+  ["CER",      "CER",              "#B98BC9"],
 ];
 
 function familiasPresentes(filas){

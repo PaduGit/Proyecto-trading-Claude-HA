@@ -107,7 +107,13 @@ pública y no necesita credenciales. Con la fecha de emisión que ya está en el
 YAML, la app calcula el coeficiente base de cada bono. Se cachea en la base:
 el CER de una fecha pasada no cambia, así que se consulta una vez.
 
-Respeta el rezago de diez días hábiles con que ajusta el capital.
+Respeta el rezago de diez días hábiles con que ajusta el capital, **contando
+los feriados nacionales**. Eso importa más de lo que parece: sin descontarlos,
+la fecha base del TX31 se corría cuatro días y el factor daba 17,21 en vez de
+17,36, con casi medio punto de diferencia en la TIR.
+
+La lista de feriados está en `cer.py` y va hasta 2026. Hay que extenderla cada
+año; si no, los bonos emitidos en el año nuevo van a tomar una base corrida.
 
 Si el BCRA no responde, esos bonos aparecen atenuados y sin TIR. Como respaldo
 se puede cargar `cer_actual` en la configuración y `cer_base` de cada bono en
@@ -151,6 +157,9 @@ licitación del 24 de junio.
 | TZXD8 TIR real | 8,60% | 8,60% |
 | TZXD8 duration mod. | 2,16 | 2,16 |
 
+Y a otro precio, para verificar que la sensibilidad también coincide:
+TX31 a 1.464 da 9,01% en los dos lados.
+
 El valor técnico es la prueba más exigente: valida el cronograma, el CER base
 y el rezago de diez días hábiles a la vez.
 
@@ -160,8 +169,10 @@ Arriba de la tabla hay un selector que agrupa por moneda y legislación:
 
 - Pesos · ley argentina
 - Pesos · ley NY
-- USD · ley argentina
-- USD · ley NY
+- MEP · ley argentina
+- MEP · ley NY
+- Cable · ley argentina
+- Cable · ley NY
 - CER
 
 **Ley argentina y ley Nueva York van separadas a propósito.** La diferencia
@@ -169,6 +180,10 @@ entre un AL41 y un GD41 —misma duration, distinto rendimiento— es riesgo leg
 no pendiente de curva. Si se ajustara una recta sobre los dos juntos, todos los
 AL parecerían baratos y todos los GD caros, cuando en realidad estás midiendo
 la brecha por legislación.
+
+**Las especies C también van aparte.** Liquidan en dólar cable, que es otra
+moneda que el MEP de las D. Si se mezclan, la curva queda desplazada porque el
+cable cotiza más caro.
 
 El selector manda sobre la tabla y sobre el gráfico a la vez.
 
@@ -420,6 +435,27 @@ cuando armemos el detector de rulos vas a tener meses de book acumulado.
   registro están en Ajustes → Apps → Ratios IOL.
 - **El relleno semanal de huecos** usa cierres de IOL, que pueden venir de otro
   plazo. Esos puntos se dibujan punteados en los gráficos.
+
+---
+
+## Respaldo
+
+**La configuración** se copia a `/data/respaldo.json` cada vez que la app
+arranca, sin credenciales. Si en un arranque los pares o los paneles vienen
+vacíos, los repone de ahí y lo avisa en el registro. Solo actúa cuando la lista
+está vacía: si borrás un par a propósito, no lo resucita.
+
+**La posición** se exporta desde la propia solapa: Posición → Respaldo →
+Exportar. Te devuelve un texto con los grupos y todos los movimientos que
+podés copiar y guardar donde quieras. Para restaurarlo, lo pegás en el mismo
+cuadro y tocás Importar.
+
+Al importar pregunta qué hacer con los grupos que ya existan con el mismo
+nombre: reemplazarlos o dejarlos y agregar solo los nuevos.
+
+Vale la pena exportar de vez en cuando y guardar el texto afuera de Home
+Assistant. Desinstalar la app puede borrar el volumen `/data`, y con él la
+base entera.
 
 ---
 
