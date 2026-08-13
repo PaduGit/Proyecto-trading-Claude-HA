@@ -275,6 +275,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
         <a href="#" id="probar-notif" role="menuitem">Probar notificación</a>
         <a href="#" id="probar-cer" role="menuitem">Probar CER (BCRA)</a>
         <a href="#" id="rehacer-hist" role="menuitem">Reconstruir histórico</a>
+        <a href="#" id="bajar-hist" role="menuitem">Descargar histórico (CSV)</a>
         <hr>
         <span class="ver">Configuración y registro: Ajustes → Apps → Ratios IOL.
           Desde acá no se puede navegar; Home Assistant lo bloquea.</span>
@@ -1372,6 +1373,22 @@ document.addEventListener("keydown", e => {
 $("#probar-notif").addEventListener("click", e => {
   e.preventDefault(); e.stopPropagation(); probarNotificacion();
 });
+$("#bajar-hist").addEventListener("click", e => {
+  e.preventDefault(); e.stopPropagation();
+  $("#menu").hidden = true;
+  /* el iframe de Ingress no deja navegar, pero sí descargar un blob */
+  fetch(base + "api/historico/exportar")
+    .then(r => r.text())
+    .then(txt => {
+      const url = URL.createObjectURL(
+        new Blob([txt], {type: "text/csv;charset=utf-8"}));
+      const a = document.createElement("a");
+      a.href = url; a.download = "historico_tir.csv";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    })
+    .catch(() => alert("No se pudo descargar."));
+});
 $("#rehacer-hist").addEventListener("click", async e => {
   e.preventDefault(); e.stopPropagation();
   $("#menu").hidden = true;
@@ -1539,8 +1556,8 @@ async function verBono(sim){
         : ' (renta)') + '</dd>' : "") +
       '<dt>Vencimiento</dt><dd>' + esc(d.vencimiento) +
         (d.años_al_vto ? ' · ' + val(d.años_al_vto) + ' años' : "") + '</dd>' +
-      '<dt>Duration mod.</dt><dd>' + val(d.md) + '</dd>' +
-      '<dt>Duration</dt><dd>' + val(d.duration) + '</dd>' +
+      '<dt>Duration mod.</dt><dd>' + val(d.md, "", 2) + '</dd>' +
+      '<dt>Duration</dt><dd>' + val(d.duration, "", 2) + '</dd>' +
       '<dt>Residual</dt><dd>' + val(d.residual) + '%</dd>' +
       '<dt>Cupón vigente</dt><dd>' + val(d.cupon_vigente) + '% anual</dd>' +
       '<dt>Interés corrido</dt><dd>' + val(d.interes_corrido, "", 4) + '</dd>' +
@@ -1549,7 +1566,8 @@ async function verBono(sim){
         (d.cer_base_fecha ? ' <span style="color:var(--muted)">(base ' +
           esc(d.cer_base_fecha) + ')</span>' : "") + '</dd>' : "") +
       '<dt>Paridad</dt><dd>' + val(d.paridad) + '%</dd>' +
-      '<dt>Current yield</dt><dd>' + val(d.current_yield) + '%</dd>' +
+      '<dt>Current yield</dt><dd>' +
+        (d.cupon_vigente ? val(d.current_yield) + '%' : '0% (cupón cero)') + '</dd>' +
       (d.spread_tir != null ? '<dt>Spread TIR</dt><dd>' +
         val(d.spread_tir) + ' pp entre puntas</dd>' : "") +
       (d.fila && d.fila.cable_pct != null

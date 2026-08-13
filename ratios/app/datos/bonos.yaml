@@ -635,6 +635,13 @@ bonos:
     vencimiento: 2033-12-31
     base: 30/360
     cer_base: 0
+    nominal_base: 127.09
+    verificar: >-
+      El nominal de partida no es 100: se dedujo de la paridad de mercado
+      (90,67% sobre precio 48.735 da valor técnico 53.750). Ese número
+      depende del residual que calcula la app (75%): una fuente externa
+      indica 80%, lo que daría nominal 119,20. Si se corrige el cronograma
+      de amortización, hay que recalcular este valor.
     amortizacion:
       tipo: cuotas
       fechas_desde: 2024-06-30
@@ -684,10 +691,11 @@ bonos:
     vencimiento: 2046-01-02
     base: 30/360
     cer_base: 0
+    nominal_base: 138.92
     verificar: >-
-      Capitalizó intereses hasta el 31/12/2013. Como esa etapa terminó, el
-      cronograma arranca del capital ya capitalizado: las 20 cuotas del 5%
-      se calculan sobre ese nominal mayor, no sobre el original.
+      Capitalizó intereses hasta el 31/12/2013. El nominal de partida
+      refleja ese capital ya capitalizado: se dedujo de la paridad de
+      mercado (55,89% sobre precio 43.650 da valor técnico 78.100).
     amortizacion:
       tipo: cuotas
       fechas_desde: 2036-06-30

@@ -436,6 +436,34 @@ def crear_app(monitor):
         return jsonify({"simbolo": simbolo.upper(), "periodo": periodo,
                         "puntos": puntos})
 
+    @app.get("/api/historico/exportar")
+    def historico_exportar():
+        """Serie completa en CSV, para analizarla afuera."""
+        desde = request.args.get("desde") or "2023-01-01"
+        sims = (request.args.get("simbolos") or "").upper()
+        q = ("SELECT simbolo, fecha, precio, tir, md, duration, residual, cer "
+             "FROM bono_hist WHERE fecha >= ?")
+        args = [desde]
+        if sims:
+            lista = [x.strip() for x in sims.split(",") if x.strip()]
+            q += " AND simbolo IN (%s)" % ",".join("?" * len(lista))
+            args += lista
+        q += " ORDER BY simbolo, fecha"
+
+        filas = db.conn().execute(q, args).fetchall()
+        salida = ["simbolo,fecha,precio,tir,md,duration,residual,cer"]
+        for f in filas:
+            salida.append(",".join(
+                "" if f[c] is None else
+                ("%.6f" % f[c] if isinstance(f[c], float) else str(f[c]))
+                for c in ("simbolo", "fecha", "precio", "tir", "md",
+                          "duration", "residual", "cer")))
+        texto = "\n".join(salida)
+        return app.response_class(
+            texto, mimetype="text/csv",
+            headers={"Content-Disposition":
+                     "attachment; filename=historico_tir.csv"})
+
     @app.get("/api/historico/estado")
     def historico_estado():
         r = H.resumen()

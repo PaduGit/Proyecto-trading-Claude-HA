@@ -171,7 +171,7 @@ def fila(simbolo, info, cot, mep, liq=None, cer_actual=0):
     es_cer = (cfg.get("ajuste") or "").lower() == "cer"
 
     if es_cer:
-        f = factor_cer(cfg, cer_actual)
+        f = factor_cer(cfg, cer_actual) * float(cfg.get("nominal_base") or 100) / 100
         if not f:
             return {
                 "simbolo": simbolo, "moneda": "CER", "cronograma": info["cronograma"],
@@ -328,7 +328,9 @@ def detalle(simbolo, cot, liq=None, par_mep=("AL30", "AL30D"), cer_actual=0):
     # en un bono CER el valor tecnico va ajustado por el coeficiente
     fcer = factor_cer(cfg, cer_actual)
     if fcer and fcer != 1.0:
-        tecnico *= fcer
+        # el nominal de partida no siempre es 100: los del canje 2005
+        # arrancan de un capital distinto al de la lámina
+        tecnico *= fcer * float(cfg.get("nominal_base") or 100) / 100
     cupon = m.get("cupon_vigente") or 0
 
     return {

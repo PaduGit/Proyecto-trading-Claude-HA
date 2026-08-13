@@ -72,7 +72,7 @@ def calcular_punto(simbolo, f, precio, cfg, info, mep=None):
         coef = _cer_de(f)
         if not base or not coef:
             return None
-        p = precio / (coef / base)
+        p = precio / (coef / base * float(cfg.get("nominal_base") or 100) / 100)
     elif info["moneda"] == "USD":
         p = precio
     else:

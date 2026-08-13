@@ -150,8 +150,13 @@ garantía de coparticipación. Las condiciones salen del Boletín Oficial
 provincial del 30/07/2026. La reapertura de julio no mueve la fecha base del
 ajuste: corre desde la emisión original del 30 de abril.
 
-El CUAP capitalizó intereses hasta diciembre de 2013. Como esa etapa terminó,
-se modela desde el capital ya capitalizado.
+**El nominal de partida no siempre es 100.** El CUAP capitalizó intereses
+hasta 2013 y arranca de 138,92; el DICP del canje arranca de 127,09. Ese
+número va en `nominal_base` y se deduce de la paridad de mercado. Con eso las
+paridades coinciden con una fuente externa en centésimas.
+
+El del DICP depende del residual que calcula la app: si algún día se corrige
+su cronograma de amortización, hay que recalcularlo.
 
 **Dos correcciones sobre el archivo del Ministerio:**
 
@@ -475,6 +480,9 @@ están.
 
 También se puede forzar desde el menú ⋮ → **Reconstruir histórico**, que
 primero muestra cuántas especies están sin serie.
+
+Y **Descargar histórico (CSV)** baja la serie completa —símbolo, fecha,
+precio, TIR, duration, residual y CER de cada día— para analizarla afuera.
 
 ### Qué queda afuera
 
