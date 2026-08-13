@@ -135,7 +135,23 @@ Si para una fecha el CER más cercano quedó a más de quince días, la app no
 calcula la TIR de ese bono. Un coeficiente viejo daría un número disparatado
 sin que se note.
 
-Cargados: TZXA7, TZXS8, TZXM9, TZXD8 y TX31.
+**Cupón cero:** TZXD6, TZXM7, TZXY7, TZX27, TZXS7, TZXO7, TZXD7, TZXM8,
+TZX28, TZXA7, TZXS8, TZXM9, TZXD8.
+
+**Con cupón:** TX28, TX31.
+
+**Canje 2005:** DICP y DIPO (Discount 5,83% 2033), PARP y PAPO (Par step-up
+2038), CUAP (Cuasipar 3,31% 2045).
+
+**Letras:** X30S6.
+
+**Provinciales:** PBA28, de la Provincia de Buenos Aires, cupón 9% con
+garantía de coparticipación. Las condiciones salen del Boletín Oficial
+provincial del 30/07/2026. La reapertura de julio no mueve la fecha base del
+ajuste: corre desde la emisión original del 30 de abril.
+
+El CUAP capitalizó intereses hasta diciembre de 2013. Como esa etapa terminó,
+se modela desde el capital ya capitalizado.
 
 **Dos correcciones sobre el archivo del Ministerio:**
 
@@ -449,13 +465,16 @@ vigente en esa fecha. No es la TIR de hoy proyectada hacia atrás.
 
 ### Cómo se arma
 
-La primera vez que arranca, la app reconstruye desde enero de 2023 con los
-cierres de IOL. Son unas 30 llamadas y tarda algunos minutos; corre en segundo
-plano y queda marcado para no repetirse. Después agrega un punto por día al
-cerrar la rueda.
+Al arrancar, la app reconstruye desde enero de 2023 con los cierres de IOL.
+Corre en segundo plano y tarda algunos minutos. Después agrega un punto por día
+al cerrar la rueda.
 
-Se puede forzar con `POST /api/historico/reconstruir`, y consultar el estado
-en `/api/historico/estado`.
+**La marca de "ya reconstruido" es por bono, no global.** Si agregás uno nuevo
+al YAML, se reconstruye solo ese en el próximo arranque sin rehacer los que ya
+están.
+
+También se puede forzar desde el menú ⋮ → **Reconstruir histórico**, que
+primero muestra cuántas especies están sin serie.
 
 ### Qué queda afuera
 
@@ -482,8 +501,8 @@ vacíos, los repone de ahí y lo avisa en el registro. Solo actúa cuando la lis
 está vacía: si borrás un par a propósito, no lo resucita.
 
 **La posición** se exporta desde la propia solapa: Posición → Respaldo →
-Exportar. Te devuelve un texto con los grupos y todos los movimientos que
-podés copiar y guardar donde quieras. Para restaurarlo, lo pegás en el mismo
+Exportar. Copia el texto al portapapeles directamente; si el navegador lo
+bloquea, queda seleccionado abajo para copiar a mano. Para restaurarlo, lo pegás en el mismo
 cuadro y tocás Importar.
 
 Al importar pregunta qué hacer con los grupos que ya existan con el mismo

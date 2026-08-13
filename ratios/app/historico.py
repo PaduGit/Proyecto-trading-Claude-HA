@@ -165,6 +165,18 @@ def reconstruir(iol, simbolo=None, desde=None, hasta=None, mercado="bCBA"):
     return total
 
 
+def sin_serie():
+    """Especies con cronograma pero sin ningún punto guardado.
+
+    Sirve para reconstruir solo lo que falta: un bono agregado después
+    del primer backfill se completa solo, sin rehacer todo."""
+    esps = BO.especies()
+    ya = {r["simbolo"] for r in db.conn().execute(
+        "SELECT DISTINCT simbolo FROM bono_hist")}
+    return [s for s, i in esps.items()
+            if s not in ya and i["moneda"] in ("USD", "CER")]
+
+
 def agregar_hoy(cotizaciones, mep=None, f=None):
     """Un punto por día con el cierre de la rueda."""
     init()

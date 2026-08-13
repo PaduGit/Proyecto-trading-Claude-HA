@@ -89,15 +89,30 @@ def fechas_interes(esp, hasta):
     while cur <= hasta:
         out.append(cur)
         cur = _sumar_meses(cur, paso)
+    # el vencimiento siempre paga cupón, aunque el día no caiga justo
+    # en la serie (pasa cuando el prospecto corre la última fecha)
+    if out and out[-1] != hasta:
+        # a pocos dias: es el mismo servicio, solo corrido
+        if abs((hasta - out[-1]).days) <= 15:
+            out[-1] = hasta
+        elif hasta > out[-1]:
+            out.append(hasta)
     return out
 
 
-def _pegar_a_cupon(amorts, pagos_int, tolerancia=3):
-    """Alinea la fecha de amortización con la del cupón más cercano."""
+def _pegar_a_cupon(amorts, pagos_int, tolerancia=3, venc=None):
+    """Alinea la fecha de amortización con la del cupón más cercano.
+
+    Una cuota que caería después del vencimiento se pega a él: los
+    prospectos redondean distinto la última fecha de cada pata.
+    """
     if not pagos_int:
         return amorts
     out = {}
     for f, c in amorts.items():
+        if venc and f > venc:
+            out[venc] = out.get(venc, 0.0) + c
+            continue
         cerca = min(pagos_int, key=lambda p: abs((p - f).days))
         if abs((cerca - f).days) <= tolerancia:
             out[cerca] = out.get(cerca, 0.0) + c
@@ -120,7 +135,7 @@ def flujo(esp, desde=None):
 
     # si una amortización cae a uno o dos días de un cupón, es el mismo
     # servicio: los prospectos redondean distinto la fecha de cada pata
-    amorts = _pegar_a_cupon(amorts, pagos_int)
+    amorts = _pegar_a_cupon(amorts, pagos_int, venc=venc)
     todas = sorted(set(list(amorts) + pagos_int))
     residual = 100.0
     anterior = _fecha(esp["emision"])

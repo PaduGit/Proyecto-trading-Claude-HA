@@ -155,6 +155,9 @@ def descargar(desde, hasta, verificar_ssl=True):
     return len(filas)
 
 
+_fallidas = set()
+
+
 def valor(f, verificar_ssl=True):
     """CER de una fecha. Si es feriado o fin de semana, toma el anterior."""
     if isinstance(f, date):
@@ -170,6 +173,8 @@ def valor(f, verificar_ssl=True):
         if r2 and (date.fromisoformat(f) - date.fromisoformat(r2["fecha"])).days <= 7:
             return r["valor"]
 
+    if f in _fallidas:
+        return None
     d = date.fromisoformat(f)
     descargar((d - timedelta(days=30)).isoformat(), f, verificar_ssl)
     r = db.conn().execute(
@@ -177,6 +182,7 @@ def valor(f, verificar_ssl=True):
         (f,)).fetchone()
     if not r:
         global ultimo_error
+        _fallidas.add(f)
         ultimo_error = ("no hay CER guardado para %s ni antes. "
                         "Hay que descargar la serie desde esa fecha." % f)
         log.warning("CER: %s", ultimo_error)
@@ -290,6 +296,9 @@ def sincronizar(bonos, verificar_ssl=True):
             pass
     if emisiones:
         desde = min(emisiones) - timedelta(days=40)
+        # la serie arranca el 2/2/2002 con base 1
+        if desde < date(2002, 2, 2):
+            desde = date(2002, 2, 2)
         n = asegurar_rango(desde, date.today(), verificar_ssl)
         if n:
             log.info("CER: serie completa desde %s (+%d días)", desde, n)

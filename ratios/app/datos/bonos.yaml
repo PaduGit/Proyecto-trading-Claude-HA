@@ -417,7 +417,318 @@ bonos:
       tramos:
         - {desde: 2026-06-30, tasa: 0.0}
 
+  TZXD6:
+    nombre: Boncer cupón cero 15/12/2026
+    ley: argentina
+    moneda: ARS
+    ajuste: cer
+    tipo: cer
+    emision: 2024-03-15
+    vencimiento: 2026-12-15
+    base: 30/360
+    cer_base: 0
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2026-12-15
+      tramos:
+        - {desde: 2024-03-15, tasa: 0.0}
+
+  TZXM7:
+    nombre: Boncer cupón cero 31/03/2027
+    ley: argentina
+    moneda: ARS
+    ajuste: cer
+    tipo: cer
+    emision: 2024-05-20
+    vencimiento: 2027-03-31
+    base: 30/360
+    cer_base: 0
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2027-03-31
+      tramos:
+        - {desde: 2024-05-20, tasa: 0.0}
+
+  TZXY7:
+    nombre: Boncer cupón cero 31/05/2027
+    ley: argentina
+    moneda: ARS
+    ajuste: cer
+    tipo: cer
+    emision: 2025-12-15
+    vencimiento: 2027-05-31
+    base: 30/360
+    cer_base: 0
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2027-05-31
+      tramos:
+        - {desde: 2025-12-15, tasa: 0.0}
+
+  TZX27:
+    nombre: Boncer cupón cero 30/06/2027
+    ley: argentina
+    moneda: ARS
+    ajuste: cer
+    tipo: cer
+    emision: 2024-02-01
+    vencimiento: 2027-06-30
+    base: 30/360
+    cer_base: 0
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2027-06-30
+      tramos:
+        - {desde: 2024-02-01, tasa: 0.0}
+
+  TZXS7:
+    nombre: Boncer cupón cero 30/09/2027
+    ley: argentina
+    moneda: ARS
+    ajuste: cer
+    tipo: cer
+    emision: 2026-03-31
+    vencimiento: 2027-09-30
+    base: 30/360
+    cer_base: 0
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2027-09-30
+      tramos:
+        - {desde: 2026-03-31, tasa: 0.0}
+
+  TZXO7:
+    nombre: Boncer cupón cero 29/10/2027
+    ley: argentina
+    moneda: ARS
+    ajuste: cer
+    tipo: cer
+    emision: 2026-06-30
+    vencimiento: 2027-10-29
+    base: 30/360
+    cer_base: 0
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2027-10-29
+      tramos:
+        - {desde: 2026-06-30, tasa: 0.0}
+
+  TZXD7:
+    nombre: Boncer cupón cero 15/12/2027
+    ley: argentina
+    moneda: ARS
+    ajuste: cer
+    tipo: cer
+    emision: 2024-03-15
+    vencimiento: 2027-12-15
+    base: 30/360
+    cer_base: 0
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2027-12-15
+      tramos:
+        - {desde: 2024-03-15, tasa: 0.0}
+
+  TZXM8:
+    nombre: Boncer cupón cero 31/03/2028
+    ley: argentina
+    moneda: ARS
+    ajuste: cer
+    tipo: cer
+    emision: 2026-04-01
+    vencimiento: 2028-03-31
+    base: 30/360
+    cer_base: 0
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2028-03-31
+      tramos:
+        - {desde: 2026-04-01, tasa: 0.0}
+
+  TZX28:
+    nombre: Boncer cupón cero 30/06/2028
+    ley: argentina
+    moneda: ARS
+    ajuste: cer
+    tipo: cer
+    emision: 2024-02-01
+    vencimiento: 2028-06-30
+    base: 30/360
+    cer_base: 0
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2028-06-30
+      tramos:
+        - {desde: 2024-02-01, tasa: 0.0}
+
+
+  # ---------------------------------------------------------------
+  # Letras del Tesoro ajustables por CER
+  # ---------------------------------------------------------------
+
+  X30S6:
+    nombre: Letra Tesoro Nacional ajustable CER 30/09/2026
+    ley: argentina
+    moneda: ARS
+    ajuste: cer
+    tipo: cer
+    emision: 2025-09-30
+    vencimiento: 2026-09-30
+    base: 30/360
+    cer_base: 0
+    verificar: >-
+      La fecha de emisión es estimada: la letra no figura en el archivo del
+      Ministerio. El vencimiento y el valor residual sí están confirmados
+      contra una fuente externa.
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2026-09-30
+      tramos:
+        - {desde: 2025-09-30, tasa: 0.0}
+
+  # ---------------------------------------------------------------
+  # Canje 2005 — ajustables por CER con cupón
+  #
+  # El CUAP capitalizó intereses hasta diciembre de 2013. Como esa
+  # etapa terminó, se modela desde el capital ya capitalizado: por eso
+  # las cuotas son del 5% de un nominal mayor al original.
+  # ---------------------------------------------------------------
+
+  TX28:
+    nombre: Boncer 2,25% 09/11/2028
+    ley: argentina
+    moneda: ARS
+    ajuste: cer
+    tipo: cer
+    emision: 2022-05-25
+    vencimiento: 2028-11-09
+    base: 30/360
+    cer_base: 0
+    amortizacion:
+      tipo: cuotas
+      fechas_desde: 2024-05-09
+      frecuencia_meses: 6
+      cuotas_iguales: 10
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2022-11-09
+      tramos:
+        - {desde: 2022-05-25, tasa: 2.25}
+
+  DICP:
+    nombre: Discount en pesos CER 5,83% 2033
+    ley: argentina
+    moneda: ARS
+    ajuste: cer
+    tipo: cer
+    emision: 2003-12-31
+    vencimiento: 2033-12-31
+    base: 30/360
+    cer_base: 0
+    amortizacion:
+      tipo: cuotas
+      fechas_desde: 2024-06-30
+      frecuencia_meses: 6
+      cuotas_iguales: 20
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2004-06-30
+      tramos:
+        - {desde: 2003-12-31, tasa: 5.83}
+
+  PARP:
+    nombre: Par en pesos CER step-up 2038
+    ley: argentina
+    moneda: ARS
+    ajuste: cer
+    tipo: cer
+    emision: 2003-12-31
+    vencimiento: 2038-12-31
+    base: 30/360
+    cer_base: 0
+    verificar: >-
+      El flujo real muestra amortización en 20 cuotas desde octubre de 2029
+      y pagos en marzo y septiembre, no bullet con pagos en junio y
+      diciembre como indican algunas descripciones. Se usa el flujo real.
+    amortizacion:
+      tipo: cuotas
+      fechas_desde: 2029-09-30
+      frecuencia_meses: 6
+      cuotas_iguales: 20
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2004-03-31
+      tramos:
+        - {desde: 2003-12-31, tasa: 0.63}
+        - {desde: 2009-03-31, tasa: 1.18}
+        - {desde: 2019-03-31, tasa: 1.77}
+        - {desde: 2029-03-31, tasa: 2.54}
+
+  CUAP:
+    nombre: Cuasipar en pesos CER 3,31% 2045
+    ley: argentina
+    moneda: ARS
+    ajuste: cer
+    tipo: cer
+    emision: 2003-12-31
+    vencimiento: 2046-01-02
+    base: 30/360
+    cer_base: 0
+    verificar: >-
+      Capitalizó intereses hasta el 31/12/2013. Como esa etapa terminó, el
+      cronograma arranca del capital ya capitalizado: las 20 cuotas del 5%
+      se calculan sobre ese nominal mayor, no sobre el original.
+    amortizacion:
+      tipo: cuotas
+      fechas_desde: 2036-06-30
+      frecuencia_meses: 6
+      cuotas_iguales: 20
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2014-06-30
+      tramos:
+        - {desde: 2003-12-31, tasa: 3.31}
+
+  # ---------------------------------------------------------------
+  # Provinciales
+  # ---------------------------------------------------------------
+
+  PBA28:
+    nombre: Prov. Buenos Aires CER 9% 28/04/2028
+    ley: argentina
+    emisor: Provincia de Buenos Aires
+    moneda: ARS
+    ajuste: cer
+    tipo: cer
+    emision: 2026-04-30
+    vencimiento: 2028-04-28
+    base: 30/360
+    resolucion: >-
+      Boletín Oficial PBA del 30/07/2026. ISIN AR0983438406. La reapertura
+      de julio no mueve la fecha base: el ajuste corre desde los diez días
+      hábiles anteriores a la emisión original del 30/04/2026.
+    cer_base: 0
+    garantia: coparticipación federal de impuestos
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2026-10-30
+      tramos:
+        - {desde: 2026-04-30, tasa: 9.00}
+
 equivalencias:
+  DIPO: DICP
+  PAPO: PARP
   AL29D: AL29
   AL29C: AL29
   AL30D: AL30

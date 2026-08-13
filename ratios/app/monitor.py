@@ -452,16 +452,25 @@ class Monitor:
             return 0
 
     def reconstruir_historico(self):
-        """Backfill inicial. Corre una vez y queda marcado."""
+        """Completa el histórico de las especies que no lo tengan.
+
+        No es global: si agregás un bono nuevo, se reconstruye solo ese
+        en el próximo arranque sin rehacer los que ya están.
+        """
         try:
             import historico as H
-            if db.get_estado("hist_bonos_hasta"):
+            H.init()
+            faltan = H.sin_serie()
+            if not faltan:
                 return 0
-            log.info("reconstruyendo el histórico de bonos desde %s "
-                     "(esto tarda unos minutos)", H.DESDE)
-            n = H.reconstruir(self.iol)
-            log.info("histórico de bonos: %d puntos calculados", n)
-            return n
+            log.info("reconstruyendo el histórico de %d especie(s) desde %s: "
+                     "%s", len(faltan), H.DESDE, ", ".join(faltan[:8]) +
+                     (" y otras" if len(faltan) > 8 else ""))
+            total = 0
+            for sim in faltan:
+                total += H.reconstruir(self.iol, sim)
+            log.info("histórico de bonos: %d puntos calculados", total)
+            return total
         except Exception as e:
             log.warning("no se pudo reconstruir el histórico: %s", e)
             return 0

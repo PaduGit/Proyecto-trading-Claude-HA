@@ -438,7 +438,12 @@ def crear_app(monitor):
 
     @app.get("/api/historico/estado")
     def historico_estado():
-        return jsonify(H.resumen())
+        r = H.resumen()
+        try:
+            r["sin_serie"] = H.sin_serie()
+        except Exception:
+            r["sin_serie"] = []
+        return jsonify(r)
 
     @app.post("/api/historico/reconstruir")
     def historico_reconstruir():
