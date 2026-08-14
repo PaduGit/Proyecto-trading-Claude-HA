@@ -10,6 +10,7 @@ from flask import Flask, jsonify, request, send_from_directory
 import db
 import bonos as BO
 import cer as CER
+import curva as CU
 import historico as H
 import posicion as P
 import respaldo
@@ -345,7 +346,14 @@ def crear_app(monitor):
             par = (monitor.cfg.get("mep_par_pesos") or "AL30",
                    monitor.cfg.get("mep_par_usd") or "AL30D")
             cer = float(monitor.cfg.get("cer_actual") or 0)
-            return jsonify(BO.tabla(_cot_bonos(), par_mep=par, cer_actual=cer))
+            t = BO.tabla(_cot_bonos(), par_mep=par, cer_actual=cer)
+            try:
+                an = CU.analizar(t["filas"])
+                for f in t["filas"]:
+                    f.update(an.get(f["simbolo"]) or {})
+            except Exception as e:
+                log.warning("curva: %s", e)
+            return jsonify(t)
         except Exception as e:
             log.exception("tabla de bonos")
             return jsonify({"error": str(e)}), 500
@@ -356,8 +364,15 @@ def crear_app(monitor):
             par = (monitor.cfg.get("mep_par_pesos") or "AL30",
                    monitor.cfg.get("mep_par_usd") or "AL30D")
             cer = float(monitor.cfg.get("cer_actual") or 0)
-            d = BO.detalle(simbolo.upper(), _cot_bonos(), par_mep=par,
-                           cer_actual=cer)
+            cot = _cot_bonos()
+            d = BO.detalle(simbolo.upper(), cot, par_mep=par, cer_actual=cer)
+            if d:
+                try:
+                    t = BO.tabla(cot, par_mep=par, cer_actual=cer)
+                    an = CU.analizar(t["filas"])
+                    d["fila"].update(an.get(simbolo.upper()) or {})
+                except Exception as e:
+                    log.debug("curva en detalle: %s", e)
         except Exception as e:
             log.exception("detalle de bono")
             return jsonify({"error": str(e)}), 500
@@ -435,6 +450,19 @@ def crear_app(monitor):
             return jsonify({"error": str(e)}), 500
         return jsonify({"simbolo": simbolo.upper(), "periodo": periodo,
                         "puntos": puntos})
+
+    @app.post("/api/curva/reconstruir")
+    def curva_reconstruir():
+        try:
+            n = CU.reconstruir()
+        except Exception as e:
+            log.exception("residuos")
+            return jsonify({"error": str(e)}), 500
+        r = db.conn().execute(
+            "SELECT COUNT(*) n, COUNT(DISTINCT simbolo) esp, "
+            "MIN(fecha) a, MAX(fecha) b FROM residuo_hist").fetchone()
+        return jsonify({"puntos": n, "total": r["n"], "especies": r["esp"],
+                        "desde": r["a"], "hasta": r["b"]})
 
     @app.get("/api/historico/exportar")
     def historico_exportar():

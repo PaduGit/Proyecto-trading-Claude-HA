@@ -8,6 +8,7 @@ import threading
 import time
 
 import cer
+import curva
 import db
 import historico
 import respaldo
@@ -113,6 +114,7 @@ def main():
     db.init_posicion()
     cer.init()
     historico.init()
+    curva.init()
 
     notif = Notificador(cfg)
     iol = IOL(cfg["iol_user"], cfg["iol_pass"])

@@ -241,6 +241,9 @@ table.bonos tr.usd td.tk{color:var(--sage)}
 table.bonos tr.cer td.tk{color:var(--amber)}
 table.bonos tr.sindato td{opacity:.5}
 table.bonos .tir{color:var(--bone)}
+table.bonos td.desv-barato{color:var(--sage);font-weight:600}
+table.bonos td.desv-caro{color:var(--coral);font-weight:600}
+table.bonos td.desv-tibio{color:var(--amber)}
 /* convención de mercado: la compra del lado verde, la venta del rojo */
 table.bonos td.bid,table.bonos td.tbid{background:rgba(111,168,140,.10)}
 table.bonos td.ask,table.bonos td.task{background:rgba(223,113,104,.10)}
@@ -1491,7 +1494,7 @@ async function cargarBonos(){
       '<th>Last</th><th>TIR Last</th>' +
       '<th class="hbid">Bid</th><th class="hbid">TIR Bid</th>' +
       '<th class="hask">TIR Ask</th><th class="hask">Ask</th>' +
-      '</tr></thead><tbody>' +
+      '<th>Desvío</th></tr></thead><tbody>' +
       filtrarFamilia(d.filas).map(f => {
         /* los bonos en pesos cotizan en miles y no necesitan decimales;
            los dolarizados y los CER sí */
@@ -1508,12 +1511,19 @@ async function cargarBonos(){
           '<td class="bid">' + p(f.bid) + '</td>' +
           '<td class="tir tbid">' + t(f.tir_bid) + '</td>' +
           '<td class="tir task">' + t(f.tir_ask) + '</td>' +
-          '<td class="ask">' + p(f.ask) + '</td></tr>';
+          '<td class="ask">' + p(f.ask) + '</td>' +
+          '<td class="' + claseDesvio(f) + '">' + textoDesvio(f) + '</td></tr>';
       }).join("") + '</tbody></table></div>' +
       '<div class="nota" style="margin-top:8px">Ordenados por duration ' +
       'modificada. Tocá el ticker para ver el detalle y el flujo. ' +
       'La TIR del último operado sirve cuando no hay puntas; atenuada ' +
       'significa que ese precio no es de hoy.<br><br>' +
+      '<b>Desvío</b>: cuánto rinde el bono por encima o por debajo de lo ' +
+      'que su duration justifica, medido contra los demás de su familia y ' +
+      'excluyéndolo del ajuste. El <b>z</b> compara ese desvío con la propia ' +
+      'historia del bono, que es lo que importa: hay bonos ' +
+      'estructuralmente baratos que estarían en verde todos los días.<br>' +
+      'Verde a partir de +2,5 (barato), rojo a partir de −2,5 (caro).<br><br>' +
       'Las TIR de las especies C están medidas en dólar cable y las de las D ' +
       'en MEP, así que no se comparan entre sí. La solapa Rulo muestra esa ' +
       'diferencia.</div>' +
@@ -1574,6 +1584,18 @@ async function verBono(sim){
         ? '<dt>Cable vs MEP</dt><dd>' + val(d.fila.cable_pct) + '% contra ' +
           esc(d.fila.par_dolarizado || "") + '</dd>' : "") +
       '<dt>Ley</dt><dd>' + esc(d.ley || "—") + '</dd>' +
+      (d.fila && d.fila.residuo != null
+        ? '<dt>Desvío de curva</dt><dd>' +
+          (d.fila.residuo >= 0 ? "+" : "") + d.fila.residuo.toFixed(0) + ' pb' +
+          (d.fila.z != null
+            ? '  ·  z ' + (d.fila.z >= 0 ? "+" : "") + d.fila.z.toFixed(2) +
+              ' <span style="color:var(--muted)">(sobre ' + d.fila.z_n +
+              ' días)</span>'
+            : ' <span style="color:var(--muted)">(sin historia para el z)</span>') +
+          '</dd>' +
+          (d.fila.vecino ? '<dt>Rotar contra</dt><dd>' +
+            esc(d.fila.vecino) + '</dd>' : "")
+        : "") +
       '</dl>' +
       '<div class="graf" id="bono-hist"></div>' +
       '<details class="avanzado"><summary>Flujo de fondos (' +
@@ -1623,7 +1645,7 @@ async function graficarTir(sim, periodo){
   }
 }
 
-/* ---------- curva TIR vs duration ---------- */
+/* ---------- filtros ---------- */
 const filtro = {ley: "todas", tipo: "todos", moneda: "todas"};
 
 const LEYES = [["todas","Todas"],["AR","Argentina"],["NY","Nueva York"]];
@@ -1665,6 +1687,29 @@ function filtrarFamilia(filas){
     (filtro.ley === "todas" || f.ley_cod === filtro.ley) &&
     (filtro.tipo === "todos" || f.tipo === filtro.tipo) &&
     (filtro.moneda === "todas" || f.moneda_cotiza === filtro.moneda));
+}
+
+/* ---------- desvío de curva ---------- */
+
+/* Del backtest: a partir de 2,5 desvíos y con 42 días de horizonte,
+   rotar al bono barato dio 2,84% neto con 77% de acierto sobre las
+   especies líquidas. Por debajo de 2 los costos se comen la ganancia. */
+const Z_FUERTE = 2.5, Z_MEDIO = 2.0;
+
+function claseDesvio(f){
+  if(f.z == null) return "";
+  if(f.z >= Z_FUERTE) return "desv-barato";
+  if(f.z <= -Z_FUERTE) return "desv-caro";
+  if(Math.abs(f.z) >= Z_MEDIO) return "desv-tibio";
+  return "";
+}
+
+function textoDesvio(f){
+  if(f.residuo == null) return "—";
+  const pb = (f.residuo >= 0 ? "+" : "") + f.residuo.toFixed(0);
+  if(f.z == null) return pb + ' <span style="opacity:.45">pb</span>';
+  return pb + ' <span style="opacity:.6">z' +
+    (f.z >= 0 ? "+" : "") + f.z.toFixed(1) + '</span>';
 }
 
 /* ---------- curva TIR vs duration ---------- */
@@ -1758,7 +1803,7 @@ function dibujarCurva(){
       'para su plazo, en rojo los que rinden menos.') + '</div>';
 }
 
-/* ---------- curva TIR vs duration ---------- */
+
 /* ---------- rulo ---------- */
 $("#r-btn").addEventListener("click", cargarRulo);
 

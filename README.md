@@ -501,6 +501,57 @@ posición, y para eso está el exportar.
 
 ---
 
+## Desvío de curva
+
+La columna **Desvío** dice cuánto rinde cada bono por encima o por debajo de
+lo que su duration justifica. Se ajusta una curva con los demás bonos de la
+misma familia —**excluyendo el que se está midiendo**, para que un bono muy
+barato no tire la curva hacia abajo y subestime su propia baratura— y se mide
+la distancia en puntos básicos.
+
+El ajuste es sobre el logaritmo de la duration: la curva real es cóncava y en
+lineal los extremos quedan siempre mal medidos.
+
+### El z importa más que el desvío
+
+Hay bonos estructuralmente baratos: menos líquidos, menos demanda
+institucional. Esos aparecerían en verde todos los días sin que haya nada que
+hacer. Lo que importa es si está **más barato que lo habitual para él**, y eso
+es el z-score del desvío contra su propia historia de 120 días.
+
+Verde a partir de +2,5 desvíos, rojo a partir de −2,5. Ámbar entre 2 y 2,5.
+
+### De dónde salen esos umbrales
+
+De un backtest sobre 22.000 puntos de 30 especies entre 2023 y 2026:
+
+| umbral | horizonte | casos | ganancia neta | acierto |
+|---|---|---|---|---|
+| 2,0 | 42 días | 297 | 1,29% | 65% |
+| 2,5 | 42 días | 145 | 2,84% | 77% |
+| 2,5 | 63 días | 134 | 3,15% | 73% |
+
+La ganancia es de rotar al bono barato contra su vecino de duration similar,
+neta de 0,8% de costos por las cuatro patas. Al azar el acierto es 51%, así
+que la señal no es un artefacto.
+
+**Tres advertencias.** Por debajo de 2 desvíos los costos se comen todo. Las
+especies C ensucian la señal —son ilíquidas y sus cierres no reflejan
+operaciones reales—: sacándolas el acierto sube de 64% a 77%. Y el backtest
+usa precios de cierre, no puntas: un bono puede verse barato en el last y
+tener el ask 2% arriba. Por eso la alerta solo se dispara si hay punta
+vendedora.
+
+### Alertas
+
+Cuando un bono cruza el umbral, llega una notificación con el desvío, el
+z-score, la TIR contra la curva y el vecino contra el que conviene rotar.
+Avisa una sola vez al cruzar, igual que las de ratios.
+
+`curva_umbral_z` en la configuración lo ajusta. En 0 se apaga.
+
+---
+
 ## Respaldo
 
 **La configuración** se copia a `/data/respaldo.json` cada vez que la app

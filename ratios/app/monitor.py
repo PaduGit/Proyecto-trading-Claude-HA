@@ -34,6 +34,7 @@ class Monitor:
         self.origen = {}            # simbolo -> "panel" | "individual"
 
         self._zona_actual = self._cargar_zonas()
+        self._zonas_curva = self._cargar_zonas_curva()
         self._pidiendo = threading.Lock()
         self._ultimo_manual = datetime.min
 
@@ -46,6 +47,20 @@ class Monitor:
             return json.loads(db.get_estado("zonas") or "{}")
         except (ValueError, TypeError):
             return {}
+
+    def _cargar_zonas_curva(self):
+        import json
+        try:
+            return json.loads(db.get_estado("zonas_curva") or "{}")
+        except (ValueError, TypeError):
+            return {}
+
+    def _guardar_zonas_curva(self):
+        import json
+        try:
+            db.set_estado("zonas_curva", json.dumps(self._zonas_curva))
+        except Exception as e:
+            log.debug("zonas de curva: %s", e)
 
     def _guardar_zonas(self):
         import json
@@ -329,6 +344,79 @@ class Monitor:
             })
         return estado
 
+    # -- desvíos de curva ---------------------------------------------
+
+    def revisar_curva(self, cot=None):
+        """Avisa cuando un bono se despega de su curva más de lo habitual.
+
+        El umbral por defecto sale del backtest: 2,5 desvíos sobre
+        especies líquidas dio 77% de acierto a 42 días. Por debajo de 2
+        los costos se comen la ganancia, así que no vale avisar.
+        """
+        import bonos as BO
+        import curva as CU
+
+        umbral = float(self.cfg.get("curva_umbral_z") or 2.5)
+        if not umbral:
+            return 0
+
+        with self.lock:
+            cot = cot or dict(self.cotizaciones)
+        if not cot:
+            return 0
+
+        cer_act = float(self.cfg.get("cer_actual") or 0)
+        t = BO.tabla(cot, cer_actual=cer_act)
+        an = CU.analizar(t["filas"])
+        por_sim = {f["simbolo"]: f for f in t["filas"]}
+
+        avisadas = self._zonas_curva
+        enviadas = 0
+
+        for sim, d in an.items():
+            z = d.get("z")
+            if z is None:
+                continue
+            zona = "barato" if z >= umbral else "caro" if z <= -umbral else None
+            previa = avisadas.get(sim)
+            if zona != previa:
+                avisadas[sim] = zona
+                self._guardar_zonas_curva()
+            if not zona or zona == previa:
+                continue
+
+            f = por_sim.get(sim) or {}
+            # sin punta ejecutable la señal no sirve
+            if zona == "barato" and not f.get("ask"):
+                continue
+
+            icono = "🟢" if zona == "barato" else "🔴"
+            que = "barato" if zona == "barato" else "caro"
+            L = ["%s <b>%s</b> %s contra su curva" % (icono, sim, que),
+                 "Desvío %+.0f pb  ·  z %+.2f" % (d["residuo"], z),
+                 ""]
+            if f.get("tir_last") is not None:
+                L.append("TIR %.2f%%  ·  curva %.2f%%" % (
+                    f["tir_last"], d["curva"]))
+            if f.get("ask"):
+                L.append("Ask %s  ·  TIR ask %.2f%%" % (
+                    _n(f["ask"]), f.get("tir_ask") or 0))
+            if d.get("vecino"):
+                v = por_sim.get(d["vecino"]) or {}
+                L += ["", "Vecino de duration parecida: %s (TIR %.2f%%)" % (
+                    d["vecino"], v.get("tir_last") or 0)]
+            L += ["", "<i>%s · %d bonos en la familia</i>" % (
+                datetime.now().strftime("%H:%M"), d["n_familia"])]
+
+            msg = "\n".join(L)
+            self.notif.enviar("%s %s contra su curva" % (sim, que), msg,
+                              urgente=(zona == "barato"))
+            db.registrar_alerta(sim, "curva_" + zona, d["residuo"], umbral, msg)
+            log.info("curva: %s %s z=%+.2f", sim, zona, z)
+            enviadas += 1
+
+        return enviadas
+
     # -- arbitraje de plazos t0 / t1 ---------------------------------
 
     def comision(self, tipo):
@@ -415,6 +503,10 @@ class Monitor:
                             "den": par["den"]}
                         prev["error"] = str(e)
                         self.snapshot[par["alias"]] = prev
+            try:
+                self.revisar_curva(mapa)
+            except Exception as e:
+                log.debug("revisar curva: %s", e)
             self.ultimo_ciclo = datetime.now()
             if manual:
                 self._ultimo_manual = datetime.now()
@@ -446,6 +538,13 @@ class Monitor:
             n = H.agregar_hoy(cot, mep)
             if n:
                 log.info("histórico de bonos: +%d puntos", n)
+            try:
+                import curva as CU
+                cer_act = float(self.cfg.get("cer_actual") or 0)
+                t = BO.tabla(cot, cer_actual=cer_act)
+                CU.guardar(CU.residuos(t["filas"]))
+            except Exception as e:
+                log.debug("residuos del día: %s", e)
             return n
         except Exception as e:
             log.warning("no se pudo cerrar el día de bonos: %s", e)
@@ -470,6 +569,12 @@ class Monitor:
             for sim in faltan:
                 total += H.reconstruir(self.iol, sim)
             log.info("histórico de bonos: %d puntos calculados", total)
+            if total:
+                try:
+                    import curva as CU
+                    CU.reconstruir()
+                except Exception as e:
+                    log.warning("residuos: %s", e)
             return total
         except Exception as e:
             log.warning("no se pudo reconstruir el histórico: %s", e)
