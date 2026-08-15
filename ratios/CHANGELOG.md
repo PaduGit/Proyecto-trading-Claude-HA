@@ -1,5 +1,25 @@
 # Registro de cambios
 
+## 0.15.6
+
+**Arreglos**
+
+- **El Registro no mostraba nada.** Un `Promise.all` mal armado esperaba las
+  respuestas de a una: si la primera fallaba, la solapa entera quedaba en
+  blanco. Las alertas estaban guardadas todo este tiempo.
+- Las alertas de curva ahora tienen su propio ícono en el Registro; antes
+  caían en el caso "baja" y mostraban una flecha equivocada.
+- **El token de IOL se renovaba mal.** Usaba 12 minutos fijos en vez del
+  `expires_in` que informa la API, y como el refresh vencía antes, cada ciclo
+  terminaba reautenticando desde cero con un request extra.
+
+**Cambios**
+
+- **Columna z separada** del desvío, ordenable por su cuenta. Es la que
+  importa para buscar señales: un bono puede tener desvío chico y z alto.
+- **Gráficos con máximo y mínimo marcados**, con su valor y fecha, más
+  referencias temporales intermedias y un resumen de amplitud al pie.
+
 ## 0.15.5
 
 Ajustes sobre la tabla de bonos:

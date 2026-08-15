@@ -774,13 +774,52 @@ function grafico(puntos, res, sop, modo){
     (W-mr)+'" y2="'+py(v)+'"/><text x="'+(W-mr+4)+'" y="'+(py(v)+3)+'">'+t+'</text>':"";
   const corto = s => s.length>10 ? s.slice(11,16) : s.slice(5,10);
 
+  /* máximo y mínimo marcados: sin esto no se sabe cuánto se movió ni
+     cuándo, que es lo primero que uno quiere saber de una serie */
+  let iMax=0, iMin=0;
+  ys.forEach((v,i)=>{ if(v>ys[iMax]) iMax=i; if(v<ys[iMin]) iMin=i; });
+
+  const marca=(i,arriba)=>{
+    const x=px(i), y=py(ys[i]);
+    /* la etiqueta se va para adentro si el punto está cerca del borde */
+    const anchor = x < 40 ? "start" : x > W-mr-40 ? "end" : "middle";
+    const dx = anchor==="start" ? 2 : anchor==="end" ? -2 : 0;
+    return '<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="2.5" '+
+      'fill="'+(arriba?"var(--coral)":"var(--sage)")+'"/>'+
+      '<text x="'+(x+dx).toFixed(1)+'" y="'+(arriba?y-6:y+11).toFixed(1)+'" '+
+      'text-anchor="'+anchor+'" style="font-size:8px;fill:'+
+      (arriba?"var(--coral)":"var(--sage)")+'">'+num(ys[i],4)+'</text>'+
+      '<text x="'+(x+dx).toFixed(1)+'" y="'+(arriba?y-14:y+19).toFixed(1)+'" '+
+      'text-anchor="'+anchor+'" style="font-size:7px;opacity:.6">'+
+      corto(puntos[i].x)+'</text>';
+  };
+
+  /* referencias intermedias en el eje: dos, tres o ninguna según entre */
+  let ejes = '<text x="'+ml+'" y="'+(H-4)+'">'+corto(puntos[0].x)+'</text>'+
+    '<text x="'+(W-mr)+'" y="'+(H-4)+'" text-anchor="end">'+
+    corto(puntos[puntos.length-1].x)+'</text>';
+  if(puntos.length >= 12){
+    const cortes = puntos.length >= 40 ? [0.25,0.5,0.75] : [0.5];
+    ejes += cortes.map(c=>{
+      const i = Math.round(c*(puntos.length-1));
+      return '<line x1="'+px(i)+'" y1="'+mt+'" x2="'+px(i)+'" y2="'+(H-mb)+
+        '" stroke="var(--rule)" stroke-width=".5" opacity=".5"/>'+
+        '<text x="'+px(i)+'" y="'+(H-4)+'" text-anchor="middle" '+
+        'style="opacity:.7">'+corto(puntos[i].x)+'</text>';
+    }).join("");
+  }
+
+  const rango = ys[iMax] - ys[iMin];
+  const varPct = ys[iMin] ? (rango/Math.abs(ys[iMin])*100) : 0;
+
   return '<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" role="img">'+
     linea(res,"nivel-res",num(res,2))+linea(sop,"nivel-sop",num(sop,2))+
     linea(media,"media",num(media,2))+
     tramos.map(t=>'<path class="'+(t.f==="iol"?"linea-iol":"linea")+'" d="'+t.d+'"/>').join("")+
-    '<text x="'+ml+'" y="'+(H-4)+'">'+corto(puntos[0].x)+'</text>'+
-    '<text x="'+(W-mr)+'" y="'+(H-4)+'" text-anchor="end">'+
-    corto(puntos[puntos.length-1].x)+'</text></svg>';
+    marca(iMax,true)+marca(iMin,false)+ejes+'</svg>'+
+    '<div class="rango-graf">máx ' + num(ys[iMax],4) + ' · mín ' +
+    num(ys[iMin],4) + ' · amplitud ' + num(rango,3) +
+    (varPct ? ' (' + varPct.toFixed(1) + '%)' : "") + '</div>';
 }
 
 /* ---------- registrar operación ---------- */
@@ -923,12 +962,25 @@ async function calcularPlazos(){
 }
 
 /* ---------- registro ---------- */
+/* Los tipos de alerta son: alta, baja, curva_barato, curva_caro */
+function iconoAlerta(tipo){
+  if(tipo === "alta")          return {icono:"▲", clase:"alta"};
+  if(tipo === "baja")          return {icono:"▼", clase:"baja"};
+  if(tipo === "curva_barato")  return {icono:"◆", clase:"baja"};
+  if(tipo === "curva_caro")    return {icono:"◆", clase:"alta"};
+  return {icono:"•", clase:""};
+}
+
 async function cargarRegistro(){
   const cont = $("#r-out");
   try{
-    const [al, op] = await Promise.all([
-      (await fetch(base + "api/alertas")).json(),
-      (await fetch(base + "api/operaciones")).json()]);
+    /* Promise.all sobre respuestas YA resueltas: el await de adentro
+       las espera de a una y si la primera falla, la segunda queda
+       colgada y la solapa entera se cae. */
+    const [rAl, rOp] = await Promise.all([
+      fetch(base + "api/alertas"),
+      fetch(base + "api/operaciones")]);
+    const [al, op] = await Promise.all([rAl.json(), rOp.json()]);
     let h = '<div class="hallazgo"><h3>Operaciones</h3>';
     h += op.length ? op.map(o =>
       '<div class="fila"><span>' + esc(o.alias) +
@@ -941,9 +993,9 @@ async function cargarRegistro(){
         'Usá el botón "Operé" en el panel.</div>';
     h += '</div><div class="hallazgo"><h3>Alertas</h3>';
     h += al.length ? al.map(a =>
-      '<div class="fila ' + esc(a.tipo) + '"><span><span class="a">' +
-      (a.tipo === "alta" ? "▲" : "▼") + '</span> ' + esc(a.alias) +
-      '</span><span>' + num(a.ratio) + ' <span class="t">' +
+      '<div class="fila ' + esc(iconoAlerta(a.tipo).clase) + '">' +
+      '<span><span class="a">' + iconoAlerta(a.tipo).icono + '</span> ' +
+      esc(a.alias) + '</span><span>' + num(a.ratio) + ' <span class="t">' +
       a.ts.slice(5,10) + ' ' + a.ts.slice(11,16) + '</span></span></div>').join("")
       : '<div class="vacio" style="padding:12px">Sin alertas todavía.</div>';
     cont.innerHTML = h + '</div>';
@@ -1513,7 +1565,7 @@ async function cargarBonos(){
       th("last","Last") + th("tir_last","TIR Last") +
       th("bid","Bid","hbid") + th("tir_bid","TIR Bid","hbid") +
       th("tir_ask","TIR Ask","hask") + th("ask","Ask","hask") +
-      th("residuo","Desvío") + '</tr></thead><tbody>' +
+      th("residuo","Desvío") + th("z","z") + '</tr></thead><tbody>' +
       ordenar(filtrarFamilia(d.filas)).map(f => {
         /* los bonos en pesos cotizan en miles y no necesitan decimales;
            los dolarizados y los CER sí */
@@ -1532,7 +1584,8 @@ async function cargarBonos(){
           '<td class="tir tbid">' + t(f.tir_bid) + '</td>' +
           '<td class="tir task">' + t(f.tir_ask) + '</td>' +
           '<td class="ask">' + p(f.ask) + '</td>' +
-          '<td class="' + claseDesvio(f) + '">' + textoDesvio(f) + '</td></tr>';
+          '<td class="' + claseDesvio(f) + '">' + textoDesvio(f) + '</td>' +
+          '<td class="' + claseDesvio(f) + '">' + textoZ(f) + '</td></tr>';
       }).join("") + '</tbody></table></div>' +
       '<div class="nota" style="margin-top:8px">Tocá un encabezado para ' +
       'ordenar por esa columna, y el ticker para ver el detalle y el flujo. ' +
@@ -1758,10 +1811,14 @@ function claseDesvio(f){
 
 function textoDesvio(f){
   if(f.residuo == null) return "—";
-  const pb = (f.residuo >= 0 ? "+" : "") + f.residuo.toFixed(0);
-  if(f.z == null) return pb + ' <span style="opacity:.45">pb</span>';
-  return pb + ' <span style="opacity:.6">z' +
-    (f.z >= 0 ? "+" : "") + f.z.toFixed(1) + '</span>';
+  return (f.residuo >= 0 ? "+" : "") + f.residuo.toFixed(0) +
+    ' <span style="opacity:.45">pb</span>';
+}
+
+function textoZ(f){
+  if(f.z == null)
+    return '<span style="opacity:.35">—</span>';
+  return (f.z >= 0 ? "+" : "") + f.z.toFixed(2);
 }
 
 /* ---------- curva TIR vs duration ---------- */

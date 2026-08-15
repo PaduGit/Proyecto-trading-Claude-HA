@@ -519,6 +519,10 @@ institucional. Esos aparecerían en verde todos los días sin que haya nada que
 hacer. Lo que importa es si está **más barato que lo habitual para él**, y eso
 es el z-score del desvío contra su propia historia de 120 días.
 
+La tabla tiene las dos columnas por separado: **Desvío** en puntos básicos y
+**z** contra la propia historia. Ambas ordenables. La segunda es la que sirve
+para buscar señales — un bono puede tener desvío chico y z alto, o al revés.
+
 Verde a partir de +2,5 desvíos, rojo a partir de −2,5. Ámbar entre 2 y 2,5.
 
 ### De dónde salen esos umbrales

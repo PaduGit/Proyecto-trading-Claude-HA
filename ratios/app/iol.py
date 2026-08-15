@@ -41,6 +41,7 @@ class IOL:
         self._token = None
         self._refresh = None
         self._expira = datetime.min
+        self._refresh_expira = datetime.max
         self._ultimo_fallo = None
         self._lock = threading.Lock()
         self.session = requests.Session()
@@ -59,7 +60,27 @@ class IOL:
         d = r.json()
         self._token = d["access_token"]
         self._refresh = d.get("refresh_token", self._refresh)
-        self._expira = datetime.now() + timedelta(minutes=12)
+
+        # IOL informa cuánto vive el token; renovamos con dos minutos de
+        # margen. Antes usábamos 12 minutos fijos, y como el refresh vence
+        # antes, cada ciclo terminaba reautenticando desde cero con un
+        # request extra.
+        try:
+            vida = int(d.get("expires_in") or 0)
+        except (TypeError, ValueError):
+            vida = 0
+        seg = max(60, vida - 120) if vida else 12 * 60
+        self._expira = datetime.now() + timedelta(seconds=seg)
+
+        # el refresh de IOL vive poco: si lo dejamos vencer, la próxima
+        # renovación falla y hay que reautenticar
+        try:
+            vida_r = int(d.get("refresh_expires_in") or 0)
+        except (TypeError, ValueError):
+            vida_r = 0
+        if vida_r:
+            self._refresh_expira = datetime.now() + timedelta(
+                seconds=max(60, vida_r - 120))
 
     def login(self):
         with self._lock:
@@ -80,6 +101,10 @@ class IOL:
             if self._ultimo_fallo and \
                     datetime.now() - self._ultimo_fallo < timedelta(seconds=60):
                 raise IOLError("autenticacion fallo recien, esperando")
+
+            if self._refresh and datetime.now() >= self._refresh_expira:
+                log.info("el refresh también venció, reautenticando")
+                self._refresh = None
 
             if self._refresh:
                 try:
