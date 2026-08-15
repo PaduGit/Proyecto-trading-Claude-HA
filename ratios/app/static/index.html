@@ -234,6 +234,9 @@ table.bonos th{text-align:right;color:var(--muted);font-weight:500;
   border-bottom:1px solid var(--rule);padding:6px 3px;font-size:9px;
   letter-spacing:.05em;text-transform:uppercase}
 table.bonos th:first-child,table.bonos td:first-child{text-align:left}
+table.bonos th{cursor:pointer;-webkit-user-select:none;user-select:none}
+table.bonos th:active{opacity:.6}
+table.bonos th.orden-activo{color:var(--bone)}
 table.bonos td{padding:8px 3px;text-align:right;border-bottom:1px solid var(--rule)}
 table.bonos td.tk{color:var(--bone);font-weight:600;cursor:pointer}
 table.bonos td.tk:hover{color:var(--amber)}
@@ -1490,12 +1493,12 @@ async function cargarBonos(){
       '<div class="resumen">' + filtrarFamilia(d.filas).length + ' de ' +
         d.filas.length + ' especies</div>' +
       '<div class="hallazgo" style="padding:8px 10px">' +
-      '<table class="bonos"><thead><tr><th>Especie</th>' +
-      '<th>Last</th><th>TIR Last</th>' +
-      '<th class="hbid">Bid</th><th class="hbid">TIR Bid</th>' +
-      '<th class="hask">TIR Ask</th><th class="hask">Ask</th>' +
-      '<th>Desvío</th></tr></thead><tbody>' +
-      filtrarFamilia(d.filas).map(f => {
+      '<table class="bonos"><thead><tr>' +
+      th("simbolo","Especie") + th("last","Last") + th("tir_last","TIR Last") +
+      th("bid","Bid","hbid") + th("tir_bid","TIR Bid","hbid") +
+      th("tir_ask","TIR Ask","hask") + th("ask","Ask","hask") +
+      th("residuo","Desvío") + '</tr></thead><tbody>' +
+      ordenar(filtrarFamilia(d.filas)).map(f => {
         /* los bonos en pesos cotizan en miles y no necesitan decimales;
            los dolarizados y los CER sí */
         const p = v => !v ? "—" : (Math.abs(v) < 10000 ? precio(v) : ent(v));
@@ -1514,8 +1517,8 @@ async function cargarBonos(){
           '<td class="ask">' + p(f.ask) + '</td>' +
           '<td class="' + claseDesvio(f) + '">' + textoDesvio(f) + '</td></tr>';
       }).join("") + '</tbody></table></div>' +
-      '<div class="nota" style="margin-top:8px">Ordenados por duration ' +
-      'modificada. Tocá el ticker para ver el detalle y el flujo. ' +
+      '<div class="nota" style="margin-top:8px">Tocá un encabezado para ' +
+      'ordenar por esa columna, y el ticker para ver el detalle y el flujo. ' +
       'La TIR del último operado sirve cuando no hay puntas; atenuada ' +
       'significa que ese precio no es de hoy.<br><br>' +
       '<b>Desvío</b>: cuánto rinde el bono por encima o por debajo de lo ' +
@@ -1687,6 +1690,38 @@ function filtrarFamilia(filas){
     (filtro.ley === "todas" || f.ley_cod === filtro.ley) &&
     (filtro.tipo === "todos" || f.tipo === filtro.tipo) &&
     (filtro.moneda === "todas" || f.moneda_cotiza === filtro.moneda));
+}
+
+/* ---------- orden de la tabla ---------- */
+let orden = {campo: "md", desc: false};
+
+function th(campo, etiqueta, clase){
+  const activo = orden.campo === campo;
+  const flecha = activo ? (orden.desc ? " ↓" : " ↑") : "";
+  return '<th class="' + (clase || "") + (activo ? " orden-activo" : "") +
+    '" onclick="ordenarPor(\'' + campo + '\')">' + etiqueta + flecha + '</th>';
+}
+
+function ordenarPor(campo){
+  /* al cambiar de columna arranca descendente en lo numérico, que es
+     donde suele estar lo interesante: más TIR, más desvío */
+  if(orden.campo === campo) orden.desc = !orden.desc;
+  else orden = {campo, desc: campo !== "simbolo" && campo !== "md"};
+  cargarBonos();
+}
+
+function ordenar(filas){
+  const c = orden.campo, signo = orden.desc ? -1 : 1;
+  return filas.slice().sort((a, b) => {
+    if(c === "simbolo")
+      return signo * String(a.simbolo).localeCompare(String(b.simbolo));
+    const va = a[c], vb = b[c];
+    /* los sin dato siempre al final, ordene como ordene */
+    if(va == null && vb == null) return 0;
+    if(va == null) return 1;
+    if(vb == null) return -1;
+    return signo * (va - vb);
+  });
 }
 
 /* ---------- desvío de curva ---------- */

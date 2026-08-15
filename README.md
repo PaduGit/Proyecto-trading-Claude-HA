@@ -542,6 +542,15 @@ usa precios de cierre, no puntas: un bono puede verse barato en el last y
 tener el ask 2% arriba. Por eso la alerta solo se dispara si hay punta
 vendedora.
 
+### Ordenar la tabla
+
+Tocá cualquier encabezado para ordenar por esa columna; tocalo de nuevo para
+invertir. Arranca por duration ascendente, que es como se lee la curva.
+
+Ordenar por **Desvío** descendente pone arriba los más baratos; por **TIR
+Last** descendente, los que más rinden en términos absolutos. Los bonos sin
+dato quedan siempre al final, ordene como ordene.
+
 ### Alertas
 
 Cuando un bono cruza el umbral, llega una notificación con el desvío, el
