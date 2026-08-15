@@ -335,7 +335,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       </div>
       <div class="ancho"><button class="primario" id="c-btn">Calcular ratio</button></div>
     </div>
-    <div id="c-out"></div>
+    <div id="cir-out"></div>
   </section>
 
   <section id="v-bonos" hidden>
@@ -350,18 +350,18 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
 
     <div class="hallazgo">
       <h3>Qué tengo</h3>
-      <div class="periodos" id="c-monedas" style="margin-bottom:8px"></div>
-      <div id="c-bonos" class="chips"></div>
+      <div class="periodos" id="cir-monedas" style="margin-bottom:8px"></div>
+      <div id="cir-bonos" class="chips"></div>
       <div style="display:flex;gap:6px;margin-top:8px">
-        <select id="c-add" style="flex:1"></select>
-        <button class="secundario" id="c-add-btn"
+        <select id="cir-add" style="flex:1"></select>
+        <button class="secundario" id="cir-add-btn"
           style="width:auto;padding:0 14px">Agregar</button>
       </div>
     </div>
 
-    <button class="primario" id="c-btn" style="margin-top:12px">
+    <button class="primario" id="cir-btn" style="margin-top:12px">
       Buscar circuitos</button>
-    <div id="c-out" style="margin-top:12px"></div>
+    <div id="cir-out" style="margin-top:12px"></div>
   </section>
 
   <section id="v-pos" hidden>
@@ -907,7 +907,7 @@ $("#c-btn").addEventListener("click", calcular);
 async function calcular(){
   const n = $("#c-num").value.trim().toUpperCase();
   const dd = $("#c-den").value.trim().toUpperCase();
-  const out = $("#c-out");
+  const out = $("#cir-out");
   if(!n || !dd){ out.innerHTML = '<div class="msg">Escribí las dos especies.</div>'; return; }
   $("#c-btn").disabled = true;
   out.innerHTML = '<div class="vacio">Consultando…</div>';
@@ -1933,15 +1933,15 @@ let cCandidatos = [];
 const MONEDAS_C = [["ARS","Pesos"],["MEP","MEP"],["CABLE","Cable"]];
 
 function pintarTengo(){
-  $("#c-monedas").innerHTML = MONEDAS_C.map(([k,t]) =>
+  $("#cir-monedas").innerHTML = MONEDAS_C.map(([k,t]) =>
     '<button aria-pressed="' + cTengo.monedas.includes(k) +
     '" onclick="toggleMoneda(\'' + k + '\')">' + t + '</button>').join("");
-  $("#c-bonos").innerHTML = cTengo.bonos.length
+  $("#cir-bonos").innerHTML = cTengo.bonos.length
     ? cTengo.bonos.map(b => '<span>' + esc(b) +
         '<b onclick="quitarBono(\'' + esc(b) + '\')">✕</b></span>').join("")
     : '<span style="border:none;color:var(--muted);padding-left:0">' +
       'Sin bonos declarados</span>';
-  $("#c-add").innerHTML = '<option value="">Agregar un bono…</option>' +
+  $("#cir-add").innerHTML = '<option value="">Agregar un bono…</option>' +
     cCandidatos.filter(b => !cTengo.bonos.includes(b))
       .map(b => '<option>' + esc(b) + '</option>').join("");
 }
@@ -1965,14 +1965,14 @@ function quitarBono(b){
   pintarTengo(); guardarTengo(); cargarCircuitos();
 }
 
-$("#c-add-btn").addEventListener("click", () => {
-  const v = $("#c-add").value;
+$("#cir-add-btn").addEventListener("click", () => {
+  const v = $("#cir-add").value;
   if(!v) return;
   cTengo.bonos.push(v);
   pintarTengo(); guardarTengo(); cargarCircuitos();
 });
 
-$("#c-btn").addEventListener("click", () => cargarCircuitos());
+$("#cir-btn").addEventListener("click", () => cargarCircuitos());
 
 function unCircuito(x){
   const gana = x.resultado_pct > 0;
@@ -2001,7 +2001,7 @@ function nombreMon(m){
 }
 
 async function cargarCircuitos(){
-  const out = $("#c-out");
+  const out = $("#cir-out");
   out.innerHTML = '<div class="vacio">Buscando…</div>';
   try{
     const d = await (await fetch(base + "api/circuitos")).json();
