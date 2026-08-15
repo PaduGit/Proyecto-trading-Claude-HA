@@ -244,6 +244,7 @@ table.bonos tr.usd td.tk{color:var(--sage)}
 table.bonos tr.cer td.tk{color:var(--amber)}
 table.bonos tr.sindato td{opacity:.5}
 table.bonos .tir{color:var(--bone)}
+table.bonos td.md{color:var(--muted);font-size:10px}
 table.bonos td.desv-barato{color:var(--sage);font-weight:600}
 table.bonos td.desv-caro{color:var(--coral);font-weight:600}
 table.bonos td.desv-tibio{color:var(--amber)}
@@ -281,6 +282,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
         <a href="#" id="probar-notif" role="menuitem">Probar notificación</a>
         <a href="#" id="probar-cer" role="menuitem">Probar CER (BCRA)</a>
         <a href="#" id="rehacer-hist" role="menuitem">Reconstruir histórico</a>
+        <a href="#" id="rehacer-curva" role="menuitem">Recalcular desvíos</a>
         <a href="#" id="bajar-hist" role="menuitem">Descargar histórico (CSV)</a>
         <hr>
         <span class="ver">Configuración y registro: Ajustes → Apps → Ratios IOL.
@@ -1379,6 +1381,19 @@ document.addEventListener("keydown", e => {
 $("#probar-notif").addEventListener("click", e => {
   e.preventDefault(); e.stopPropagation(); probarNotificacion();
 });
+$("#rehacer-curva").addEventListener("click", async e => {
+  e.preventDefault(); e.stopPropagation();
+  $("#menu").hidden = true;
+  try{
+    const d = await (await fetch(base + "api/curva/reconstruir",
+      {method:"POST"})).json();
+    alert(d.error ? "Falló: " + d.error
+      : "Desvíos recalculados.\n\n" + d.puntos + " puntos nuevos\n" +
+        "Total: " + d.total + " de " + d.especies + " especies\n" +
+        (d.desde ? d.desde + " a " + d.hasta : ""));
+    if(vista === "bonos") cargarBonos();
+  }catch(err){ alert("No se pudo recalcular."); }
+});
 $("#bajar-hist").addEventListener("click", e => {
   e.preventDefault(); e.stopPropagation();
   $("#menu").hidden = true;
@@ -1494,7 +1509,8 @@ async function cargarBonos(){
         d.filas.length + ' especies</div>' +
       '<div class="hallazgo" style="padding:8px 10px">' +
       '<table class="bonos"><thead><tr>' +
-      th("simbolo","Especie") + th("last","Last") + th("tir_last","TIR Last") +
+      th("simbolo","Especie") + th("md","MD") +
+      th("last","Last") + th("tir_last","TIR Last") +
       th("bid","Bid","hbid") + th("tir_bid","TIR Bid","hbid") +
       th("tir_ask","TIR Ask","hask") + th("ask","Ask","hask") +
       th("residuo","Desvío") + '</tr></thead><tbody>' +
@@ -1508,6 +1524,7 @@ async function cargarBonos(){
         return '<tr class="' + clase + (f.falta_cer ? " sindato" : "") + '">' +
           '<td class="tk" onclick="verBono(\'' + esc(f.simbolo) + '\')">' +
           esc(f.simbolo) + '</td>' +
+          '<td class="md">' + (f.md != null ? f.md.toFixed(1) : "—") + '</td>' +
           '<td' + (f.last_viejo ? ' class="viejo"' : "") + '>' + p(f.last) + '</td>' +
           '<td class="tir' + (f.last_viejo ? " viejo" : "") + '">' +
             t(f.tir_last) + '</td>' +

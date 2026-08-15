@@ -545,7 +545,8 @@ vendedora.
 ### Ordenar la tabla
 
 Tocá cualquier encabezado para ordenar por esa columna; tocalo de nuevo para
-invertir. Arranca por duration ascendente, que es como se lee la curva.
+invertir. Arranca por **MD** ascendente, que es como se lee la curva, y esa
+columna sigue ahí para volver a ese orden cuando quieras.
 
 Ordenar por **Desvío** descendente pone arriba los más baratos; por **TIR
 Last** descendente, los que más rinden en términos absolutos. Los bonos sin
@@ -558,6 +559,10 @@ z-score, la TIR contra la curva y el vecino contra el que conviene rotar.
 Avisa una sola vez al cruzar, igual que las de ratios.
 
 `curva_umbral_z` en la configuración lo ajusta. En 0 se apaga.
+
+Si la columna Desvío muestra los puntos básicos pero no el **z**, faltan los
+residuos históricos: menú ⋮ → **Recalcular desvíos**. Necesita al menos 40
+días de historia por bono, así que los recién emitidos van a tardar.
 
 ---
 

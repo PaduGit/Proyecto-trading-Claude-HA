@@ -329,16 +329,44 @@ def crear_app(monitor):
 
     # -- bonos --------------------------------------------------------
 
+    _cache_bonos = {"ts": None, "datos": None}
+    VIDA_CACHE = 20          # segundos
+    _sin_precio = set()      # especies que IOL no cotiza: no insistir
+
     def _cot_bonos():
-        """Cotizaciones de las especies con cronograma, desde el panel."""
+        """Cotizaciones de las especies con cronograma.
+
+        Casi todo viene del panel del último ciclo. Lo que no vino se pide
+        suelto, con dos cuidados: se cachea unos segundos —entre dos
+        aperturas seguidas los precios no cambiaron— y se deja de insistir
+        con las que IOL no cotiza.
+        """
+        ahora = datetime.now()
+        c = _cache_bonos
+        if c["datos"] is not None and c["ts"] and \
+                (ahora - c["ts"]).total_seconds() < VIDA_CACHE:
+            return c["datos"]
+
         cache = dict(monitor.cotizaciones)
-        faltan = [s for s in BO.especies() if s not in cache]
+        faltan = [s for s in BO.especies()
+                  if s not in cache and s not in _sin_precio]
         for sim in faltan[:12]:      # tope, para no disparar decenas de requests
             try:
                 cache[sim] = monitor.iol.cotizacion("bCBA", sim, "t1")
             except Exception:
+                _sin_precio.add(sim)
                 continue     # una especie sin precio no puede tumbar la tabla
+
+        c["ts"], c["datos"] = ahora, cache
         return cache
+
+    @app.post("/api/bonos/reintentar")
+    def bonos_reintentar():
+        """Vuelve a intentar las especies que quedaron sin precio."""
+        n = len(_sin_precio)
+        _sin_precio.clear()
+        _cache_bonos["datos"] = None
+        return jsonify({"reintentadas": n})
 
     @app.get("/api/bonos")
     def bonos_tabla():
