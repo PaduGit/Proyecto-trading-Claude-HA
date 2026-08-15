@@ -1,5 +1,36 @@
 # Registro de cambios
 
+## 0.16.0
+
+**Rulo pasa a buscar circuitos completos.**
+
+Antes mostraba los tipos de cambio implícitos de cada bono y había que
+deducir a mano si cerraba algo. Ahora busca circuitos que vuelven al punto de
+partida:
+
+- **Desde una moneda** —pesos, MEP o cable—: se pasa por dos bonos y se
+  vuelve a la misma moneda. Lo que se gana es un porcentaje.
+- **Desde un bono**: se vende, se pasa por otro, y se recompra el original.
+  Lo que se gana son nominales de ese mismo bono, que es como conviene medir
+  la posición.
+
+Se declara arriba qué hay disponible y solo se buscan los circuitos
+ejecutables con eso. No hacen falta cantidades: una oportunidad de 40
+nominales sigue siendo una oportunidad.
+
+Cada circuito informa el **máximo ejecutable** —calculado arrastrando la
+cantidad de una pata a la siguiente, porque cada una está limitada por lo que
+salió de la anterior— y **qué punta es el cuello de botella**.
+
+Todo neto de comisiones, tomadas de la configuración. Si están en cero, avisa
+que los resultados son brutos: con cuatro patas eso cambia el signo.
+
+**Arreglo**
+
+- El id `r-out` estaba duplicado entre las solapas Rulo y Registro, así que
+  el Registro escribía dentro de una solapa oculta. Por eso se veía en blanco
+  aunque las alertas estuvieran guardadas.
+
 ## 0.15.6
 
 **Arreglos**

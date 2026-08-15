@@ -225,50 +225,55 @@ La primera columna es la TIR calculada sobre el último precio. Sirve fuera de
 rueda, cuando no hay puntas. Si ese precio no es de hoy, la columna aparece
 atenuada: el bono no operó y el número puede estar viejo.
 
-### Rulo: cada bono implica su propio dólar
+### Rulo: circuitos que vuelven al punto de partida
 
-Comprar un bono en pesos y venderlo en su especie D te da un tipo de cambio.
-Hacerlo al revés te da otro, más bajo, porque los spreads juegan en contra.
-La solapa Rulo muestra los dos por cada bono.
+Cada bono implica su propio tipo de cambio: comprar en pesos y vender en su
+especie D convierte pesos en dólares MEP a una tasa, y con la C a otra. Como
+esas tasas difieren entre bonos, se puede armar un circuito que vuelva al
+origen con más de lo que salió.
 
-**La oportunidad aparece cuando el bono más barato para comprar dólares queda
-por debajo del más caro para venderlos.** Ahí comprás por uno y vendés por el
-otro. Con las especies C sale el mismo cálculo para el cable.
+**Desde una moneda** —pesos, MEP o cable— se pasa por dos bonos y se vuelve a
+la misma moneda. Lo que se gana es un porcentaje.
 
-Todo se calcula contra puntas, no contra el último operado: es lo que
-realmente podrías ejecutar.
+**Desde un bono** se lo vende, se pasa por otro, y se lo recompra. Lo que se
+gana son nominales de ese mismo bono. Es la misma lógica de la solapa
+Posición: lo que importa no es cuántos pesos tenés sino cuántos nominales.
 
-`rulo_umbral_pct` define desde qué diferencia se considera oportunidad. Por
-defecto 0,6%, que con comisiones de 0,15% cubre las cuatro patas. Una
-diferencia positiva pero menor se muestra igual, aclarando que no alcanza.
+Hay seis circuitos posibles según de qué moneda salgas, y cada uno se recorre
+eligiendo el mejor bono para cada tramo. No hace falta evaluar todas las
+combinaciones: para un circuito de dos saltos, el óptimo siempre usa el
+extremo de cada tramo.
 
-### D y C: dos monedas distintas
+#### Qué tengo
 
-Las especies D liquidan en dólar MEP y las C en cable. El bono paga donde está
-depositado, así que cada TIR es internamente consistente: comprás en cable y
-cobrás en cable, o comprás en MEP y cobrás en MEP. No hay que convertir nada.
+Arriba se marca qué hay disponible: monedas, bonos o ambos. Solo se buscan los
+circuitos ejecutables con eso — un circuito que arranca en cable no sirve si
+solo tenés pesos.
 
-Pero **las TIR de una D y una C no son comparables entre sí**, porque están
-medidas en monedas distintas. Que AL30C rinda más que AL30D no significa que
-esté barata: significa que el cable está más caro.
+**No hacen falta cantidades.** Una oportunidad de 40 nominales sigue siendo
+una oportunidad; el ejecutable lo determina la punta, no el saldo.
 
-La columna **Cable** muestra cuánto más caro está el cable que el MEP en ese
-bono. Eso sí es comparable entre bonos, y la dispersión es la señal: si un bono
-muestra 5,7% y el resto 3%, ahí hay algo.
+#### El ejecutable
 
-Ojo con la liquidez: las especies C suelen tener spreads anchos, y una punta
-mala distorsiona la lectura.
+Cada circuito informa cuántos nominales admite **el circuito entero**, no cada
+pata por separado. Cada pata opera con lo que salió de la anterior, así que
+hay que arrastrar la cantidad: si la tercera pata solo admite 300, eso limita
+cuánto se puede poner al principio.
 
-### Verificación
+También dice **qué punta es el cuello de botella**, por si conviene empezar
+por ahí.
 
-El flujo del AO29 calculado acá coincide con una planilla de referencia
-independiente: 39 pagos y TIR de 8,44% al mismo precio y fecha. La duration de
-esa planilla no coincide (daba 1,36 contra 2,69), y una tercera fuente daba 2,8,
-del lado de este cálculo.
+Todo neto de comisiones, tomadas de la configuración. Si están en cero, avisa
+que los resultados son brutos: con cuatro patas eso puede cambiar el signo.
 
-Contrastá los números con bonarg.com antes de operar sobre ellos.
+#### Lo que falta
 
----
+Las puntas se mueven mientras se opera. Con cuatro operaciones, para cuando
+llegás a la última puede haber cambiado, así que conviene ir por debajo del
+máximo.
+
+Fuera de la rueda las puntas quedan vacías o rotas y no se puede saber qué es
+ejecutable. La solapa lo dice en vez de mostrar números falsos.
 
 ## Posición: por qué en nominales
 

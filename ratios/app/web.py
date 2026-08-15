@@ -10,6 +10,7 @@ from flask import Flask, jsonify, request, send_from_directory
 import db
 import bonos as BO
 import cer as CER
+import circuitos as CI
 import curva as CU
 import historico as H
 import posicion as P
@@ -407,6 +408,41 @@ def crear_app(monitor):
         if not d:
             return jsonify({"error": "no tengo cronograma de %s" % simbolo}), 404
         return jsonify(d)
+
+    @app.get("/api/circuitos")
+    def circuitos_ver():
+        try:
+            cot = _cot_bonos()
+            bonos_cfg, _ = BO.cargar()
+            # solo bonos con las tres especies: sin eso no hay circuito
+            esps = BO.especies()
+            candidatos = [b for b in bonos_cfg
+                          if (b + "D") in esps and (b + "C") in esps]
+            tengo = db.get_estado("rulo_tengo")
+            import json as _j
+            tengo = _j.loads(tengo) if tengo else {"monedas": [], "bonos": []}
+            # los bonos declarados se suman al universo aunque les falte
+            # alguna especie: pueden ser origen aunque no sean intermedios
+            universo = sorted(set(candidatos) | set(tengo.get("bonos") or []))
+            r = CI.analizar(cot, universo, tengo,
+                            monitor.cfg.get("comisiones") or {},
+                            float(monitor.cfg.get("rulo_umbral_pct") or 0))
+            r["tengo"] = tengo
+            r["candidatos"] = sorted(candidatos)
+            return jsonify(r)
+        except Exception as e:
+            log.exception("circuitos")
+            return jsonify({"error": str(e)}), 500
+
+    @app.post("/api/circuitos/tengo")
+    def circuitos_tengo():
+        d = request.get_json(silent=True) or {}
+        import json as _j
+        tengo = {"monedas": [m for m in (d.get("monedas") or [])
+                             if m in CI.MONEDAS],
+                 "bonos": [str(b).upper() for b in (d.get("bonos") or [])]}
+        db.set_estado("rulo_tengo", _j.dumps(tengo))
+        return jsonify(tengo)
 
     @app.get("/api/rulo")
     def rulo_tabla():

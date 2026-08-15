@@ -344,11 +344,24 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
   </section>
 
   <section id="v-rulo" hidden>
-    <p class="nota">Cada bono implica su propio tipo de cambio. Si el más
-      barato para comprar dólares queda por debajo del más caro para
-      venderlos, hay ciclo.</p>
-    <button class="primario" id="r-btn">Calcular</button>
-    <div id="r-out" style="margin-top:12px"></div>
+    <p class="nota">Circuitos que vuelven al punto de partida. Desde una
+      moneda, lo que se gana es un porcentaje; desde un bono, son nominales
+      de ese mismo bono.</p>
+
+    <div class="hallazgo">
+      <h3>Qué tengo</h3>
+      <div class="periodos" id="c-monedas" style="margin-bottom:8px"></div>
+      <div id="c-bonos" class="chips"></div>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <select id="c-add" style="flex:1"></select>
+        <button class="secundario" id="c-add-btn"
+          style="width:auto;padding:0 14px">Agregar</button>
+      </div>
+    </div>
+
+    <button class="primario" id="c-btn" style="margin-top:12px">
+      Buscar circuitos</button>
+    <div id="c-out" style="margin-top:12px"></div>
   </section>
 
   <section id="v-pos" hidden>
@@ -579,7 +592,7 @@ document.querySelectorAll("nav button").forEach(b => {
     ["panel","calc","bonos","rulo","pos","plazos","reg","expl"].forEach(v =>
       $("#v-"+v).hidden = (v !== vista));
     if(vista === "bonos") cargarBonos();
-    if(vista === "rulo") cargarRulo();
+    if(vista === "rulo") cargarCircuitos();
     if(vista === "pos") cargarPosicion();
     if(vista === "reg") cargarRegistro();
     if(vista === "expl") iniciarExplorar();
@@ -861,7 +874,7 @@ $("#o-guardar").addEventListener("click", async () => {
       esc(d.error || "No se pudo guardar.") + '</div>'; return; }
     $("#dlg-op").close();
     if(vista === "bonos") cargarBonos();
-    if(vista === "rulo") cargarRulo();
+    if(vista === "rulo") cargarCircuitos();
     if(vista === "pos") cargarPosicion();
     if(vista === "reg") cargarRegistro();
   }catch(e){
@@ -1913,73 +1926,126 @@ function dibujarCurva(){
 }
 
 
-/* ---------- rulo ---------- */
-$("#r-btn").addEventListener("click", cargarRulo);
+/* ---------- circuitos ---------- */
+let cTengo = {monedas: [], bonos: []};
+let cCandidatos = [];
 
-async function cargarRulo(){
-  const out = $("#r-out");
-  $("#r-btn").disabled = true;
-  out.innerHTML = '<div class="vacio">Calculando tipos de cambio…</div>';
-  try{
-    const r = await fetch(base + "api/rulo");
-    const d = await r.json();
-    if(!r.ok){
-      out.innerHTML = '<div class="msg error">' + esc(d.error || "Falló.") + '</div>';
-      return;
-    }
-    if(!d.filas.length){
-      out.innerHTML = '<div class="vacio">Sin precios. Probá durante la rueda.</div>';
-      return;
-    }
+const MONEDAS_C = [["ARS","Pesos"],["MEP","MEP"],["CABLE","Cable"]];
 
-    let h = "";
-    ["mep","cable"].forEach(k => {
-      const c = d.ciclos[k];
-      if(!c) return;
-      const etq = k === "mep" ? "Dólar MEP" : "Dólar cable";
-      h += '<div class="hallazgo"><h3>' + etq + '</h3>' +
-        (c.hay_rulo && !c.mismo_bono
-          ? '<div class="msg ok" style="margin-bottom:10px">Comprás en ' +
-            esc(c.comprar_en) + ' a ' + precio(c.precio_compra) + ' y vendés en ' +
-            esc(c.vender_en) + ' a ' + precio(c.precio_venta) + ': ' +
-            pct(c.diferencia_pct) + ' antes de comisiones.</div>'
-          : '<div class="nota" style="margin:0 0 10px">' +
-            (c.diferencia_pct > 0 && !c.hay_rulo
-              ? 'La diferencia es positiva pero no llega al umbral de ' +
-                c.umbral_pct + '%, así que no cubre las comisiones.<br>' : '') +
-            'Más barato para comprar: ' +
-            esc(c.comprar_en) + ' a ' + precio(c.precio_compra) +
-            '. Más caro para vender: ' + esc(c.vender_en) + ' a ' +
-            precio(c.precio_venta) + '. Diferencia ' + pct(c.diferencia_pct) +
-            ', no alcanza.</div>') +
-        '</div>';
-    });
-
-    h += '<div class="hallazgo"><h3>Por bono</h3><div class="scroll">' +
-      '<table class="tabla"><thead><tr><th>Bono</th><th>MEP compra</th>' +
-      '<th>MEP venta</th><th>Cable compra</th><th>Brecha</th>' +
-      '</tr></thead><tbody>' +
-      d.filas.map(f => {
-        const g = (o,k) => (o && o[k]) ? precio(o[k]) : "—";
-        return '<tr><td>' + esc(f.bono) + '</td>' +
-          '<td>' + g(f.mep,"comprar") + '</td>' +
-          '<td>' + g(f.mep,"vender") + '</td>' +
-          '<td>' + g(f.cable,"comprar") + '</td>' +
-          '<td>' + (f.brecha_pct != null ? pct(f.brecha_pct) : "—") + '</td></tr>';
-      }).join("") + '</tbody></table></div>' +
-      '<div class="nota" style="margin:10px 0 0">Todo calculado contra puntas: ' +
-      'es lo que podrías ejecutar, no un promedio. <b>Brecha</b> es cuánto más ' +
-      'caro sale el dólar cable que el MEP en ese bono.<br><br>' +
-      'Falta descontar comisiones de cada pata y verificar el volumen ' +
-      'disponible en cada punta.</div></div>';
-
-    out.innerHTML = h;
-  }catch(e){
-    out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
-  }finally{ $("#r-btn").disabled = false; }
+function pintarTengo(){
+  $("#c-monedas").innerHTML = MONEDAS_C.map(([k,t]) =>
+    '<button aria-pressed="' + cTengo.monedas.includes(k) +
+    '" onclick="toggleMoneda(\'' + k + '\')">' + t + '</button>').join("");
+  $("#c-bonos").innerHTML = cTengo.bonos.length
+    ? cTengo.bonos.map(b => '<span>' + esc(b) +
+        '<b onclick="quitarBono(\'' + esc(b) + '\')">✕</b></span>').join("")
+    : '<span style="border:none;color:var(--muted);padding-left:0">' +
+      'Sin bonos declarados</span>';
+  $("#c-add").innerHTML = '<option value="">Agregar un bono…</option>' +
+    cCandidatos.filter(b => !cTengo.bonos.includes(b))
+      .map(b => '<option>' + esc(b) + '</option>').join("");
 }
 
-$("#ver-app").textContent = document.body.dataset.version || "";
+async function guardarTengo(){
+  try{
+    await fetch(base + "api/circuitos/tengo", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(cTengo)});
+  }catch(e){ /* si falla, se pierde al recargar y no es grave */ }
+}
+
+function toggleMoneda(m){
+  const i = cTengo.monedas.indexOf(m);
+  if(i >= 0) cTengo.monedas.splice(i,1); else cTengo.monedas.push(m);
+  pintarTengo(); guardarTengo(); cargarCircuitos();
+}
+
+function quitarBono(b){
+  cTengo.bonos = cTengo.bonos.filter(x => x !== b);
+  pintarTengo(); guardarTengo(); cargarCircuitos();
+}
+
+$("#c-add-btn").addEventListener("click", () => {
+  const v = $("#c-add").value;
+  if(!v) return;
+  cTengo.bonos.push(v);
+  pintarTengo(); guardarTengo(); cargarCircuitos();
+});
+
+$("#c-btn").addEventListener("click", () => cargarCircuitos());
+
+function unCircuito(x){
+  const gana = x.resultado_pct > 0;
+  const ruta = (x.patas || []).map(p =>
+    p.venta || p.compra || p.bono).filter(Boolean);
+  /* la ruta se lee como la secuencia de especies que se tocan */
+  const flechas = ruta.join(" → ");
+  const cab = x.tipo === "bono"
+    ? "vender en " + nombreMon(x.vender_en) + ", volver en " +
+      nombreMon(x.volver_en)
+    : "vía " + nombreMon(x.medio);
+  const unidad = x.tipo === "bono" ? " en nominales" : "";
+  return '<div class="circuito' + (gana ? " gana" : "") + '">' +
+    '<div><span class="r">' + (gana ? "+" : "") +
+      x.resultado_pct.toFixed(3) + '%</span> ' +
+      '<span style="color:var(--muted);font-size:11px">' + esc(cab) +
+      unidad + '</span></div>' +
+    '<div class="ruta">' + esc(flechas) + '</div>' +
+    '<div class="ej">ejecutable ' + ent(Math.floor(x.nominales)) +
+      ' nom.' + (x.limite ? ' · limita ' + esc(x.limite) : "") + '</div>' +
+    '</div>';
+}
+
+function nombreMon(m){
+  return (MONEDAS_C.find(x => x[0] === m) || [,m])[1];
+}
+
+async function cargarCircuitos(){
+  const out = $("#c-out");
+  out.innerHTML = '<div class="vacio">Buscando…</div>';
+  try{
+    const d = await (await fetch(base + "api/circuitos")).json();
+    if(d.error){
+      out.innerHTML = '<div class="msg error">' + esc(d.error) + '</div>';
+      return;
+    }
+    cCandidatos = d.candidatos || [];
+    if(d.tengo) cTengo = d.tengo;
+    pintarTengo();
+
+    if(!cTengo.monedas.length && !cTengo.bonos.length){
+      out.innerHTML = '<div class="vacio" style="padding:14px">' +
+        'Marcá arriba qué tenés disponible: monedas, bonos o ambos. ' +
+        'Solo se buscan los circuitos que podrías ejecutar.</div>';
+      return;
+    }
+    if(!d.grupos || !d.grupos.length){
+      out.innerHTML = '<div class="vacio" style="padding:14px">' +
+        'No hay circuitos calculables ahora. Fuera de la rueda las puntas ' +
+        'quedan vacías o rotas, así que no se puede saber qué es ' +
+        'ejecutable.</div>';
+      return;
+    }
+
+    out.innerHTML =
+      (d.sin_comisiones
+        ? '<div class="aviso">Las comisiones están en cero, así que los ' +
+          'resultados son brutos. Con cuatro patas eso cambia mucho: ' +
+          'cargalas en la configuración de la app.</div>'
+        : "") +
+      d.grupos.map(g =>
+        '<div class="hallazgo"><h3>Desde ' + esc(g.desde) + '</h3>' +
+        g.circuitos.map(unCircuito).join("") + '</div>').join("") +
+      '<div class="nota">Todo contra puntas y neto de comisiones. ' +
+      '<b>Ejecutable</b> es el máximo que admite el circuito entero: cada ' +
+      'pata está limitada por lo que salió de la anterior, así que el ' +
+      'cuello de botella manda.<br><br>' +
+      'Las puntas se mueven mientras operás. Con cuatro patas, conviene ' +
+      'ir por debajo de ese máximo.</div>';
+  }catch(e){
+    out.innerHTML = '<div class="msg error">No se pudo calcular.</div>';
+  }
+}
 
 cargarPanel();
 setInterval(() => { if(vista === "panel") cargarPanel(); }, 30000);
