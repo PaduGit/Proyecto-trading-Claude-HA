@@ -379,7 +379,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
   </section>
 
   <section id="v-reg" hidden>
-    <div id="r-out"></div>
+    <div id="reg-out"></div>
   </section>
 
   <section id="v-expl" hidden>
@@ -972,7 +972,7 @@ function iconoAlerta(tipo){
 }
 
 async function cargarRegistro(){
-  const cont = $("#r-out");
+  const cont = $("#reg-out");
   try{
     /* Promise.all sobre respuestas YA resueltas: el await de adentro
        las espera de a una y si la primera falla, la segunda queda
