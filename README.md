@@ -253,6 +253,11 @@ solo tenés pesos.
 **No hacen falta cantidades.** Una oportunidad de 40 nominales sigue siendo
 una oportunidad; el ejecutable lo determina la punta, no el saldo.
 
+Se puede declarar cualquier bono con cronograma, cotice o no en las tres
+especies. Un bono que solo tiene pesos y D igual sirve de origen, y también
+de puente entre pesos y MEP: un salto necesita dos especies, no tres. Los
+tramos que requieran la que falta se descartan solos al no haber punta.
+
 #### El ejecutable
 
 Cada circuito informa cuántos nominales admite **el circuito entero**, no cada

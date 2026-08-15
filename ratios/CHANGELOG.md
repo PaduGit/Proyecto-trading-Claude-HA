@@ -1,5 +1,25 @@
 # Registro de cambios
 
+## 0.17.0
+
+**El AO29 vuelve a la lista de Rulo.** El desplegable de "qué tengo" solo
+ofrecía bonos con las tres especies —pesos, D y C—, así que el AO29, el AO28,
+el AO27 y todos los CER quedaban afuera. Ese filtro no tenía sentido para
+declarar una tenencia: un bono sirve de origen aunque no cotice en las tres.
+Ahora ofrece los 34 bonos con cronograma.
+
+**Los mismos bonos entran como puente.** Un salto es comprar una especie y
+vender otra del mismo bono, así que alcanza con dos. El AO29 no cotiza en
+cable, pero con AO29 y AO29D convierte pesos en MEP igual. El universo de
+intermediarios pasa de 11 bonos a 14. Los saltos que necesiten la especie que
+falta se descartan solos al no haber punta.
+
+## 0.16.1
+
+- Los ids de la solapa Rulo colisionaban con los de Calcular: `c-btn` era el
+  mismo en las dos, así que el botón "Buscar circuitos" enganchaba el evento
+  del botón equivocado y no hacía nada. Ahora van prefijados con `cir-`.
+
 ## 0.16.0
 
 **Rulo pasa a buscar circuitos completos.**

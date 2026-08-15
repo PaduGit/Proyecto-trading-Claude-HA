@@ -414,21 +414,28 @@ def crear_app(monitor):
         try:
             cot = _cot_bonos()
             bonos_cfg, _ = BO.cargar()
-            # solo bonos con las tres especies: sin eso no hay circuito
             esps = BO.especies()
-            candidatos = [b for b in bonos_cfg
-                          if (b + "D") in esps and (b + "C") in esps]
+            # Puentes: un salto es comprar una especie y vender otra del
+            # mismo bono, así que alcanza con dos. El AO29 no cotiza en
+            # cable pero con AO29 y AO29D convierte pesos en MEP igual;
+            # los saltos que necesiten la especie que falta se descartan
+            # solos al no haber punta.
+            puentes = [b for b in bonos_cfg
+                       if (b + "D") in esps or (b + "C") in esps]
             tengo = db.get_estado("rulo_tengo")
             import json as _j
             tengo = _j.loads(tengo) if tengo else {"monedas": [], "bonos": []}
             # los bonos declarados se suman al universo aunque les falte
             # alguna especie: pueden ser origen aunque no sean intermedios
-            universo = sorted(set(candidatos) | set(tengo.get("bonos") or []))
+            universo = sorted(set(puentes) | set(tengo.get("bonos") or []))
             r = CI.analizar(cot, universo, tengo,
                             monitor.cfg.get("comisiones") or {},
                             float(monitor.cfg.get("rulo_umbral_pct") or 0))
             r["tengo"] = tengo
-            r["candidatos"] = sorted(candidatos)
+            # para declarar qué tengo sirve cualquier bono con cronograma:
+            # un CER en pesos también puede ser origen de un circuito que
+            # lo recompra con más nominales
+            r["candidatos"] = sorted(bonos_cfg)
             return jsonify(r)
         except Exception as e:
             log.exception("circuitos")

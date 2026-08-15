@@ -335,7 +335,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       </div>
       <div class="ancho"><button class="primario" id="c-btn">Calcular ratio</button></div>
     </div>
-    <div id="cir-out"></div>
+    <div id="c-out"></div>
   </section>
 
   <section id="v-bonos" hidden>
@@ -907,7 +907,7 @@ $("#c-btn").addEventListener("click", calcular);
 async function calcular(){
   const n = $("#c-num").value.trim().toUpperCase();
   const dd = $("#c-den").value.trim().toUpperCase();
-  const out = $("#cir-out");
+  const out = $("#c-out");
   if(!n || !dd){ out.innerHTML = '<div class="msg">Escribí las dos especies.</div>'; return; }
   $("#c-btn").disabled = true;
   out.innerHTML = '<div class="vacio">Consultando…</div>';
