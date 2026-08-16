@@ -1,5 +1,20 @@
 # Registro de cambios
 
+## 0.18.0
+
+**Cada circuito se despliega.** Al tocarlo muestra las cuatro ordenes en
+orden: comprar o vender, que especie, cuantos nominales, a que precio y por
+cuanta plata. El desglose va sobre el maximo ejecutable, que es el techo del
+circuito, y arrastra la cantidad de una pata a la siguiente. Las cantidades
+se redondean hacia abajo porque el mercado no admite fracciones, asi que la
+ultima linea difiere un poco del porcentaje del encabezado.
+
+**Rulo solo trabaja con bonos que coticen en pesos y en MEP.** La 0.17.0 abrio
+el desplegable a los 34 bonos con cronograma y eso metio ruido: el PARP, que
+solo cotiza en pesos, arrojaba -6,49% porque venderlo y recomprarlo paga su
+propio spread sin convertir moneda. Sin dos puntas no hay salto. Quedan los 14
+que sirven, el AO27, el AO28 y el AO29 entre ellos.
+
 ## 0.17.0
 
 **El AO29 vuelve a la lista de Rulo.** El desplegable de "qué tengo" solo

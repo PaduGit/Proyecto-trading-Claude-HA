@@ -69,6 +69,20 @@ def _saltar(cot, bono, desde, hacia, comisiones):
             "limite": compra if q_compra <= q_venta else venta}
 
 
+def _moneda_de(especie, bono):
+    """La moneda en que liquida una especie, por su sufijo."""
+    if especie == bono:
+        return "ARS"
+    return "MEP" if especie.endswith("D") else "CABLE"
+
+
+def _paso(accion, especie, nominales, precio, moneda):
+    """Una orden concreta: qué, cuánto, a qué precio y por cuánta plata."""
+    n = int(nominales)          # el mercado no admite fracciones
+    return {"accion": accion, "especie": especie, "nominales": n,
+            "precio": precio, "importe": n * precio, "moneda": moneda}
+
+
 def _mejor_salto(cot, bonos, desde, hacia, comisiones, excluir=None):
     """El bono que mejor convierte una moneda en otra."""
     mejor = None
@@ -106,6 +120,22 @@ def desde_efectivo(cot, bonos, moneda, comisiones):
         limite = ida["limite"] if ida["nominales"] <= tope_vuelta \
             else vuelta["limite"]
 
+        # desglose sobre el máximo ejecutable: cada pata arranca con lo
+        # que salió neto de la anterior. Se redondea hacia abajo desde el
+        # primer paso, así el importe inicial es el que se va a operar.
+        n1 = int(nominales)
+        e0 = n1 * ida["p_compra"]
+        e1 = e0 * ida["tasa"]
+        n2 = int(e1 / vuelta["p_compra"]) if vuelta["p_compra"] else 0
+        e2 = n2 * vuelta["p_venta"] * (1 - _costo(comisiones, medio) -
+                                       _costo(comisiones, moneda))
+        pasos = [
+            _paso("Comprar", ida["compra"], n1, ida["p_compra"], moneda),
+            _paso("Vender", ida["venta"], n1, ida["p_venta"], medio),
+            _paso("Comprar", vuelta["compra"], n2, vuelta["p_compra"], medio),
+            _paso("Vender", vuelta["venta"], n2, vuelta["p_venta"], moneda),
+        ]
+
         out.append({
             "tipo": "efectivo",
             "origen": moneda,
@@ -114,6 +144,10 @@ def desde_efectivo(cot, bonos, moneda, comisiones):
             "nominales": nominales,
             "limite": limite,
             "patas": [ida, vuelta],
+            "pasos": pasos,
+            "inicial": e0,
+            "final": e2,
+            "unidad": moneda,
         })
     out.sort(key=lambda x: -x["resultado_pct"])
     return out
@@ -177,6 +211,23 @@ def desde_bono(cot, bonos, bono, comisiones):
                 moneda_actual *= p["tasa"]
             tope = min(tope, q_compra * p_compra / moneda_actual)
 
+            # desglose sobre el máximo ejecutable
+            n0 = int(tope)
+            efectivo = n0 * p_venta * (1 - costo)
+            pasos = [_paso("Vender", esp_venta, n0, p_venta, vender_en)]
+            mon = vender_en
+            for p in patas_medio:
+                ni = int(efectivo / p["p_compra"]) if p["p_compra"] else 0
+                pasos.append(_paso("Comprar", p["compra"], ni,
+                                   p["p_compra"], mon))
+                mon = _moneda_de(p["venta"], p["bono"])
+                pasos.append(_paso("Vender", p["venta"], ni,
+                                   p["p_venta"], mon))
+                efectivo = ni * p["p_venta"] * (1 - _costo(comisiones, mon) * 2)
+            n_final = int(efectivo / p_compra) if p_compra else 0
+            pasos.append(_paso("Comprar", esp_compra, n_final,
+                               p_compra, volver_en))
+
             out.append({
                 "tipo": "bono",
                 "bono": bono,
@@ -190,6 +241,10 @@ def desde_bono(cot, bonos, bono, comisiones):
                          patas_medio +
                          [{"bono": bono, "compra": esp_compra,
                            "p_compra": p_compra, "nominales": q_compra}],
+                "pasos": pasos,
+                "inicial": n0,
+                "final": n_final,
+                "unidad": bono,
             })
     out.sort(key=lambda x: -x["resultado_pct"])
     return out

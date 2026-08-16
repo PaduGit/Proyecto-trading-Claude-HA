@@ -415,13 +415,11 @@ def crear_app(monitor):
             cot = _cot_bonos()
             bonos_cfg, _ = BO.cargar()
             esps = BO.especies()
-            # Puentes: un salto es comprar una especie y vender otra del
-            # mismo bono, así que alcanza con dos. El AO29 no cotiza en
-            # cable pero con AO29 y AO29D convierte pesos en MEP igual;
-            # los saltos que necesiten la especie que falta se descartan
-            # solos al no haber punta.
-            puentes = [b for b in bonos_cfg
-                       if (b + "D") in esps or (b + "C") in esps]
+            # Un bono sirve, como origen y como puente, si cotiza en pesos
+            # y en MEP. Sin las dos puntas no hay salto posible: el PARP
+            # solo cotiza en pesos, así que venderlo y recomprarlo paga su
+            # propio spread sin convertir nada.
+            puentes = [b for b in bonos_cfg if (b + "D") in esps]
             tengo = db.get_estado("rulo_tengo")
             import json as _j
             tengo = _j.loads(tengo) if tengo else {"monedas": [], "bonos": []}
@@ -432,10 +430,7 @@ def crear_app(monitor):
                             monitor.cfg.get("comisiones") or {},
                             float(monitor.cfg.get("rulo_umbral_pct") or 0))
             r["tengo"] = tengo
-            # para declarar qué tengo sirve cualquier bono con cronograma:
-            # un CER en pesos también puede ser origen de un circuito que
-            # lo recompra con más nominales
-            r["candidatos"] = sorted(bonos_cfg)
+            r["candidatos"] = sorted(puentes)
             return jsonify(r)
         except Exception as e:
             log.exception("circuitos")

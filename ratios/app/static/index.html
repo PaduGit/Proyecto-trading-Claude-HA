@@ -166,6 +166,22 @@ table.tabla tr.dolar td:first-child{color:var(--amber)}
 
 .hallazgo{background:var(--panel);border:1px solid var(--rule);border-radius:4px;
   padding:12px 14px;margin-bottom:10px}
+
+.tocar{color:var(--muted);opacity:.55;font-size:10px;margin-left:6px}
+.circuito.abierto .tocar{display:none}
+.pasos{margin-top:10px;border-top:1px solid var(--rule);padding-top:8px}
+.paso{display:grid;grid-template-columns:14px 52px 1fr auto;
+  gap:2px 8px;font-family:var(--mono);font-size:11px;padding:5px 0;
+  font-variant-numeric:tabular-nums;border-bottom:1px solid var(--rule)}
+.paso:last-of-type{border-bottom:0}
+.paso .np{color:var(--muted);opacity:.5}
+.paso .ac{font-weight:600;letter-spacing:.04em}
+.paso .ac.c{color:var(--coral)} .paso .ac.v{color:var(--sage)}
+.paso .es{font-weight:600}
+.paso .im{text-align:right;color:var(--muted)}
+.paso .ca{grid-column:3} .paso .pr{grid-column:4;text-align:right}
+.pasos .cierre{margin-top:8px;font-size:10px;line-height:1.5;
+  color:var(--muted)}
 .hallazgo h3{font-family:var(--mono);font-size:11px;font-weight:600;margin:0 0 8px;
   letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;
@@ -1974,6 +1990,17 @@ $("#cir-add-btn").addEventListener("click", () => {
 
 $("#cir-btn").addEventListener("click", () => cargarCircuitos());
 
+/* El detalle se despliega por delegación: los circuitos se repintan en
+   cada búsqueda, así que no sirve enganchar cada uno por separado. */
+$("#cir-out").addEventListener("click", e => {
+  const c = e.target.closest(".circuito");
+  if(!c) return;
+  const p = c.querySelector(".pasos");
+  if(!p) return;
+  p.hidden = !p.hidden;
+  c.classList.toggle("abierto", !p.hidden);
+});
+
 function unCircuito(x){
   const gana = x.resultado_pct > 0;
   const ruta = (x.patas || []).map(p =>
@@ -1985,16 +2012,53 @@ function unCircuito(x){
       nombreMon(x.volver_en)
     : "vía " + nombreMon(x.medio);
   const unidad = x.tipo === "bono" ? " en nominales" : "";
-  return '<div class="circuito' + (gana ? " gana" : "") + '">' +
+  const id = "cp-" + (cSerie++);
+  return '<div class="circuito' + (gana ? " gana" : "") +
+    '" data-pasos="' + id + '" style="cursor:pointer">' +
     '<div><span class="r">' + (gana ? "+" : "") +
       x.resultado_pct.toFixed(3) + '%</span> ' +
       '<span style="color:var(--muted);font-size:11px">' + esc(cab) +
       unidad + '</span></div>' +
     '<div class="ruta">' + esc(flechas) + '</div>' +
     '<div class="ej">ejecutable ' + ent(Math.floor(x.nominales)) +
-      ' nom.' + (x.limite ? ' · limita ' + esc(x.limite) : "") + '</div>' +
+      ' nom.' + (x.limite ? ' · limita ' + esc(x.limite) : "") +
+      ' <span class="tocar">tocar para el detalle</span></div>' +
+    '<div class="pasos" id="' + id + '" hidden>' + detallePasos(x) + '</div>' +
     '</div>';
 }
+
+/* El desglose va sobre el máximo ejecutable: es el techo del circuito.
+   Las cantidades están redondeadas hacia abajo porque el mercado no
+   admite fracciones de nominal. */
+function detallePasos(x){
+  if(!x.pasos || !x.pasos.length) return "";
+  const filas = x.pasos.map((p, i) =>
+    '<div class="paso">' +
+      '<span class="np">' + (i + 1) + '</span>' +
+      '<span class="ac ' + (p.accion === "Comprar" ? "c" : "v") + '">' +
+        p.accion + '</span>' +
+      '<span class="es">' + esc(p.especie) + '</span>' +
+      '<span class="ca">' + ent(p.nominales) + ' nom.</span>' +
+      '<span class="pr">a ' + num(p.precio) + '</span>' +
+      '<span class="im">' + simboloMon(p.moneda) + ' ' +
+        ent(p.importe) + '</span>' +
+    '</div>').join("");
+  const cierre = x.tipo === "bono"
+    ? 'Arranca con ' + ent(x.inicial) + ' ' + esc(x.unidad) +
+      ' y termina con ' + ent(x.final) + '.'
+    : 'Arranca con ' + simboloMon(x.unidad) + ' ' + ent(x.inicial) +
+      ' y termina con ' + simboloMon(x.unidad) + ' ' + ent(x.final) + '.';
+  return filas + '<div class="cierre">' + cierre +
+    ' Los importes son contra punta y sin comisiones, y las cantidades ' +
+    'van redondeadas hacia abajo, así que el resultado de la última línea ' +
+    'difiere un poco del porcentaje de arriba, que es el exacto.</div>';
+}
+
+function simboloMon(m){
+  return m === "ARS" ? "$" : m === "MEP" ? "US$" : "US$ c";
+}
+
+let cSerie = 0;
 
 function nombreMon(m){
   return (MONEDAS_C.find(x => x[0] === m) || [,m])[1];
