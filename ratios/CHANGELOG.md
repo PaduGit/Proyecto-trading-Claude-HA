@@ -1,5 +1,15 @@
 # Registro de cambios
 
+## 0.18.1
+
+**Los importes del detalle estaban 100 veces arriba.** Los bonos cotizan por
+lamina de 100 nominales y el desglose multiplicaba la cantidad por el precio
+sin dividir. Comprar 200 nominales de AL30 a 86.500 mueve 173.000 pesos, no
+17.300.000. La cadena de cantidades entre patas arrastraba el mismo error.
+
+Los porcentajes nunca estuvieron afectados: salen de cocientes entre precios,
+donde la lamina se cancela.
+
 ## 0.18.0
 
 **Cada circuito se despliega.** Al tocarlo muestra las cuatro ordenes en

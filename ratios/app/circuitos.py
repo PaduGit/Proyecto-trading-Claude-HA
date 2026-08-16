@@ -69,6 +69,14 @@ def _saltar(cot, bono, desde, hacia, comisiones):
             "limite": compra if q_compra <= q_venta else venta}
 
 
+VN = 100.0          # los bonos cotizan por lámina de 100 nominales
+
+
+def _efectivo(nominales, precio):
+    """Plata que mueve una orden. El precio es por lámina de 100 VN."""
+    return nominales * precio / VN
+
+
 def _moneda_de(especie, bono):
     """La moneda en que liquida una especie, por su sufijo."""
     if especie == bono:
@@ -80,7 +88,8 @@ def _paso(accion, especie, nominales, precio, moneda):
     """Una orden concreta: qué, cuánto, a qué precio y por cuánta plata."""
     n = int(nominales)          # el mercado no admite fracciones
     return {"accion": accion, "especie": especie, "nominales": n,
-            "precio": precio, "importe": n * precio, "moneda": moneda}
+            "precio": precio, "importe": _efectivo(n, precio),
+            "moneda": moneda}
 
 
 def _mejor_salto(cot, bonos, desde, hacia, comisiones, excluir=None):
@@ -124,11 +133,11 @@ def desde_efectivo(cot, bonos, moneda, comisiones):
         # que salió neto de la anterior. Se redondea hacia abajo desde el
         # primer paso, así el importe inicial es el que se va a operar.
         n1 = int(nominales)
-        e0 = n1 * ida["p_compra"]
+        e0 = _efectivo(n1, ida["p_compra"])
         e1 = e0 * ida["tasa"]
-        n2 = int(e1 / vuelta["p_compra"]) if vuelta["p_compra"] else 0
-        e2 = n2 * vuelta["p_venta"] * (1 - _costo(comisiones, medio) -
-                                       _costo(comisiones, moneda))
+        n2 = int(e1 * VN / vuelta["p_compra"]) if vuelta["p_compra"] else 0
+        e2 = _efectivo(n2, vuelta["p_venta"]) * (
+            1 - _costo(comisiones, medio) - _costo(comisiones, moneda))
         pasos = [
             _paso("Comprar", ida["compra"], n1, ida["p_compra"], moneda),
             _paso("Vender", ida["venta"], n1, ida["p_venta"], medio),
@@ -213,18 +222,19 @@ def desde_bono(cot, bonos, bono, comisiones):
 
             # desglose sobre el máximo ejecutable
             n0 = int(tope)
-            efectivo = n0 * p_venta * (1 - costo)
+            efectivo = _efectivo(n0, p_venta) * (1 - costo)
             pasos = [_paso("Vender", esp_venta, n0, p_venta, vender_en)]
             mon = vender_en
             for p in patas_medio:
-                ni = int(efectivo / p["p_compra"]) if p["p_compra"] else 0
+                ni = int(efectivo * VN / p["p_compra"]) if p["p_compra"] else 0
                 pasos.append(_paso("Comprar", p["compra"], ni,
                                    p["p_compra"], mon))
                 mon = _moneda_de(p["venta"], p["bono"])
                 pasos.append(_paso("Vender", p["venta"], ni,
                                    p["p_venta"], mon))
-                efectivo = ni * p["p_venta"] * (1 - _costo(comisiones, mon) * 2)
-            n_final = int(efectivo / p_compra) if p_compra else 0
+                efectivo = _efectivo(ni, p["p_venta"]) * (
+                    1 - _costo(comisiones, mon) * 2)
+            n_final = int(efectivo * VN / p_compra) if p_compra else 0
             pasos.append(_paso("Comprar", esp_compra, n_final,
                                p_compra, volver_en))
 
