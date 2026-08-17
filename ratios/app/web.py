@@ -13,6 +13,7 @@ import cer as CER
 import circuitos as CI
 import curva as CU
 import historico as H
+import opciones as OP
 import posicion as P
 import respaldo
 from iol import IOLError
@@ -453,6 +454,114 @@ def crear_app(monitor):
             return jsonify(BO.rulo(_cot_bonos(), umbral))
         except Exception as e:
             log.exception("rulo")
+            return jsonify({"error": str(e)}), 500
+
+    def _cierres_subyacente(sim, mercado="bCBA"):
+        """Cierres para las medias. Se rellenan desde IOL una vez por día."""
+        from datetime import date, timedelta
+        desde = (date.today() - timedelta(days=90)).isoformat()
+        ultimo = db.ultimo_cierre_guardado(sim)
+        if not ultimo or ultimo < (date.today() - timedelta(days=1)).isoformat():
+            try:
+                serie = monitor.iol.serie(mercado, sim, desde,
+                                          date.today().isoformat())
+                filas = []
+                for p in serie or []:
+                    f = str(p.get("fechaHora") or "")[:10]
+                    c = p.get("ultimoPrecio") or p.get("cierre")
+                    if f and c:
+                        filas.append((f, float(c)))
+                if filas:
+                    db.guardar_cierres(sim, filas)
+            except Exception as e:
+                log.debug("cierres de %s: %s", sim, e)
+        return [(r["fecha"], r["cierre"]) for r in db.cierres_de(sim, desde)]
+
+    CLAVE_CADENA = "opc_ultima_cadena"
+
+    @app.get("/api/opciones")
+    def opciones_tabla():
+        try:
+            import json as _j
+            cfg = monitor.cfg
+            subs = [s.strip().upper()
+                    for s in (cfg.get("opc_subyacentes") or "GGAL").split(",")
+                    if s.strip()]
+            series, diag = OP.cadena(
+                monitor.iol, subs,
+                panel=cfg.get("opc_panel") or "De Acciones")
+
+            with monitor.lock:
+                cot = dict(monitor.cotizaciones)
+            spots, cierres = {}, {}
+            for s in subs:
+                c = cot.get(s)
+                if not c or not c.get("ref"):
+                    try:
+                        c = monitor.iol.cotizacion("bCBA", s, "t1")
+                    except Exception:
+                        c = None
+                spots[s] = (c or {}).get("ref") or 0
+                cierres[s] = _cierres_subyacente(s)
+
+            # Fuera de rueda el panel no manda puntas: no vienen viejas,
+            # directamente no vienen. Para poder mostrar algo se guarda la
+            # última cadena que sí las tuvo.
+            viejo, desde = False, None
+            if diag["con_puntas"] > 0 and any(spots.values()):
+                db.set_estado(CLAVE_CADENA, _j.dumps({
+                    "ts": datetime.now().isoformat(timespec="seconds"),
+                    "series": series, "spots": spots}))
+            else:
+                guardado = db.get_estado(CLAVE_CADENA)
+                if guardado:
+                    d = _j.loads(guardado)
+                    series = d.get("series") or []
+                    spots = d.get("spots") or spots
+                    desde = d.get("ts")
+                    viejo = True
+                    # los días al vencimiento sí se recalculan
+                    from datetime import date as _date
+                    for s in series:
+                        try:
+                            v = _date.fromisoformat(s["vencimiento"])
+                            s["dias"] = (v - _date.today()).days
+                        except Exception:
+                            pass
+
+            par = {
+                "dias_min": cfg.get("opc_dias_min", 15),
+                "dias_max": cfg.get("opc_dias_max", 80),
+                "saltos": cfg.get("opc_saltos", 3),
+                "limite_base_pct": cfg.get("opc_limite_base_pct", 5),
+                "riesgo_max_tabla_pct": cfg.get("opc_riesgo_tabla_pct", 45),
+                "riesgo_max_alarma_pct": cfg.get("opc_riesgo_alarma_pct", 33),
+                "bear_instrumento": cfg.get("opc_bear_instrumento", "ambos"),
+            }
+            r = OP.analizar(series, spots, par,
+                            cfg.get("comisiones") or {}, cierres)
+            r["diagnostico"] = {k: v for k, v in diag.items() if k != "muestra"}
+            r["parametros"] = par
+            r["viejo"] = viejo
+            r["desde"] = desde
+            r["hay_rueda"] = monitor.hay_rueda
+            return jsonify(r)
+        except Exception as e:
+            log.exception("opciones")
+            return jsonify({"error": str(e)}), 500
+
+    @app.get("/api/opciones/crudo")
+    def opciones_crudo():
+        """Una serie tal cual la manda IOL, para ver qué campos trae."""
+        try:
+            subs = [s.strip().upper()
+                    for s in (monitor.cfg.get("opc_subyacentes")
+                              or "GGAL").split(",") if s.strip()]
+            _, diag = OP.cadena(
+                monitor.iol, subs,
+                panel=monitor.cfg.get("opc_panel") or "De Acciones")
+            return jsonify(diag)
+        except Exception as e:
             return jsonify({"error": str(e)}), 500
 
     @app.get("/api/cer")

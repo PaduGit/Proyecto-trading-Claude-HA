@@ -179,6 +179,16 @@ class IOL:
             d = self._get("/api/v2/%s/Titulos/%s/Cotizacion" % (mercado, simbolo))
         return normalizar(d, simbolo)
 
+    def opciones_de(self, simbolo, mercado="bCBA"):
+        """Series que corresponden a un subyacente.
+
+        Hace falta porque el símbolo de la opción no arranca con el del
+        subyacente: las de GGAL empiezan con GFG. Este endpoint da el
+        mapeo; las puntas vienen del panel.
+        """
+        return self._get("/api/v2/%s/Titulos/%s/Opciones" % (mercado, simbolo),
+                         timeout=45)
+
     def serie(self, mercado, simbolo, desde, hasta, ajustada="sinAjustar"):
         path = ("/api/v2/%s/Titulos/%s/Cotizacion/seriehistorica/%s/%s/%s"
                 % (mercado, simbolo, desde, hasta, ajustada))

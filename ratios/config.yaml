@@ -1,5 +1,5 @@
 name: Ratios IOL
-version: "0.18.1"
+version: "0.19.0"
 slug: ratios_iol
 description: Monitor de ratios entre especies, arbitraje de plazos y screener
 url: https://github.com/PaduGit/Proyecto-trading-Claude-HA
@@ -39,6 +39,17 @@ options:
   curva_umbral_z: 2.5
   cer_actual: 0
   tasa_caucion_anual: 0
+  opc_subyacentes: GGAL
+  opc_panel: De Acciones
+  opc_dias_min: 15
+  opc_dias_max: 80
+  opc_saltos: 3
+  opc_limite_base_pct: 5
+  opc_riesgo_tabla_pct: 45
+  opc_riesgo_alarma_pct: 33
+  opc_bear_instrumento: ambos
+  opc_lotes_min: 2
+  opc_ciclos_persistencia: 1
   paneles:
     - instrumento: Bonos
       panel: Soberanos en dólares
@@ -46,6 +57,8 @@ options:
     - instrumento: Acciones
       panel: Merval
       pais: argentina
+  derechos_mercado_pct: 0
+  iva_pct: 21
   comisiones:
     - instrumento: acciones
       pct: 0.15
@@ -121,10 +134,23 @@ schema:
   curva_umbral_z: float(0,10)
   cer_actual: float(0,100000)
   tasa_caucion_anual: float(0,500)
+  opc_subyacentes: str?
+  opc_panel: str?
+  opc_dias_min: int(0,400)
+  opc_dias_max: int(0,400)
+  opc_saltos: int(1,10)
+  opc_limite_base_pct: float(0,50)
+  opc_riesgo_tabla_pct: float(0,100)
+  opc_riesgo_alarma_pct: float(0,100)
+  opc_bear_instrumento: list(puts|calls|ambos)
+  opc_lotes_min: int(0,10000)
+  opc_ciclos_persistencia: int(1,20)
   paneles:
     - instrumento: str
       panel: str
       pais: str
+  derechos_mercado_pct: float(0,10)
+  iva_pct: float(0,50)
   comisiones:
     - instrumento: str
       pct: float(0,10)

@@ -1,5 +1,49 @@
 # Registro de cambios
 
+## 0.19.0
+
+**Pestana nueva: Opciones.** Spreads verticales de riesgo acotado sobre
+acciones, valuados contra puntas. Tres estructuras: bull con calls y bear
+con puts, que son de debito, y bear con calls, que es de credito e
+inmoviliza la diferencia de bases como garantia.
+
+Las tres se leen con la misma escala, el riesgo sobre el ancho de bases.
+En los debitos el riesgo es lo que se paga; en el credito es el ancho menos
+la prima cobrada. Un riesgo del 33% es el ratio 1 a 3: se arriesga 1 para
+que la posicion valga 3 al vencimiento. La tabla muestra hasta 45% para que
+se vea la curva de costos entera.
+
+La base comprada tiene que caer dentro del 5% del spot: para arriba en el
+bull, para abajo en el bear. Los saltos de bases estan limitados a 3, porque
+el filtro de costo por si solo premia siempre al spread mas ancho, que es el
+que menos chance tiene de llegar a la ganancia maxima.
+
+**El desplegable trae el payoff.** Al tocar una fila se dibuja el resultado
+al vencimiento, con el quiebre en cada base, la linea del spot y el punto de
+equilibrio. Debajo van las dos patas con su punta, el riesgo y la ganancia en
+pesos, cuanto tiene que moverse el papel para llegar a cada uno, y la
+garantia cuando corresponde. Hay un boton para copiar las ordenes, con la
+compra primero: si se llena sola queda una posicion larga acotada, al reves
+queda un lanzamiento sin cobertura.
+
+**La cadena baja en dos requests.** Uno al panel De Acciones, que trae las
+puntas de las 1100 series, y uno por subyacente para saber cuales le
+pertenecen. Ese segundo request hace falta porque el simbolo de la opcion no
+arranca con el del subyacente: las de GGAL empiezan con GFG.
+
+**Fuera de rueda IOL no manda puntas.** No las manda viejas, no las manda.
+Asi que la ultima cadena con puntas se guarda y se sirve marcada, aclarando
+que no es ejecutable. Los dias al vencimiento se recalculan igual contra la
+fecha de hoy.
+
+**Derechos de mercado e IVA salen del hardcodeo.** Ahora son dos campos de
+configuracion que aplican a todos los instrumentos. Hacia falta para
+opciones, que no estan exentas de IVA como los bonos soberanos: sobre dos
+patas, el 21% sobre el arancel pesa.
+
+La tendencia del subyacente se muestra al lado de cada fila, por cruce de
+medias de 9 y 21 ruedas, sin filtrar nada.
+
 ## 0.18.1
 
 **Los importes del detalle estaban 100 veces arriba.** Los bonos cotizan por

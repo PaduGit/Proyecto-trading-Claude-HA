@@ -63,6 +63,7 @@ nav button:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
 
 main{padding:14px;max-width:720px;margin:0 auto}
 section[hidden]{display:none}
+svg.payoff{width:100%;height:auto;display:block;margin:6px 0;background:var(--panel-2);border:1px solid var(--rule);border-radius:3px}
 
 .par{background:var(--panel);border:1px solid var(--rule);border-radius:4px;
   padding:14px 14px 12px;margin-bottom:10px}
@@ -311,6 +312,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
     <button role="tab" aria-selected="false" data-vista="calc">Calcular</button>
     <button role="tab" aria-selected="false" data-vista="bonos">Bonos</button>
     <button role="tab" aria-selected="false" data-vista="rulo">Rulo</button>
+    <button role="tab" aria-selected="false" data-vista="opc">Opciones</button>
     <button role="tab" aria-selected="false" data-vista="pos">Posición</button>
     <button role="tab" aria-selected="false" data-vista="plazos">Plazos</button>
     <button role="tab" aria-selected="false" data-vista="reg">Registro</button>
@@ -378,6 +380,16 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
     <button class="primario" id="cir-btn" style="margin-top:12px">
       Buscar circuitos</button>
     <div id="cir-out" style="margin-top:12px"></div>
+  </section>
+
+  <section id="v-opc" hidden>
+    <p class="nota">Spreads verticales de riesgo acotado, valuados contra
+      puntas. El <b>riesgo</b> se mide sobre el ancho de bases: 33% es el
+      ratio 1 a 3.</p>
+    <div id="op-cab"></div>
+    <button class="primario" id="op-btn" style="margin-top:12px">
+      Buscar spreads</button>
+    <div id="op-out" style="margin-top:12px"></div>
   </section>
 
   <section id="v-pos" hidden>
@@ -605,10 +617,11 @@ document.querySelectorAll("nav button").forEach(b => {
     document.querySelectorAll("nav button").forEach(x =>
       x.setAttribute("aria-selected", x === b));
     vista = b.dataset.vista;
-    ["panel","calc","bonos","rulo","pos","plazos","reg","expl"].forEach(v =>
+    ["panel","calc","bonos","rulo","opc","pos","plazos","reg","expl"].forEach(v =>
       $("#v-"+v).hidden = (v !== vista));
     if(vista === "bonos") cargarBonos();
     if(vista === "rulo") cargarCircuitos();
+    if(vista === "opc") cargarOpciones();
     if(vista === "pos") cargarPosicion();
     if(vista === "reg") cargarRegistro();
     if(vista === "expl") iniciarExplorar();
@@ -891,6 +904,7 @@ $("#o-guardar").addEventListener("click", async () => {
     $("#dlg-op").close();
     if(vista === "bonos") cargarBonos();
     if(vista === "rulo") cargarCircuitos();
+    if(vista === "opc") cargarOpciones();
     if(vista === "pos") cargarPosicion();
     if(vista === "reg") cargarRegistro();
   }catch(e){
@@ -2110,6 +2124,170 @@ async function cargarCircuitos(){
     out.innerHTML = '<div class="msg error">No se pudo calcular.</div>';
   }
 }
+
+/* ---------- opciones ---------- */
+/* Tres estructuras, una sola escala: el riesgo sobre el ancho de bases.
+   En los débitos el riesgo es lo que se paga; en el bear con calls es el
+   ancho menos la prima cobrada. */
+let sprSerie = 0;
+let sprDatos = {};
+
+const sprNombre = e => e === "BULL_CALL" ? "Bull con calls"
+  : e === "BEAR_PUT" ? "Bear con puts" : "Bear con calls";
+
+function sprPayoff(f){
+  /* Quiebre en cada base. Debajo de la base baja y arriba de la alta el
+     resultado es plano: por eso alcanza con cuatro puntos. */
+  const W = 300, H = 110, m = 18;
+  const alcista = f.estructura === "BULL_CALL";
+  const bb = Math.min(f.base_compra, f.base_venta);
+  const ba = Math.max(f.base_compra, f.base_venta);
+  const g = f.ganancia_total, r = -f.riesgo_total;
+  const x0 = Math.min(bb, f.spot) * 0.9, x1 = Math.max(ba, f.spot) * 1.1;
+  const pts = alcista ? [[x0,r],[bb,r],[ba,g],[x1,g]]
+                      : [[x0,g],[bb,g],[ba,r],[x1,r]];
+  const px = v => m + (v - x0) / (x1 - x0) * (W - 2*m);
+  const py = v => H - m - (v - r) / (g - r) * (H - 2*m);
+  const linea = pts.map(([a,b]) => px(a).toFixed(1)+","+py(b).toFixed(1)).join(" ");
+  const cero = py(0), sp = px(f.spot), eq = px(f.equilibrio);
+  return '<svg viewBox="0 0 '+W+' '+H+'" class="payoff" role="img" ' +
+    'aria-label="Resultado al vencimiento">' +
+    '<line x1="'+m+'" y1="'+cero.toFixed(1)+'" x2="'+(W-m)+'" y2="'+cero.toFixed(1)+
+      '" stroke="var(--rule)" stroke-width="1"/>' +
+    '<line x1="'+sp.toFixed(1)+'" y1="'+m+'" x2="'+sp.toFixed(1)+'" y2="'+(H-m)+
+      '" stroke="var(--amber)" stroke-width="1" stroke-dasharray="3 3"/>' +
+    '<polyline points="'+linea+'" fill="none" stroke="var(--bone)" ' +
+      'stroke-width="1.6"/>' +
+    '<circle cx="'+eq.toFixed(1)+'" cy="'+cero.toFixed(1)+'" r="2.5" ' +
+      'fill="var(--amber)"/>' +
+    '<text x="'+m+'" y="'+(m-6)+'" fill="var(--muted)" font-size="8">+' +
+      ent(g) + '</text>' +
+    '<text x="'+m+'" y="'+(H-6)+'" fill="var(--muted)" font-size="8">' +
+      ent(r) + '</text>' +
+    '</svg>';
+}
+
+function sprDetalle(f){
+  const patas = f.patas.map((p,i) =>
+    '<div class="paso">' +
+      '<span class="np">' + (i+1) + '</span>' +
+      '<span class="ac ' + (p.accion === "Comprar" ? "c" : "v") + '">' +
+        p.accion + '</span>' +
+      '<span class="es">' + esc(p.simbolo) + '</span>' +
+      '<span class="ca">' + p.tipo + ' ' + num(p.base,5) + '</span>' +
+      '<span class="pr">a ' + precio(p.precio) + '</span>' +
+      '<span class="im">punta ' + ent(p.punta) + '</span>' +
+    '</div>').join("");
+  const dato = (t,v) => '<span>' + t + ' <b>' + v + '</b></span>';
+  return sprPayoff(f) +
+    '<div class="datos" style="margin:8px 0">' +
+      dato("riesgo", "$" + ent(f.riesgo_total)) +
+      dato("ganancia", "$" + ent(f.ganancia_total)) +
+      dato("equilibrio", precio(f.equilibrio)) +
+      dato("necesita", (f.var_equilibrio_pct>=0?"+":"") +
+           f.var_equilibrio_pct.toFixed(1) + "%") +
+      dato("máx. en", (f.var_max_pct>=0?"+":"") + f.var_max_pct.toFixed(1) + "%") +
+      dato("comisión", precio(f.comision)) +
+    '</div>' + patas +
+    (f.garantia ? '<div class="aviso" style="margin-top:8px">Inmoviliza ' +
+      '$' + ent(f.garantia) + ' de garantía por lote: es la diferencia de ' +
+      'bases.</div>' : "") +
+    '<div style="display:flex;gap:6px;margin-top:10px">' +
+      '<button class="secundario" data-copiar="' + esc(f.id) + '" ' +
+        'style="width:auto;padding:0 14px">Copiar órdenes</button></div>';
+}
+
+function sprFila(f){
+  const id = "sp-" + (sprSerie++);
+  sprDatos[f.id] = f;
+  const alarma = f.riesgo_pct <= (sprDatos._umbral || 33);
+  const marca = f.a_favor === true ? '<span class="tocar">a favor</span>'
+              : f.a_favor === false ? "" : "";
+  return '<div class="circuito' + (alarma ? " gana" : "") +
+    '" data-pasos="' + id + '" style="cursor:pointer">' +
+    '<div><span class="r">' + f.riesgo_pct.toFixed(1) + '%</span> ' +
+      '<span style="color:var(--muted);font-size:11px">' +
+      esc(sprNombre(f.estructura)) + ' · 1 a ' + num(f.ratio,3) + '</span></div>' +
+    '<div class="ruta">' + num(f.base_compra,5) + ' / ' + num(f.base_venta,5) +
+      ' · ' + f.dias + ' días</div>' +
+    '<div class="ej">ejecutable ' + ent(f.lotes) + ' lotes · riesgo $' +
+      ent(f.riesgo_total) + ' ' + marca +
+      ' <span class="tocar">tocar para el detalle</span></div>' +
+    '<div class="pasos" id="' + id + '" hidden>' + sprDetalle(f) + '</div>' +
+    '</div>';
+}
+
+async function cargarOpciones(){
+  const out = $("#op-out");
+  $("#op-btn").disabled = true;
+  out.innerHTML = '<div class="vacio">Bajando la cadena…</div>';
+  try{
+    const d = await (await fetch(base + "api/opciones")).json();
+    if(d.error){
+      out.innerHTML = '<div class="msg error">' + esc(d.error) + '</div>';
+      return;
+    }
+    sprDatos = {_umbral: d.umbral_alarma};
+    const t = d.tendencias || {};
+    $("#op-cab").innerHTML = Object.keys(d.spots || {}).map(k =>
+      '<div class="hallazgo"><h3>' + esc(k) + ' ' + precio(d.spots[k]) + '</h3>' +
+      '<div class="datos">' +
+        (t[k] ? '<span>media 9 <b>' + precio(t[k].m9) + '</b></span>' +
+                '<span>media 21 <b>' + precio(t[k].m21) + '</b></span>' +
+                '<span>sesgo <b>' + t[k].sesgo + '</b></span>'
+              : '<span>sin cierres suficientes para las medias</span>') +
+      '</div></div>').join("");
+
+    if(!d.filas.length){
+      out.innerHTML = (d.viejo
+        ? '<div class="aviso">Puntas de la última rueda. Fuera del horario ' +
+          'IOL no manda puntas.</div>' : "") +
+        '<div class="vacio" style="padding:14px">' +
+        'Ninguna combinación entra en el filtro. De ' +
+        ent((d.diagnostico||{}).parseadas || 0) + ' series leídas, ' +
+        'ninguna arma un spread con las dos puntas dentro del ' +
+        ((d.parametros||{}).riesgo_max_tabla_pct || 45) + '% del ancho.</div>';
+      return;
+    }
+    out.innerHTML =
+      (d.sin_comisiones ? '<div class="aviso">Las comisiones están en cero. ' +
+        'Cargalas en la configuración: en opciones el IVA no está exento y ' +
+        'sobre dos patas pesa.</div>' : "") +
+      (d.viejo ? '<div class="aviso">Puntas de la última rueda' +
+        (d.desde ? ' (' + esc(d.desde.replace("T"," ")) + ')' : "") +
+        '. Fuera del horario IOL no manda puntas, así que esto no es ' +
+        'ejecutable: sirve para mirar, no para operar.</div>' : "") +
+      d.filas.map(sprFila).join("") +
+      '<div class="nota">Todo contra puntas: se compra contra el ask y se ' +
+      'vende contra el bid. <b>Riesgo</b> es lo máximo que se pierde, medido ' +
+      'sobre el ancho de bases. <b>Ejecutable</b> es el mínimo de las dos ' +
+      'puntas.</div>';
+  }catch(e){
+    out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
+  }finally{ $("#op-btn").disabled = false; }
+}
+
+$("#op-btn").addEventListener("click", () => cargarOpciones());
+
+$("#op-out").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-copiar]");
+  if(!b) return;
+  ev.stopPropagation();
+  const f = sprDatos[b.dataset.copiar];
+  if(!f) return;
+  /* La compra va primero: si se llena sola, queda una posición larga
+     acotada. Al revés queda un lanzamiento sin cobertura. */
+  const txt = f.patas.map(p =>
+    p.accion + " " + p.simbolo + "  " + f.lotes + " lotes  a " +
+    p.precio.toFixed(2)).join("\n");
+  const ta = document.createElement("textarea");
+  ta.value = txt; document.body.appendChild(ta); ta.select();
+  try{ document.execCommand("copy"); b.textContent = "Copiado"; }
+  catch(e){ b.textContent = "No se pudo"; }
+  document.body.removeChild(ta);
+  setTimeout(() => { b.textContent = "Copiar órdenes"; }, 1500);
+});
+
 
 cargarPanel();
 setInterval(() => { if(vista === "panel") cargarPanel(); }, 30000);
