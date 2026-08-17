@@ -93,8 +93,16 @@ def calcular_punto(simbolo, f, precio, cfg, info, mep=None):
             RF.residual(cfg, f), coef)
 
 
-def reconstruir(iol, simbolo=None, desde=None, hasta=None, mercado="bCBA"):
-    """Baja los cierres de IOL y calcula la serie. Idempotente."""
+def reconstruir(iol, simbolo=None, desde=None, hasta=None, mercado="bCBA",
+                forzar=False):
+    """Baja los cierres de IOL y calcula la serie.
+
+    Por defecto arranca donde quedó, así que solo agrega hacia adelante.
+    Con `forzar` recalcula desde el principio: hace falta cuando cambia
+    un insumo del cálculo y los puntos viejos quedaron mal. Le pasó al
+    DICP, que se armó con una base CER equivocada porque la serie del
+    CER todavía no llegaba hasta 2003.
+    """
     init()
     desde = desde or DESDE
     hasta = hasta or date.today()
@@ -118,12 +126,13 @@ def reconstruir(iol, simbolo=None, desde=None, hasta=None, mercado="bCBA"):
         if info["moneda"] not in ("USD", "CER"):
             continue
 
-        ultimo = db.conn().execute(
-            "SELECT MAX(fecha) f FROM bono_hist WHERE simbolo=?", (sim,)
-        ).fetchone()["f"]
         arranque = desde
-        if ultimo:
-            arranque = date.fromisoformat(ultimo) + timedelta(days=1)
+        if not forzar:
+            ultimo = db.conn().execute(
+                "SELECT MAX(fecha) f FROM bono_hist WHERE simbolo=?", (sim,)
+            ).fetchone()["f"]
+            if ultimo:
+                arranque = date.fromisoformat(ultimo) + timedelta(days=1)
         if arranque > hasta:
             continue
 

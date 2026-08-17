@@ -679,11 +679,13 @@ def crear_app(monitor):
     @app.post("/api/historico/reconstruir")
     def historico_reconstruir():
         sim = (request.args.get("simbolo") or "").upper() or None
+        forzar = request.args.get("forzar") in ("1", "true", "si")
         try:
-            n = H.reconstruir(monitor.iol, sim)
+            n = H.reconstruir(monitor.iol, sim, forzar=forzar)
         except Exception as e:
             return jsonify({"error": str(e)}), 500
-        return jsonify({"puntos": n, "estado": H.resumen()})
+        return jsonify({"puntos": n, "forzado": forzar,
+                        "estado": H.resumen()})
 
     @app.get("/api/posicion/exportar")
     def exportar_posicion():

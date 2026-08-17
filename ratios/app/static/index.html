@@ -299,6 +299,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
         <a href="#" id="probar-notif" role="menuitem">Probar notificación</a>
         <a href="#" id="probar-cer" role="menuitem">Probar CER (BCRA)</a>
         <a href="#" id="rehacer-hist" role="menuitem">Reconstruir histórico</a>
+        <a href="#" id="rehacer-todo" role="menuitem">Recalcular histórico entero</a>
         <a href="#" id="rehacer-curva" role="menuitem">Recalcular desvíos</a>
         <a href="#" id="bajar-hist" role="menuitem">Descargar histórico (CSV)</a>
         <hr>
@@ -591,6 +592,9 @@ let vista = "panel";
 let abierto = {};
 let ultimoEstado = null;
 let opCtx = {};
+
+/* El backend inyecta la version del config.yaml en el body. */
+$("#ver-app").textContent = document.body.dataset.version || "";
 
 /* Cifras significativas: 1,3095 -> 1,310 y 1530,7481 -> 1531.
    Cada ratio con la precisión que necesita, sin decimales de más. */
@@ -1521,6 +1525,30 @@ $("#rehacer-hist").addEventListener("click", async e => {
       : "Listo: " + d.puntos + " puntos calculados.\n" +
         "Total: " + (d.estado ? d.estado.filas : "?") + " puntos.");
   }catch(err){ alert("No se pudo reconstruir."); }
+});
+
+$("#rehacer-todo").addEventListener("click", async e => {
+  e.preventDefault(); e.stopPropagation();
+  $("#menu").hidden = true;
+  /* Reconstruir solo agrega hacia adelante. Cuando cambia un insumo del
+     calculo —la base CER, un cronograma— los puntos viejos quedan mal y
+     hay que rehacerlos desde cero. */
+  const sim = prompt("¿Qué especie? Dejalo vacío para recalcular todas.\n" +
+    "Las del canje 2005 (DICP, DIPO, PARP, PAPO, CUAP) se armaron con una " +
+    "base CER equivocada.", "");
+  if(sim === null) return;
+  if(!confirm("Se vuelve a bajar la serie desde 2023 y se recalcula cada " +
+      "día" + (sim ? " de " + sim.toUpperCase() : " de todas las especies") +
+      ".\nLos puntos actuales se pisan. Puede tardar varios minutos.\n\n" +
+      "¿Seguimos?")) return;
+  try{
+    const q = "api/historico/reconstruir?forzar=1" +
+      (sim ? "&simbolo=" + encodeURIComponent(sim.trim().toUpperCase()) : "");
+    const d = await (await fetch(base + q, {method:"POST"})).json();
+    alert(d.error ? "Falló: " + d.error
+      : "Listo: " + d.puntos + " puntos recalculados.\n" +
+        "Total: " + (d.estado ? d.estado.filas : "?") + " puntos.");
+  }catch(err){ alert("No se pudo recalcular."); }
 });
 $("#probar-cer").addEventListener("click", async e => {
   e.preventDefault(); e.stopPropagation();

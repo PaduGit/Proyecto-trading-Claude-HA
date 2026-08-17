@@ -1,5 +1,31 @@
 # Registro de cambios
 
+## 0.19.1
+
+**La TIR historica del DICP estaba mal desde 2023.** Toda la serie se
+calculo con una base CER de 1,8494 cuando la correcta es 1,4552, el CER
+del 17-12-2003, diez habiles antes de la emision. El motivo: cuando se
+armo la serie, la descarga del CER todavia no llegaba hasta 2003. El 13
+de agosto se completo y desde ahi calcula bien, pero los puntos viejos
+quedaron congelados con la base equivocada.
+
+Se veia como una TIR plana alrededor del 1% durante tres anios y un salto
+a 9,27% en el ultimo dia. No era el mercado: eran dos calculos distintos
+pegados. Afecta a todos los bonos del canje 2005, que comparten emision:
+DICP, DIPO, PARP, PAPO y CUAP.
+
+**Recalcular histórico entero.** Opcion nueva en el menu. "Reconstruir
+histórico" solo agrega hacia adelante, asi que no servia para esto: los
+puntos malos quedaban intactos. La nueva rehace el calculo desde 2023,
+para una especie o para todas, pisando lo que haya. Hace falta cada vez
+que cambia un insumo del calculo y no solo los datos.
+
+Despues de recalcular conviene correr "Recalcular desvios", que se
+alimenta de esta serie.
+
+**Volvio el numero de version en el encabezado.** El backend lo inyectaba
+en el body y el span estaba puesto, pero nadie los conectaba.
+
 ## 0.19.0
 
 **Pestana nueva: Opciones.** Spreads verticales de riesgo acotado sobre
