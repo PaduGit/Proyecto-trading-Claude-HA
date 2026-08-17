@@ -4,7 +4,7 @@ import logging
 import statistics
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import db
 from iol import IOLError
@@ -37,6 +37,8 @@ class Monitor:
         self._zonas_curva = self._cargar_zonas_curva()
         self._pidiendo = threading.Lock()
         self._ultimo_manual = datetime.min
+        self._opc_estado = None     # persistencia del cruce, por combinacion
+        self._opc_desarme = set()   # posiciones ya avisadas
 
     # -- estado persistente -------------------------------------------
 
@@ -507,6 +509,10 @@ class Monitor:
                 self.revisar_curva(mapa)
             except Exception as e:
                 log.debug("revisar curva: %s", e)
+            try:
+                self.revisar_opciones(mapa)
+            except Exception as e:
+                log.debug("revisar opciones: %s", e)
             self.ultimo_ciclo = datetime.now()
             if manual:
                 self._ultimo_manual = datetime.now()
@@ -522,6 +528,185 @@ class Monitor:
             return False, int(falta) + 1
         ok = self.ciclo(manual=True)
         return ok, 0
+
+    # -- opciones -----------------------------------------------------
+
+    def parametros_opciones(self):
+        c = self.cfg
+        return {
+            "dias_min": c.get("opc_dias_min", 15),
+            "dias_max": c.get("opc_dias_max", 80),
+            "saltos": c.get("opc_saltos", 3),
+            "limite_base_pct": c.get("opc_limite_base_pct", 5),
+            "riesgo_max_tabla_pct": c.get("opc_riesgo_tabla_pct", 45),
+            "riesgo_max_alarma_pct": c.get("opc_riesgo_alarma_pct", 33),
+            "bear_instrumento": c.get("opc_bear_instrumento", "ambos"),
+            "lotes_min": c.get("opc_lotes_min", 2),
+            "ciclos_persistencia": c.get("opc_ciclos_persistencia", 1),
+            "ganancia_min_pct": c.get("opc_ganancia_min_pct", 100),
+            "dias_min_desarme": c.get("opc_dias_min_desarme", 10),
+            "mov_contrario_pct": c.get("opc_mov_contrario_pct", 4),
+        }
+
+    def cadena_opciones(self, cot=None):
+        """Cadena con puntas. Fuera de rueda IOL no manda ninguna, asi que
+        se guarda la ultima buena y se devuelve marcada."""
+        import json
+        import opciones as OP
+        subs = [s.strip().upper()
+                for s in (self.cfg.get("opc_subyacentes") or "GGAL").split(",")
+                if s.strip()]
+        series, diag = OP.cadena(
+            self.iol, subs, panel=self.cfg.get("opc_panel") or "De Acciones")
+
+        cot = cot if cot is not None else dict(self.cotizaciones)
+        spots = {}
+        for s in subs:
+            c = cot.get(s) or {}
+            spots[s] = c.get("ref") or c.get("ultimo") or 0
+
+        viejo, desde = False, None
+        if diag["con_puntas"] > 0 and any(spots.values()):
+            db.set_estado("opc_ultima_cadena", json.dumps({
+                "ts": datetime.now().isoformat(timespec="seconds"),
+                "series": series, "spots": spots}))
+        else:
+            guardado = db.get_estado("opc_ultima_cadena")
+            if guardado:
+                d = json.loads(guardado)
+                series = d.get("series") or []
+                spots = {k: v for k, v in (d.get("spots") or spots).items()}
+                desde, viejo = d.get("ts"), True
+                hoy = date.today()
+                for s in series:
+                    try:
+                        s["dias"] = (date.fromisoformat(s["vencimiento"])
+                                     - hoy).days
+                    except Exception:
+                        pass
+        return series, spots, diag, viejo, desde
+
+    def revisar_opciones(self, cot=None):
+        """Alertas de armado y de desarme, y el cierre diario."""
+        import opciones as OP
+        if not (self.cfg.get("opc_subyacentes") or "GGAL").strip():
+            return 0
+
+        series, spots, diag, viejo, _ = self.cadena_opciones(cot)
+        if viejo or not series:
+            return 0        # con puntas de ayer no se avisa nada
+
+        par = self.parametros_opciones()
+        r = OP.analizar(series, spots, par, self.cfg.get("comisiones") or {})
+        filas = r["filas"]
+        marcas = db.opc_marcas()
+
+        # armado: solo el cruce hacia adentro del umbral
+        candidatas = [f for f in filas
+                      if not (marcas.get(f["id"]) or {}).get("silenciada")]
+        avisos, self._opc_estado = OP.cruces(
+            candidatas, getattr(self, "_opc_estado", None), par)
+        if avisos:
+            self._avisar_opciones(avisos)
+
+        # desarme
+        salidas = []
+        for pos in db.opc_posiciones(abiertas=True):
+            val = OP.valuar(pos, series)
+            motivos = OP.motivos_desarme(pos, val, spots.get(pos["subyacente"]),
+                                         par)
+            if not motivos:
+                self._opc_desarme.discard(pos["id"])
+                continue
+            if pos["id"] in self._opc_desarme:
+                continue
+            if val and val["lotes_salida"] < int(par.get("lotes_min") or 2):
+                continue    # avisar sin punta para salir no sirve de nada
+            self._opc_desarme.add(pos["id"])
+            salidas.append((pos, val, motivos))
+        if salidas:
+            self._avisar_desarme(salidas)
+
+        # cierre diario por combinacion
+        hoy = date.today().isoformat()
+        db.opc_guardar_cierres([
+            (f["id"], hoy, f["riesgo_pct"], f["riesgo"], f["lotes"],
+             f["spot"]) for f in filas])
+        return len(avisos)
+
+    NOMBRE_ESTRUCTURA = {"BULL_CALL": "Bull con calls",
+                         "BEAR_PUT": "Bear con puts",
+                         "BEAR_CALL": "Bear con calls"}
+
+    def _avisar_opciones(self, avisos):
+        """Un solo aviso por ciclo con todo lo que cruzo el umbral.
+
+        Con tres vencimientos y treinta bases, un mismo movimiento del
+        papel puede meter decenas de combinaciones adentro del umbral a la
+        vez. Mandar una notificacion por cada una es inservible: llegan
+        todas juntas y no se lee ninguna.
+        """
+        avisos = sorted(avisos, key=lambda f: f["riesgo_pct"])
+        n = len(avisos)
+        mejor = avisos[0]
+
+        if n == 1:
+            titulo = "%s %s %s/%s al %.1f%%" % (
+                mejor["subyacente"],
+                self.NOMBRE_ESTRUCTURA.get(mejor["estructura"],
+                                           mejor["estructura"]),
+                _n(mejor["base_compra"]), _n(mejor["base_venta"]),
+                mejor["riesgo_pct"])
+        else:
+            subs = sorted({f["subyacente"] for f in avisos})
+            titulo = "%d spreads en %s, el mejor al %.1f%%" % (
+                n, ", ".join(subs), mejor["riesgo_pct"])
+
+        TOPE = 8
+        lineas = []
+        for f in avisos[:TOPE]:
+            favor = (" a favor" if f.get("a_favor") is True
+                     else " en contra" if f.get("a_favor") is False else "")
+            lineas.append(
+                "<b>%.1f%%</b> · %s %s/%s · 1 a %.2f · %d dias · %d lotes%s"
+                % (f["riesgo_pct"],
+                   self.NOMBRE_ESTRUCTURA.get(f["estructura"],
+                                              f["estructura"]),
+                   _n(f["base_compra"]), _n(f["base_venta"]), f["ratio"],
+                   f["dias"], f["lotes"], favor))
+        if n > TOPE:
+            lineas.append("y %d mas en la pestana." % (n - TOPE))
+        lineas.append("Equilibrio del mejor en %s (%+.1f%%)."
+                      % (_n(mejor["equilibrio"]), mejor["var_equilibrio_pct"]))
+
+        self.notif.enviar(titulo, "<br>".join(lineas))
+        for f in avisos:
+            db.registrar_alerta(f["id"], "opcion_armado", f["riesgo_pct"],
+                                f["ratio"], titulo)
+
+    def _avisar_desarme(self, salidas):
+        """Tambien en un solo aviso, por la misma razon que el armado."""
+        if len(salidas) == 1:
+            pos = salidas[0][0]
+            titulo = "Desarmar %s %s/%s" % (
+                pos["subyacente"], _n(pos["base_compra"]),
+                _n(pos["base_venta"]))
+        else:
+            titulo = "%d posiciones para desarmar" % len(salidas)
+
+        lineas = []
+        for pos, val, motivos in salidas:
+            plata = ("vale %s por lote, %s en total"
+                     % (_n(val["salida"]), _n(val["ganancia_total"]))
+                     if val else "sin puntas para valuar")
+            lineas.append("<b>%s %s/%s</b> · %s · %s" % (
+                pos["subyacente"], _n(pos["base_compra"]),
+                _n(pos["base_venta"]), "; ".join(motivos), plata))
+        self.notif.enviar(titulo, "<br>".join(lineas))
+        for pos, val, _m in salidas:
+            db.registrar_alerta(pos["combo"], "opcion_desarme",
+                                (val or {}).get("ganancia_pct"), None, titulo)
+
 
     # -- historico de bonos -------------------------------------------
 

@@ -426,3 +426,160 @@ def borrar_operacion(oid):
     c = conn()
     c.execute("DELETE FROM operaciones WHERE id=?", (oid,))
     c.commit()
+
+
+# -- opciones ---------------------------------------------------------
+
+ESQUEMA_OPCIONES = """
+CREATE TABLE IF NOT EXISTS opc_posiciones (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  combo       TEXT NOT NULL,
+  subyacente  TEXT NOT NULL,
+  estructura  TEXT NOT NULL,
+  vencimiento TEXT NOT NULL,
+  base_compra REAL NOT NULL,
+  base_venta  REAL NOT NULL,
+  sim_compra  TEXT,
+  sim_venta   TEXT,
+  lotes       INTEGER NOT NULL DEFAULT 1,
+  riesgo      REAL NOT NULL,
+  ancho       REAL NOT NULL,
+  spot_alta   REAL,
+  abierta_el  TEXT NOT NULL,
+  cerrada_el  TEXT,
+  precio_salida REAL,
+  resultado   REAL,
+  nota        TEXT
+);
+CREATE TABLE IF NOT EXISTS opc_hist (
+  combo   TEXT NOT NULL,
+  fecha   TEXT NOT NULL,
+  riesgo_pct REAL,
+  riesgo  REAL,
+  lotes   INTEGER,
+  spot    REAL,
+  PRIMARY KEY (combo, fecha)
+);
+CREATE TABLE IF NOT EXISTS opc_seguidas (
+  combo   TEXT PRIMARY KEY,
+  desde   TEXT NOT NULL,
+  silenciada INTEGER NOT NULL DEFAULT 0
+);
+"""
+
+
+def init_opciones():
+    c = conn()
+    c.executescript(ESQUEMA_OPCIONES)
+    c.commit()
+
+
+def opc_guardar_cierres(filas):
+    """Un punto por dia y combinacion. Se pisa si ya existe."""
+    if not filas:
+        return 0
+    c = conn()
+    c.executemany(
+        "INSERT OR REPLACE INTO opc_hist "
+        "(combo, fecha, riesgo_pct, riesgo, lotes, spot) VALUES (?,?,?,?,?,?)",
+        filas)
+    c.commit()
+    return len(filas)
+
+
+def opc_serie(combo, desde=None):
+    q = "SELECT fecha, riesgo_pct, riesgo, lotes, spot FROM opc_hist WHERE combo=?"
+    args = [combo]
+    if desde:
+        q += " AND fecha >= ?"
+        args.append(desde)
+    q += " ORDER BY fecha"
+    return [dict(r) for r in conn().execute(q, args)]
+
+
+def opc_crear_posicion(d):
+    c = conn()
+    cur = c.execute(
+        "INSERT INTO opc_posiciones (combo, subyacente, estructura, "
+        "vencimiento, base_compra, base_venta, sim_compra, sim_venta, lotes, "
+        "riesgo, ancho, spot_alta, abierta_el, nota) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (d["combo"], d["subyacente"], d["estructura"], d["vencimiento"],
+         d["base_compra"], d["base_venta"], d.get("sim_compra"),
+         d.get("sim_venta"), int(d.get("lotes") or 1), d["riesgo"],
+         d["ancho"], d.get("spot_alta"),
+         d.get("abierta_el") or datetime.now().isoformat(timespec="seconds"),
+         d.get("nota")))
+    c.commit()
+    return cur.lastrowid
+
+
+def opc_posiciones(abiertas=None):
+    q = "SELECT * FROM opc_posiciones"
+    if abiertas is True:
+        q += " WHERE cerrada_el IS NULL"
+    elif abiertas is False:
+        q += " WHERE cerrada_el IS NOT NULL"
+    q += " ORDER BY abierta_el DESC"
+    return [dict(r) for r in conn().execute(q)]
+
+
+def opc_actualizar_posicion(pid, campos):
+    permitidos = ("lotes", "riesgo", "ancho", "spot_alta", "nota",
+                  "base_compra", "base_venta", "sim_compra", "sim_venta")
+    sets, args = [], []
+    for k, v in (campos or {}).items():
+        if k in permitidos:
+            sets.append("%s=?" % k)
+            args.append(v)
+    if not sets:
+        return 0
+    args.append(pid)
+    c = conn()
+    cur = c.execute("UPDATE opc_posiciones SET %s WHERE id=?" % ",".join(sets),
+                    args)
+    c.commit()
+    return cur.rowcount
+
+
+def opc_cerrar_posicion(pid, precio_salida, resultado=None):
+    c = conn()
+    cur = c.execute(
+        "UPDATE opc_posiciones SET cerrada_el=?, precio_salida=?, resultado=? "
+        "WHERE id=? AND cerrada_el IS NULL",
+        (datetime.now().isoformat(timespec="seconds"), precio_salida,
+         resultado, pid))
+    c.commit()
+    return cur.rowcount
+
+
+def opc_borrar_posicion(pid):
+    c = conn()
+    cur = c.execute("DELETE FROM opc_posiciones WHERE id=?", (pid,))
+    c.commit()
+    return cur.rowcount
+
+
+def opc_seguir(combo, seguir=True):
+    c = conn()
+    if seguir:
+        c.execute("INSERT OR IGNORE INTO opc_seguidas (combo, desde) "
+                  "VALUES (?,?)",
+                  (combo, datetime.now().isoformat(timespec="seconds")))
+    else:
+        c.execute("DELETE FROM opc_seguidas WHERE combo=?", (combo,))
+    c.commit()
+
+
+def opc_silenciar(combo, silenciar=True):
+    c = conn()
+    c.execute("INSERT OR IGNORE INTO opc_seguidas (combo, desde) VALUES (?,?)",
+              (combo, datetime.now().isoformat(timespec="seconds")))
+    c.execute("UPDATE opc_seguidas SET silenciada=? WHERE combo=?",
+              (1 if silenciar else 0, combo))
+    c.commit()
+
+
+def opc_marcas():
+    return {r["combo"]: dict(r)
+            for r in conn().execute("SELECT * FROM opc_seguidas")}

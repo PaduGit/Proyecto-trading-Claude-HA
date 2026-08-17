@@ -1,5 +1,48 @@
 # Registro de cambios
 
+## 0.20.0
+
+**Posiciones de opciones.** Se arman desde el boton de cada combinacion,
+que guarda las patas, el riesgo, el ancho y el spot del momento. Ese spot
+queda como referencia: es contra el que se mide si el papel se movio en
+contra. Se editan los lotes y se cierran a mano, pidiendo el precio de
+salida y precargando el valor de recompra vigente por si ejecutaste a otro
+precio. El resultado queda registrado.
+
+**Alerta de armado.** Dispara cuando una combinacion cruza hacia abajo el
+umbral de riesgo, no mientras se mantiene: si se queda barata toda la
+rueda avisa una vez. Vuelve a armarse cuando sale y entra de nuevo. Pide
+un minimo de lotes en punta y, si se configura, que el cruce se sostenga
+varios ciclos.
+
+**Alerta de desarme.** Tres condiciones en OR, todas configurables:
+ganancia sobre el capital en riesgo mayor al 100%, menos de 10 dias al
+vencimiento, o el papel movido 4% en contra respecto del spot al armar.
+Se valua contra las puntas contrarias, que es como se sale de verdad: la
+pata comprada se vende a su bid y la vendida se recompra a su ask. No
+avisa si no hay punta para salir.
+
+**Un aviso por ciclo, no uno por spread.** Con tres vencimientos y treinta
+bases, un mismo movimiento del papel mete decenas de combinaciones adentro
+del umbral a la vez. Llegaban todas juntas y no se leia ninguna. Ahora va
+una sola notificacion, ordenada de menor a mayor riesgo, con las ocho
+mejores y el resto contado. Lo mismo para el desarme.
+
+**Histórico de costo por combinacion.** Un cierre por dia. El boton "Ver
+histórico" del desplegable lo grafica contra el umbral de alarma, que es
+lo que dice si un 33% es barato para ese spread o es su nivel de siempre.
+La serie es corta por naturaleza: una combinacion vive unos pocos meses
+dentro de la ventana de dias.
+
+**Seguir y silenciar.** Por combinacion. Silenciar la saca de las alertas
+sin sacarla de la tabla.
+
+**La tabla vacia ahora dice por que.** Eran tres situaciones distintas con
+el mismo mensaje: que IOL no mande puntas y no haya nada guardado, que
+esten las de la rueda anterior, o que haya puntas frescas y ninguna
+combinacion pase el filtro. Confundirlas hacia buscar un problema que no
+existia.
+
 ## 0.19.1
 
 **La TIR historica del DICP estaba mal desde 2023.** Toda la serie se

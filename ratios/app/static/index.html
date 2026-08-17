@@ -63,6 +63,9 @@ nav button:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
 
 main{padding:14px;max-width:720px;margin:0 auto}
 section[hidden]{display:none}
+.op-acc{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.op-acc button{width:auto;padding:0 12px;font-size:11px}
+.op-hist{margin-top:10px}
 svg.payoff{width:100%;height:auto;display:block;margin:6px 0;background:var(--panel-2);border:1px solid var(--rule);border-radius:3px}
 
 .par{background:var(--panel);border:1px solid var(--rule);border-radius:4px;
@@ -391,6 +394,8 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
     <button class="primario" id="op-btn" style="margin-top:12px">
       Buscar spreads</button>
     <div id="op-out" style="margin-top:12px"></div>
+    <h3 style="margin:20px 0 6px">Posiciones armadas</h3>
+    <div id="op-pos"></div>
   </section>
 
   <section id="v-pos" hidden>
@@ -2220,9 +2225,18 @@ function sprDetalle(f){
     (f.garantia ? '<div class="aviso" style="margin-top:8px">Inmoviliza ' +
       '$' + ent(f.garantia) + ' de garantía por lote: es la diferencia de ' +
       'bases.</div>' : "") +
-    '<div style="display:flex;gap:6px;margin-top:10px">' +
-      '<button class="secundario" data-copiar="' + esc(f.id) + '" ' +
-        'style="width:auto;padding:0 14px">Copiar órdenes</button></div>';
+    '<div class="op-acc">' +
+      '<button class="secundario" data-crear="' + esc(f.id) + '">' +
+        (f.con_posicion ? "Ya tiene posición" : "Crear posición") + '</button>' +
+      '<button class="secundario" data-copiar="' + esc(f.id) + '">' +
+        'Copiar órdenes</button>' +
+      '<button class="secundario" data-seguir="' + esc(f.id) + '">' +
+        (f.seguida ? "Dejar de seguir" : "Seguir") + '</button>' +
+      '<button class="secundario" data-hist="' + esc(f.id) + '">' +
+        'Ver histórico</button>' +
+      '<button class="secundario" data-silenciar="' + esc(f.id) + '">' +
+        (f.silenciada ? "Reactivar alerta" : "Silenciar") + '</button>' +
+    '</div><div class="op-hist" data-para="' + esc(f.id) + '" hidden></div>';
 }
 
 function sprFila(f){
@@ -2244,6 +2258,88 @@ function sprFila(f){
     '<div class="pasos" id="' + id + '" hidden>' + sprDetalle(f) + '</div>' +
     '</div>';
 }
+
+
+async function cargarOpcPosiciones(){
+  const out = $("#op-pos");
+  try{
+    const d = await (await fetch(base + "api/opciones/posiciones")).json();
+    const abiertas = (d.posiciones || []).filter(p => !p.cerrada_el);
+    const cerradas = (d.posiciones || []).filter(p => p.cerrada_el);
+    if(!abiertas.length && !cerradas.length){
+      out.innerHTML = '<div class="vacio">Todavía no armaste ninguna. ' +
+        'Se crean desde el botón de cada combinación.</div>';
+      return;
+    }
+    out.innerHTML = abiertas.map(p => {
+      const v = p.valuacion;
+      const motivos = (p.motivos || []);
+      return '<div class="circuito' + (motivos.length ? " gana" : "") + '">' +
+        '<div><span class="r">' + (v && v.ganancia_pct !== null
+          ? (v.ganancia_pct >= 0 ? "+" : "") + v.ganancia_pct.toFixed(0) + "%"
+          : "—") + '</span> ' +
+          '<span style="color:var(--muted);font-size:11px">' +
+          esc(p.subyacente) + ' ' + num(p.base_compra,5) + '/' +
+          num(p.base_venta,5) + ' · ' + ent(p.lotes) + ' lotes</span></div>' +
+        '<div class="ruta">' + esc(p.vencimiento) +
+          (v ? ' · vale ' + precio(v.salida) + ' por lote, $' +
+               ent(v.ganancia_total) + ' en total' : ' · sin puntas') +
+        '</div>' +
+        (motivos.length
+          ? '<div class="ej"><b>Desarmar:</b> ' + esc(motivos.join("; ")) +
+            '</div>'
+          : '<div class="ej">Sin motivo de desarme todavía.</div>') +
+        '<div class="op-acc">' +
+          '<button class="secundario" data-cerrar="' + p.id + '" ' +
+            'data-sal="' + (v ? v.salida : "") + '">Cerrar</button>' +
+          '<button class="secundario" data-editar="' + p.id + '" ' +
+            'data-lotes="' + p.lotes + '">Editar lotes</button>' +
+          '<button class="secundario" data-quitar="' + p.id + '">Borrar</button>' +
+        '</div></div>';
+    }).join("") +
+    (cerradas.length ? '<div class="nota">Cerradas: ' + cerradas.map(p =>
+      esc(p.subyacente) + ' ' + num(p.base_compra,5) + '/' +
+      num(p.base_venta,5) + ' → $' + ent(p.resultado || 0)).join(" · ") +
+      '</div>' : "");
+  }catch(e){
+    out.innerHTML = '<div class="msg error">No se pudieron leer.</div>';
+  }
+}
+
+$("#op-pos").addEventListener("click", async ev => {
+  const b = ev.target.closest("[data-cerrar],[data-editar],[data-quitar]");
+  if(!b) return;
+  const id = b.dataset.cerrar || b.dataset.editar || b.dataset.quitar;
+  b.disabled = true;
+  try{
+    if(b.dataset.cerrar !== undefined && b.dataset.cerrar){
+      /* Se precarga el valor de recompra vigente: si ejecutaste a otro
+         precio, lo corregís. */
+      const sug = b.dataset.sal;
+      const txt = prompt("¿A qué precio saliste, por lote?\n" +
+        (sug ? "Ahora vale " + sug + "." : "Sin puntas para sugerir."), sug);
+      if(txt === null) return;
+      const r = await (await fetch(base + "api/opciones/posiciones/" + id +
+        "/cerrar", {method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({precio_salida: parseFloat(txt)})})).json();
+      alert(r.error ? "No se pudo: " + r.error
+        : "Cerrada. Resultado: $" + ent(r.resultado));
+    }else if(b.dataset.editar){
+      const n = parseInt(prompt("¿Cuántos lotes?", b.dataset.lotes), 10);
+      if(!n || n < 1) return;
+      await fetch(base + "api/opciones/posiciones/" + id, {method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({lotes: n})});
+    }else{
+      if(!confirm("¿Borrar la posición? No queda registro del resultado.")) return;
+      await fetch(base + "api/opciones/posiciones/" + id + "/borrar",
+        {method:"POST"});
+    }
+    cargarOpcPosiciones();
+  }catch(e){ alert("No se pudo."); }
+  finally{ b.disabled = false; }
+});
 
 async function cargarOpciones(){
   const out = $("#op-out");
@@ -2267,14 +2363,24 @@ async function cargarOpciones(){
       '</div></div>').join("");
 
     if(!d.filas.length){
-      out.innerHTML = (d.viejo
-        ? '<div class="aviso">Puntas de la última rueda. Fuera del horario ' +
-          'IOL no manda puntas.</div>' : "") +
-        '<div class="vacio" style="padding:14px">' +
-        'Ninguna combinación entra en el filtro. De ' +
-        ent((d.diagnostico||{}).parseadas || 0) + ' series leídas, ' +
-        'ninguna arma un spread con las dos puntas dentro del ' +
-        ((d.parametros||{}).riesgo_max_tabla_pct || 45) + '% del ancho.</div>';
+      /* Tres razones distintas para una tabla vacía. Confundirlas hace
+         perder tiempo buscando un problema que no existe. */
+      const dg = d.diagnostico || {};
+      let msg;
+      if(d.sin_puntas && !d.viejo){
+        msg = 'IOL no está mandando puntas y todavía no hay ninguna cadena ' +
+          'guardada de una rueda anterior. Volvé con el mercado abierto: ' +
+          'ahí se guarda la primera.';
+      }else if(d.viejo){
+        msg = 'Con las puntas de la última rueda, ninguna combinación entra ' +
+          'en el filtro.';
+      }else{
+        msg = 'Ninguna combinación entra en el filtro. De ' +
+          ent(dg.parseadas || 0) + ' series leídas, ' + ent(dg.con_puntas || 0) +
+          ' tienen las dos puntas, y ninguna arma un spread dentro del ' +
+          ((d.parametros||{}).riesgo_max_tabla_pct || 45) + '% del ancho.';
+      }
+      out.innerHTML = '<div class="vacio" style="padding:14px">' + msg + '</div>';
       return;
     }
     out.innerHTML =
@@ -2293,11 +2399,90 @@ async function cargarOpciones(){
   }catch(e){
     out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
   }finally{ $("#op-btn").disabled = false; }
+  cargarOpcPosiciones();
 }
 
 $("#op-btn").addEventListener("click", () => cargarOpciones());
 
-$("#op-out").addEventListener("click", ev => {
+function sprMiniGrafico(serie, umbral){
+  if(!serie.length) return '<div class="vacio">Todavía no hay cierres ' +
+    'guardados de esta combinación.</div>';
+  const W = 300, H = 90, m = 16;
+  const v = serie.map(p => p.riesgo_pct);
+  const lo = Math.min(...v, umbral), hi = Math.max(...v, umbral);
+  const rango = (hi - lo) || 1;
+  const px = i => m + (serie.length < 2 ? (W-2*m)/2
+                       : i/(serie.length-1)*(W-2*m));
+  const py = y => H - m - (y - lo)/rango*(H-2*m);
+  const pts = serie.map((p,i) => px(i).toFixed(1)+","+py(p.riesgo_pct).toFixed(1))
+                   .join(" ");
+  const yU = py(umbral);
+  return '<svg viewBox="0 0 '+W+' '+H+'" class="payoff">' +
+    '<line x1="'+m+'" y1="'+yU.toFixed(1)+'" x2="'+(W-m)+'" y2="'+yU.toFixed(1)+
+      '" stroke="var(--amber)" stroke-width="1" stroke-dasharray="3 3"/>' +
+    '<polyline points="'+pts+'" fill="none" stroke="var(--bone)" ' +
+      'stroke-width="1.4"/>' +
+    '<text x="'+m+'" y="'+(m-5)+'" fill="var(--muted)" font-size="8">' +
+      hi.toFixed(1)+'%</text>' +
+    '<text x="'+m+'" y="'+(H-5)+'" fill="var(--muted)" font-size="8">' +
+      lo.toFixed(1)+'%</text></svg>' +
+    '<div class="nota">' + serie.length + ' cierres. La línea punteada es el ' +
+    'umbral de alarma (' + umbral + '%).</div>';
+}
+
+$("#op-out").addEventListener("click", async ev => {
+  const acc = ev.target.closest("[data-crear],[data-seguir],[data-hist]," +
+    "[data-silenciar]");
+  if(acc){
+    ev.stopPropagation();
+    const id = acc.dataset.crear || acc.dataset.seguir || acc.dataset.hist ||
+      acc.dataset.silenciar;
+    const f = sprDatos[id];
+    if(!f) return;
+    acc.disabled = true;
+    try{
+      if(acc.dataset.crear){
+        const lotes = parseInt(prompt("¿Cuántos lotes?\nEjecutable ahora: " +
+          f.lotes, f.lotes), 10);
+        if(!lotes || lotes < 1) return;
+        const r = await (await fetch(base + "api/opciones/posiciones", {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({
+            combo:f.id, subyacente:f.subyacente, estructura:f.estructura,
+            vencimiento:f.vencimiento, base_compra:f.base_compra,
+            base_venta:f.base_venta, sim_compra:f.patas[0].simbolo,
+            sim_venta:f.patas[1].simbolo, lotes:lotes, riesgo:f.riesgo,
+            ancho:f.ancho, spot_alta:f.spot})
+        })).json();
+        alert(r.error ? "No se pudo: " + r.error
+          : "Posición creada. El spot de referencia quedó en " + f.spot + ".");
+        if(!r.error) acc.textContent = "Ya tiene posición";
+      }else if(acc.dataset.seguir){
+        const seguir = acc.textContent === "Seguir";
+        await fetch(base + "api/opciones/marcar/" + encodeURIComponent(id), {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({seguir})});
+        acc.textContent = seguir ? "Dejar de seguir" : "Seguir";
+      }else if(acc.dataset.silenciar){
+        const sil = acc.textContent === "Silenciar";
+        await fetch(base + "api/opciones/marcar/" + encodeURIComponent(id), {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({silenciar: sil})});
+        acc.textContent = sil ? "Reactivar alerta" : "Silenciar";
+      }else{
+        const caja = acc.closest(".pasos")
+          .querySelector('[data-para="' + CSS.escape(id) + '"]');
+        if(!caja.hidden){ caja.hidden = true; return; }
+        const serie = await (await fetch(base + "api/opciones/historico/" +
+          encodeURIComponent(id))).json();
+        caja.innerHTML = sprMiniGrafico(serie || [], sprDatos._umbral || 33);
+        caja.hidden = false;
+      }
+    }catch(e){ alert("No se pudo completar."); }
+    finally{ acc.disabled = false; }
+    return;
+  }
+
   const b = ev.target.closest("[data-copiar]");
   if(!b) return;
   ev.stopPropagation();

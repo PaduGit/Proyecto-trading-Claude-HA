@@ -391,3 +391,86 @@ def analizar(series, spots, cfg, comisiones, cierres=None):
         "sin_comisiones": _costos(comisiones) <= 0,
         "umbral_alarma": float(cfg.get("riesgo_max_alarma_pct") or 33),
     }
+
+
+# -- alertas ---------------------------------------------------------
+
+def cruces(filas, previo, cfg):
+    """Combinaciones que acaban de cruzar el umbral hacia adentro.
+
+    Se avisa en el cruce, no mientras se mantiene: una combinacion que se
+    queda barata toda la rueda avisa una vez. Vuelve a armarse cuando sale
+    y entra de nuevo.
+    """
+    umbral = float(cfg.get("riesgo_max_alarma_pct") or 33)
+    lotes_min = int(cfg.get("lotes_min") or 2)
+    ciclos = max(1, int(cfg.get("ciclos_persistencia") or 1))
+
+    estado, avisos = {}, []
+    for f in filas:
+        adentro = f["riesgo_pct"] <= umbral and f["lotes"] >= lotes_min
+        prev = (previo or {}).get(f["id"]) or {}
+        seguidos = (prev.get("seguidos") or 0) + 1 if adentro else 0
+        estado[f["id"]] = {"adentro": adentro, "seguidos": seguidos,
+                           "avisado": prev.get("avisado") or False}
+        if not adentro:
+            estado[f["id"]]["avisado"] = False
+            continue
+        if seguidos >= ciclos and not prev.get("avisado"):
+            estado[f["id"]]["avisado"] = True
+            avisos.append(f)
+    return avisos, estado
+
+
+def valuar(pos, series):
+    """Cuanto vale hoy desarmar una posicion.
+
+    Se sale contra las puntas contrarias: la pata comprada se vende a su
+    bid y la vendida se recompra a su ask. Nunca se cobra el ancho
+    entero, aunque el spread este del todo adentro.
+    """
+    por_sim = {s["simbolo"]: s for s in series}
+    c = por_sim.get(pos.get("sim_compra"))
+    v = por_sim.get(pos.get("sim_venta"))
+    if not c or not v:
+        return None
+    salida = c["compra"] - v["venta"]      # vendo al bid, recompro al ask
+    if pos["estructura"] == "BEAR_CALL":
+        # entro cobrando: el resultado es la prima menos lo que cuesta salir
+        prima = pos["ancho"] - pos["riesgo"]
+        gan = prima + salida
+    else:
+        gan = salida - pos["riesgo"]
+    return {"salida": round(salida, 4),
+            "ganancia": round(gan, 4),
+            "ganancia_pct": round(gan / pos["riesgo"] * 100, 2)
+                            if pos["riesgo"] else None,
+            "ganancia_total": round(gan * LOTE * (pos.get("lotes") or 1), 2),
+            "lotes_salida": int(min(c["q_compra"], v["q_venta"]))}
+
+
+def motivos_desarme(pos, val, spot, cfg):
+    """Las tres condiciones, en OR. Cualquiera alcanza."""
+    gan_min = float(cfg.get("ganancia_min_pct") or 100)
+    dias_min = int(cfg.get("dias_min_desarme") or 10)
+    mov = float(cfg.get("mov_contrario_pct") or 4)
+
+    out = []
+    if val and val.get("ganancia_pct") is not None \
+            and val["ganancia_pct"] >= gan_min:
+        out.append("ganancia %.0f%% sobre el riesgo" % val["ganancia_pct"])
+
+    try:
+        d = (date.fromisoformat(pos["vencimiento"]) - date.today()).days
+    except Exception:
+        d = None
+    if d is not None and 0 <= d < dias_min:
+        out.append("quedan %d dias" % d)
+
+    ref = pos.get("spot_alta")
+    if ref and spot:
+        var = (spot / ref - 1) * 100
+        contra = -var if pos["estructura"] == "BULL_CALL" else var
+        if contra >= mov:
+            out.append("el papel se movio %.1f%% en contra" % contra)
+    return out

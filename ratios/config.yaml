@@ -1,5 +1,5 @@
 name: Ratios IOL
-version: "0.19.1"
+version: "0.20.0"
 slug: ratios_iol
 description: Monitor de ratios entre especies, arbitraje de plazos y screener
 url: https://github.com/PaduGit/Proyecto-trading-Claude-HA
@@ -50,6 +50,9 @@ options:
   opc_bear_instrumento: ambos
   opc_lotes_min: 2
   opc_ciclos_persistencia: 1
+  opc_ganancia_min_pct: 100
+  opc_dias_min_desarme: 10
+  opc_mov_contrario_pct: 4
   paneles:
     - instrumento: Bonos
       panel: Soberanos en dólares
@@ -145,6 +148,9 @@ schema:
   opc_bear_instrumento: list(puts|calls|ambos)
   opc_lotes_min: int(0,10000)
   opc_ciclos_persistencia: int(1,20)
+  opc_ganancia_min_pct: float(0,1000)
+  opc_dias_min_desarme: int(0,120)
+  opc_mov_contrario_pct: float(0,50)
   paneles:
     - instrumento: str
       panel: str

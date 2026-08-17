@@ -477,78 +477,109 @@ def crear_app(monitor):
                 log.debug("cierres de %s: %s", sim, e)
         return [(r["fecha"], r["cierre"]) for r in db.cierres_de(sim, desde)]
 
-    CLAVE_CADENA = "opc_ultima_cadena"
-
     @app.get("/api/opciones")
     def opciones_tabla():
         try:
-            import json as _j
             cfg = monitor.cfg
-            subs = [s.strip().upper()
-                    for s in (cfg.get("opc_subyacentes") or "GGAL").split(",")
-                    if s.strip()]
-            series, diag = OP.cadena(
-                monitor.iol, subs,
-                panel=cfg.get("opc_panel") or "De Acciones")
-
-            with monitor.lock:
-                cot = dict(monitor.cotizaciones)
-            spots, cierres = {}, {}
-            for s in subs:
-                c = cot.get(s)
-                if not c or not c.get("ref"):
-                    try:
-                        c = monitor.iol.cotizacion("bCBA", s, "t1")
-                    except Exception:
-                        c = None
-                spots[s] = (c or {}).get("ref") or 0
-                cierres[s] = _cierres_subyacente(s)
-
-            # Fuera de rueda el panel no manda puntas: no vienen viejas,
-            # directamente no vienen. Para poder mostrar algo se guarda la
-            # última cadena que sí las tuvo.
-            viejo, desde = False, None
-            if diag["con_puntas"] > 0 and any(spots.values()):
-                db.set_estado(CLAVE_CADENA, _j.dumps({
-                    "ts": datetime.now().isoformat(timespec="seconds"),
-                    "series": series, "spots": spots}))
-            else:
-                guardado = db.get_estado(CLAVE_CADENA)
-                if guardado:
-                    d = _j.loads(guardado)
-                    series = d.get("series") or []
-                    spots = d.get("spots") or spots
-                    desde = d.get("ts")
-                    viejo = True
-                    # los días al vencimiento sí se recalculan
-                    from datetime import date as _date
-                    for s in series:
-                        try:
-                            v = _date.fromisoformat(s["vencimiento"])
-                            s["dias"] = (v - _date.today()).days
-                        except Exception:
-                            pass
-
-            par = {
-                "dias_min": cfg.get("opc_dias_min", 15),
-                "dias_max": cfg.get("opc_dias_max", 80),
-                "saltos": cfg.get("opc_saltos", 3),
-                "limite_base_pct": cfg.get("opc_limite_base_pct", 5),
-                "riesgo_max_tabla_pct": cfg.get("opc_riesgo_tabla_pct", 45),
-                "riesgo_max_alarma_pct": cfg.get("opc_riesgo_alarma_pct", 33),
-                "bear_instrumento": cfg.get("opc_bear_instrumento", "ambos"),
-            }
+            series, spots, diag, viejo, desde = monitor.cadena_opciones()
+            par = monitor.parametros_opciones()
+            cierres = {s: _cierres_subyacente(s) for s in spots}
             r = OP.analizar(series, spots, par,
                             cfg.get("comisiones") or {}, cierres)
+            marcas = db.opc_marcas()
+            abiertas = {p["combo"] for p in db.opc_posiciones(abiertas=True)}
+            for f in r["filas"]:
+                m = marcas.get(f["id"]) or {}
+                f["seguida"] = bool(m)
+                f["silenciada"] = bool(m.get("silenciada"))
+                f["con_posicion"] = f["id"] in abiertas
             r["diagnostico"] = {k: v for k, v in diag.items() if k != "muestra"}
             r["parametros"] = par
             r["viejo"] = viejo
             r["desde"] = desde
+            r["sin_puntas"] = diag["con_puntas"] == 0
+            r["nunca_hubo"] = viejo is False and diag["con_puntas"] == 0
             r["hay_rueda"] = monitor.hay_rueda
             return jsonify(r)
         except Exception as e:
             log.exception("opciones")
             return jsonify({"error": str(e)}), 500
+
+    @app.get("/api/opciones/historico/<combo>")
+    def opciones_historico(combo):
+        return jsonify(db.opc_serie(combo))
+
+    @app.post("/api/opciones/marcar/<combo>")
+    def opciones_marcar(combo):
+        d = request.get_json(silent=True) or {}
+        if "seguir" in d:
+            db.opc_seguir(combo, bool(d["seguir"]))
+        if "silenciar" in d:
+            db.opc_silenciar(combo, bool(d["silenciar"]))
+        return jsonify((db.opc_marcas().get(combo) or {"combo": combo}))
+
+    @app.get("/api/opciones/posiciones")
+    def opciones_posiciones():
+        try:
+            series, spots, _, viejo, desde = monitor.cadena_opciones()
+            par = monitor.parametros_opciones()
+        except Exception:
+            series, spots, viejo, desde = [], {}, True, None
+            par = monitor.parametros_opciones()
+        salida = []
+        for p in db.opc_posiciones():
+            v = OP.valuar(p, series) if not p["cerrada_el"] else None
+            p["valuacion"] = v
+            if not p["cerrada_el"]:
+                p["motivos"] = OP.motivos_desarme(
+                    p, v, spots.get(p["subyacente"]), par)
+                p["spot"] = spots.get(p["subyacente"])
+            salida.append(p)
+        return jsonify({"posiciones": salida, "viejo": viejo, "desde": desde})
+
+    @app.post("/api/opciones/posiciones")
+    def opciones_crear():
+        d = request.get_json(silent=True) or {}
+        faltan = [k for k in ("combo", "subyacente", "estructura",
+                              "vencimiento", "base_compra", "base_venta",
+                              "riesgo", "ancho") if d.get(k) is None]
+        if faltan:
+            return jsonify({"error": "faltan datos: %s" % ", ".join(faltan)}), 400
+        try:
+            pid = db.opc_crear_posicion(d)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify({"id": pid})
+
+    @app.post("/api/opciones/posiciones/<int:pid>")
+    def opciones_editar(pid):
+        d = request.get_json(silent=True) or {}
+        return jsonify({"cambiados": db.opc_actualizar_posicion(pid, d)})
+
+    @app.post("/api/opciones/posiciones/<int:pid>/cerrar")
+    def opciones_cerrar(pid):
+        d = request.get_json(silent=True) or {}
+        if d.get("precio_salida") is None:
+            return jsonify({"error": "falta el precio de salida"}), 400
+        try:
+            salida = float(d["precio_salida"])
+        except (TypeError, ValueError):
+            return jsonify({"error": "precio de salida invalido"}), 400
+        pos = next((p for p in db.opc_posiciones() if p["id"] == pid), None)
+        if not pos:
+            return jsonify({"error": "no existe"}), 404
+        # el resultado sale del precio realmente ejecutado, no del teorico
+        if pos["estructura"] == "BEAR_CALL":
+            gan = (pos["ancho"] - pos["riesgo"]) + salida
+        else:
+            gan = salida - pos["riesgo"]
+        total = round(gan * OP.LOTE * (pos["lotes"] or 1), 2)
+        db.opc_cerrar_posicion(pid, salida, total)
+        return jsonify({"id": pid, "resultado": total})
+
+    @app.post("/api/opciones/posiciones/<int:pid>/borrar")
+    def opciones_borrar(pid):
+        return jsonify({"borradas": db.opc_borrar_posicion(pid)})
 
     @app.get("/api/opciones/crudo")
     def opciones_crudo():

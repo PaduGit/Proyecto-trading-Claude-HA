@@ -121,6 +121,7 @@ def main():
     cfg = validar(cfg)
     db.init()
     db.init_posicion()
+    db.init_opciones()
     cer.init()
     historico.init()
     curva.init()
