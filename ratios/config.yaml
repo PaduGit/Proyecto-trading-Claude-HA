@@ -1,5 +1,5 @@
 name: Ratios IOL
-version: "0.20.1"
+version: "0.20.2"
 slug: ratios_iol
 description: Monitor de ratios entre especies, arbitraje de plazos y screener
 url: https://github.com/PaduGit/Proyecto-trading-Claude-HA
@@ -56,6 +56,9 @@ options:
   paneles:
     - instrumento: Bonos
       panel: Soberanos en dólares
+      pais: argentina
+    - instrumento: Bonos
+      panel: Soberanos en pesos más CER
       pais: argentina
     - instrumento: Acciones
       panel: Merval

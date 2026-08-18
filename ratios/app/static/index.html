@@ -303,6 +303,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
         <a href="#" id="probar-cer" role="menuitem">Probar CER (BCRA)</a>
         <a href="#" id="rehacer-hist" role="menuitem">Reconstruir histórico</a>
         <a href="#" id="rehacer-todo" role="menuitem">Recalcular histórico entero</a>
+        <a href="#" id="reintentar-precio" role="menuitem">Reintentar especies sin precio</a>
         <a href="#" id="rehacer-curva" role="menuitem">Recalcular desvíos</a>
         <a href="#" id="bajar-hist" role="menuitem">Descargar histórico (CSV)</a>
         <hr>
@@ -1532,6 +1533,22 @@ $("#rehacer-hist").addEventListener("click", async e => {
   }catch(err){ alert("No se pudo reconstruir."); }
 });
 
+
+$("#reintentar-precio").addEventListener("click", async e => {
+  e.preventDefault(); e.stopPropagation();
+  $("#menu").hidden = true;
+  /* Una especie que fallo una vez queda apartada para no repetir el
+     pedido en cada refresco. Sin esta opcion no habia forma de volver a
+     intentarlo desde la pantalla. */
+  try{
+    const d = await (await fetch(base + "api/bonos/reintentar",
+      {method:"POST"})).json();
+    alert(d.reintentadas
+      ? "Se vuelven a pedir " + d.reintentadas + " especies."
+      : "No había ninguna apartada.");
+    if(vista === "bonos") cargarBonos();
+  }catch(err){ alert("No se pudo."); }
+});
 $("#rehacer-todo").addEventListener("click", async e => {
   e.preventDefault(); e.stopPropagation();
   $("#menu").hidden = true;

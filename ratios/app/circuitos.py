@@ -168,9 +168,15 @@ def desde_efectivo(cot, bonos, moneda, comisiones):
 
 
 def desde_bono(cot, bonos, bono, comisiones):
-    """Circuitos que venden un bono, pasan por otro y lo recompran.
+    """Circuitos de cuatro patas que vuelven al mismo bono.
 
-    Lo que se gana son nominales del bono original.
+    Cada especie cotiza en una sola moneda, asi que el propio bono es
+    uno de los dos puentes: se lo vende en una moneda, un segundo bono
+    trae el importe de vuelta a la otra, y se lo recompra alli.
+
+    Ejemplo: vender AO29D contra dolares, comprar AL30D, vender AL30 en
+    pesos, recomprar AO29 en pesos. Lo que se gana son nominales de
+    AO29.
     """
     out = []
     for vender_en in MONEDAS:
@@ -182,29 +188,19 @@ def desde_bono(cot, bonos, bono, comisiones):
             if not (p_venta and p_compra and q_venta and q_compra):
                 continue
 
-            # el intermedio convierte la moneda de venta en la de recompra
+            # Vender y recomprar en la misma moneda no es un circuito:
+            # es liquidar el bono, hacer un rulo desde esa moneda y
+            # volver a entrar. Las dos patas del bono no aportan nada y
+            # solo suman comisiones. El bono de origen tiene que ser uno
+            # de los dos puentes, no algo que se liquida primero.
             if vender_en == volver_en:
-                # mismo destino: el intermedio tiene que dar la vuelta
-                # completa por otra moneda, si no no hay nada que ganar
-                mejores = []
-                for medio in MONEDAS:
-                    if medio == vender_en:
-                        continue
-                    a = _mejor_salto(cot, bonos, vender_en, medio,
-                                     comisiones, excluir=bono)
-                    b = _mejor_salto(cot, bonos, medio, volver_en,
-                                     comisiones, excluir=bono)
-                    if a and b:
-                        mejores.append((a["tasa"] * b["tasa"], [a, b]))
-                if not mejores:
-                    continue
-                tasa_medio, patas_medio = max(mejores, key=lambda x: x[0])
-            else:
-                s = _mejor_salto(cot, bonos, vender_en, volver_en,
-                                 comisiones, excluir=bono)
-                if not s:
-                    continue
-                tasa_medio, patas_medio = s["tasa"], [s]
+                continue
+
+            s = _mejor_salto(cot, bonos, vender_en, volver_en,
+                             comisiones, excluir=bono)
+            if not s:
+                continue
+            tasa_medio, patas_medio = s["tasa"], [s]
 
             costo = _costo(comisiones, vender_en) + _costo(comisiones, volver_en)
             # 1 nominal -> p_venta de moneda -> intermedio -> recompra

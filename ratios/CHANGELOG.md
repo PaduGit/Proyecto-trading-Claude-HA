@@ -1,5 +1,34 @@
 # Registro de cambios
 
+## 0.20.2
+
+**Los circuitos desde un bono eran de seis patas y deben ser de cuatro.**
+Vender el bono en pesos para comprar otro en pesos es pasar por liquidez:
+las dos patas no aportan nada y solo suman comisiones. Cada especie
+cotiza en una sola moneda, asi que el propio bono tiene que ser uno de
+los dos puentes, no algo que se liquida primero.
+
+La forma correcta: vender AO29D contra dolares, comprar AL30D, vender
+AL30 en pesos, recomprar AO29 en pesos. Cuatro operaciones, y lo que se
+gana son nominales de AO29.
+
+Tiene ademas efecto de costos: en IOL la recompra de la especie vendida
+califica como intradiaria y se bonifica. En la version de seis patas, no.
+
+**Panel de bonos en pesos.** Estaba configurado solo el de soberanos en
+dolares, asi que los CER se pedian de a uno. Ahora tambien baja
+"Soberanos en pesos mas CER", que trae CUAP, DICP, DIPO, PAPO y PARP en
+un request.
+
+**Reintentar especies sin precio.** La opcion existia en el backend pero
+nunca tuvo entrada en el menu. Una especie que falla una vez queda
+apartada para no repetir el pedido en cada refresco, y sin esta opcion no
+habia forma de volver a intentarlo. Por eso TX28 y TZX28 no aparecian.
+
+El tope de pedidos sueltos por consulta subio de 12 a 30: los BONCER
+(TZX*, TX28, TX31, X30S6, PBA28) no estan en ningun panel y son mas de
+doce, asi que los ultimos de la lista nunca llegaban a pedirse.
+
 ## 0.20.1
 
 **El desplegable de Opciones no abria.** Copie el marcado de Rulo pero no

@@ -352,7 +352,11 @@ def crear_app(monitor):
         cache = dict(monitor.cotizaciones)
         faltan = [s for s in BO.especies()
                   if s not in cache and s not in _sin_precio]
-        for sim in faltan[:12]:      # tope, para no disparar decenas de requests
+        # Los paneles cubren los dolarizados y los cinco del canje 2005.
+        # Los BONCER sueltos (TZX*, TX28, TX31, X30S6, PBA28) no estan en
+        # ningun panel y hay que pedirlos de a uno: el tope tiene que
+        # alcanzarlos a todos o los ultimos nunca aparecen.
+        for sim in faltan[:30]:
             try:
                 cache[sim] = monitor.iol.cotizacion("bCBA", sim, "t1")
             except Exception:
