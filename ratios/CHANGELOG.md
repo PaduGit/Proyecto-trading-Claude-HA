@@ -1,5 +1,24 @@
 # Registro de cambios
 
+## 0.20.3
+
+**TX28 rendia -37,6%.** La fecha de emision cargada era la del canje de
+2022 y la real es la emision original, 4 de septiembre de 2020. Con la
+base CER corrida casi dos anios, el factor quedaba a la mitad y el precio
+normalizado salia el doble del que corresponde.
+
+El cronograma si estaba bien: diez cuotas semestrales iguales el 9 de
+mayo y el 9 de noviembre, la primera el 9 de mayo de 2024, y el residual
+del 50% que muestra la app es correcto.
+
+**X30S6 rendia 203%.** La fecha de emision estaba marcada como estimada
+en el propio archivo, y lo estaba mal: la letra se anuncio como nueva en
+la licitacion del 12 de marzo de 2026, no en septiembre de 2025. Queda
+cargada la liquidacion a T+2 de esa licitacion.
+
+Los dos cambian la base CER, asi que su serie historica quedo mal
+calculada y hay que rehacerla con "Recalcular histórico entero".
+
 ## 0.20.2
 
 **Los circuitos desde un bono eran de seis patas y deben ser de cuatro.**
