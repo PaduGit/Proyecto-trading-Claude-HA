@@ -86,15 +86,22 @@ def validar(cfg):
                 pass
     cfg["comisiones"] = com or {"acciones": 0.15, "bonos": 0.15,
                                 "opciones": 0.5, "cauciones": 0.05}
-    # Derechos de mercado e IVA van aparte: aplican a todos los
-    # instrumentos. Los bonos soberanos están exentos de IVA, las
-    # opciones no.
-    for clave, destino in (("derechos_mercado_pct", "derechos_mercado"),
-                           ("iva_pct", "iva")):
-        try:
-            cfg["comisiones"][destino] = float(cfg.get(clave) or 0)
-        except (TypeError, ValueError):
-            cfg["comisiones"][destino] = 0.0
+
+    # Los derechos de mercado los cobra BYMA y no son un solo numero:
+    # cambian por instrumento. Cargarlos como valor unico hacia que el
+    # 0,20% de opciones se aplicara tambien a los bonos, que pagan 0,01%.
+    der = {}
+    for c in cfg.get("derechos_mercado") or []:
+        if isinstance(c, dict) and c.get("instrumento"):
+            try:
+                der[c["instrumento"].strip().lower()] = float(c.get("pct") or 0)
+            except (TypeError, ValueError):
+                pass
+    cfg["derechos_mercado"] = der
+    try:
+        cfg["iva_pct"] = float(cfg.get("iva_pct") or 0)
+    except (TypeError, ValueError):
+        cfg["iva_pct"] = 0.0
 
     cfg["arbitraje_tickers"] = [
         {"ticker": (t.get("ticker") or "").strip().upper(),

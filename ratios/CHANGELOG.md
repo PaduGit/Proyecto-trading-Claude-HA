@@ -1,5 +1,34 @@
 # Registro de cambios
 
+## 0.20.1
+
+**El desplegable de Opciones no abria.** Copie el marcado de Rulo pero no
+el toggle: el listener atendia los botones y salia antes de llegar al
+despliegue.
+
+**Derechos de mercado por instrumento.** Estaban como un valor unico que
+aplicaba a todo, y no lo son: el tarifario de BYMA cobra 0,20% sobre la
+prima en opciones de acciones privadas, 0,05% en acciones, 0,01% en
+titulos publicos, 0,001% en letras y 0,045% en cauciones. Cargar el 0,20%
+de opciones en un campo comun hubiera cobrado el doble de lo debido en
+cada pata del Rulo.
+
+Tambien el IVA es selectivo: no se aplica a valores negociables publicos
+ni a obligaciones negociables. Un mismo circuito puede tocar bonos
+soberanos exentos y acciones que no lo estan, asi que el calculo se
+unifico en un modulo propio en vez de repetirse en cada pantalla.
+
+**Fuera de rueda se usa la ultima punta conocida, en toda la app.** IOL
+manda el ultimo precio pero no las puntas, y sin puntas no se puede
+valuar nada. Ahora se guarda la ultima punta valida de cada simbolo por
+separado, no un snapshot del ultimo ciclo entero: las especies iliquidas
+pierden punta mucho antes del cierre, y un snapshot unico dejaria a las
+liquidas al dia y a las demas con datos de horas antes sin que se note.
+
+Lo repuesto queda marcado como viejo y **ninguna alerta dispara sobre
+eso**, ni en pares, ni en curva, ni en opciones. En Rulo es donde mas
+engana: un circuito con puntas de ayer se ve rentable y no lo es.
+
 ## 0.20.0
 
 **Posiciones de opciones.** Se arman desde el boton de cada combinacion,

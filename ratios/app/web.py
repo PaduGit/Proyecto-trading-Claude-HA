@@ -429,7 +429,9 @@ def crear_app(monitor):
             universo = sorted(set(puentes) | set(tengo.get("bonos") or []))
             r = CI.analizar(cot, universo, tengo,
                             monitor.cfg.get("comisiones") or {},
-                            float(monitor.cfg.get("rulo_umbral_pct") or 0))
+                            float(monitor.cfg.get("rulo_umbral_pct") or 0),
+                            monitor.cfg.get("derechos_mercado") or {},
+                            monitor.cfg.get("iva_pct") or 0)
             r["tengo"] = tengo
             r["candidatos"] = sorted(puentes)
             return jsonify(r)
@@ -485,7 +487,9 @@ def crear_app(monitor):
             par = monitor.parametros_opciones()
             cierres = {s: _cierres_subyacente(s) for s in spots}
             r = OP.analizar(series, spots, par,
-                            cfg.get("comisiones") or {}, cierres)
+                            cfg.get("comisiones") or {}, cierres,
+                            cfg.get("derechos_mercado") or {},
+                            cfg.get("iva_pct") or 0)
             marcas = db.opc_marcas()
             abiertas = {p["combo"] for p in db.opc_posiciones(abiertas=True)}
             for f in r["filas"]:

@@ -179,7 +179,73 @@ class Monitor:
                         log.warning("%s: %s", sim, e)
         if faltan:
             log.debug("sin cotizacion: %s", ", ".join(sorted(faltan)))
+        return self.rellenar_puntas(mapa)
+
+    # -- ultima punta conocida ----------------------------------------
+
+    CLAVE_PUNTAS = "ultimas_puntas"
+
+    def _cargar_puntas(self):
+        import json
+        try:
+            return json.loads(db.get_estado(self.CLAVE_PUNTAS) or "{}")
+        except Exception:
+            return {}
+
+    def rellenar_puntas(self, mapa):
+        """Conserva la ultima punta valida de cada simbolo.
+
+        Fuera de rueda IOL manda el ultimo precio pero no las puntas, y
+        sin puntas no se puede valuar nada. Se guarda la ultima buena por
+        simbolo, no por ciclo: las especies iliquidas pierden punta
+        mucho antes del cierre, asi que un unico snapshot del ultimo
+        ciclo "bueno" dejaria a las liquidas al dia y a las demas con
+        datos de horas antes sin que se note.
+
+        Lo que se rellena queda marcado como viejo. Ningun modulo debe
+        alertar sobre esto.
+        """
+        import json
+        guardadas = self._cargar_puntas()
+        ahora = datetime.now().isoformat(timespec="seconds")
+        cambio = False
+
+        for sim, c in mapa.items():
+            if c.get("compra") and c.get("venta"):
+                guardadas[sim] = {
+                    "compra": c["compra"], "venta": c["venta"],
+                    "vol_compra": c.get("vol_compra") or 0,
+                    "vol_venta": c.get("vol_venta") or 0,
+                    "ts": ahora}
+                c["punta_vieja"] = False
+                c["punta_ts"] = ahora
+                cambio = True
+                continue
+
+            vieja = guardadas.get(sim)
+            if not vieja:
+                c["punta_vieja"] = False    # nunca hubo, no hay que marcar
+                continue
+            c["compra"] = vieja["compra"]
+            c["venta"] = vieja["venta"]
+            c["vol_compra"] = vieja.get("vol_compra") or 0
+            c["vol_venta"] = vieja.get("vol_venta") or 0
+            c["medio"] = (c["compra"] + c["venta"]) / 2
+            c["ref"] = c["medio"] or c.get("ultimo") or 0
+            c["punta_vieja"] = True
+            c["punta_ts"] = vieja.get("ts")
+
+        if cambio:
+            db.set_estado(self.CLAVE_PUNTAS, json.dumps(guardadas))
         return mapa
+
+    def puntas_frescas(self, mapa=None):
+        """True si al menos un simbolo trajo punta propia este ciclo."""
+        mapa = mapa if mapa is not None else self.cotizaciones
+        return any(not c.get("punta_vieja")
+                   and c.get("compra") and c.get("venta")
+                   for c in mapa.values())
+
 
     # -- estadistica --------------------------------------------------
 
@@ -307,8 +373,12 @@ class Monitor:
             z = (ratio - est["media"]) / est["desvio"]
 
         alerta_id = None
+        # con punta repuesta de antes del cierre el ratio no es ejecutable
+        viejas = any((mapa.get(par[lado]) or {}).get("punta_vieja")
+                     for lado in ("num", "den"))
         # avisa solo al ENTRAR en zona, no mientras se queda
-        if par.get("alertas") and zona != "normal" and previa != zona:
+        if par.get("alertas") and zona != "normal" and previa != zona \
+                and not viejas:
             msg = self._mensaje(par, ratio, zona, nivel, est, num, den)
             alerta_id = db.registrar_alerta(
                 par["alias"], zona, ratio, nivel, msg, num, den)
@@ -391,6 +461,8 @@ class Monitor:
             # sin punta ejecutable la señal no sirve
             if zona == "barato" and not f.get("ask"):
                 continue
+            if (cot.get(sim) or {}).get("punta_vieja"):
+                continue    # punta de antes del cierre: no es operable
 
             icono = "🟢" if zona == "barato" else "🔴"
             que = "barato" if zona == "barato" else "caro"
@@ -597,7 +669,9 @@ class Monitor:
             return 0        # con puntas de ayer no se avisa nada
 
         par = self.parametros_opciones()
-        r = OP.analizar(series, spots, par, self.cfg.get("comisiones") or {})
+        r = OP.analizar(series, spots, par, self.cfg.get("comisiones") or {},
+                        None, self.cfg.get("derechos_mercado") or {},
+                        self.cfg.get("iva_pct") or 0)
         filas = r["filas"]
         marcas = db.opc_marcas()
 

@@ -2252,7 +2252,8 @@ function sprFila(f){
       esc(sprNombre(f.estructura)) + ' · 1 a ' + num(f.ratio,3) + '</span></div>' +
     '<div class="ruta">' + num(f.base_compra,5) + ' / ' + num(f.base_venta,5) +
       ' · ' + f.dias + ' días</div>' +
-    '<div class="ej">ejecutable ' + ent(f.lotes) + ' lotes · riesgo $' +
+    '<div class="ej">ejecutable ' + ent(f.lotes) +
+      (f.lotes === 1 ? ' lote' : ' lotes') + ' · riesgo $' +
       ent(f.riesgo_total) + ' ' + marca +
       ' <span class="tocar">tocar para el detalle</span></div>' +
     '<div class="pasos" id="' + id + '" hidden>' + sprDetalle(f) + '</div>' +
@@ -2484,7 +2485,16 @@ $("#op-out").addEventListener("click", async ev => {
   }
 
   const b = ev.target.closest("[data-copiar]");
-  if(!b) return;
+  if(!b){
+    /* Sin boton de por medio, el toque abre o cierra el detalle. */
+    const c = ev.target.closest(".circuito");
+    if(!c) return;
+    const p = c.querySelector(".pasos");
+    if(!p) return;
+    p.hidden = !p.hidden;
+    c.classList.toggle("abierto", !p.hidden);
+    return;
+  }
   ev.stopPropagation();
   const f = sprDatos[b.dataset.copiar];
   if(!f) return;

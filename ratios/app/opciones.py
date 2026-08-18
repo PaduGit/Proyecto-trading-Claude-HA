@@ -198,27 +198,26 @@ def cadena(iol, subyacentes, panel="De Acciones",
 
 # -- costos ----------------------------------------------------------
 
-def _costos(comisiones):
+def _costos(comisiones, derechos=None, iva_pct=0):
     """Costo porcentual de una pata, en tanto por uno, con IVA.
 
-    Las opciones no están exentas como los bonos soberanos: el IVA va
-    sobre el arancel y sobre los derechos de mercado.
+    Las opciones sobre acciones privadas no estan exentas como los
+    titulos publicos: el IVA va sobre el arancel y sobre el derecho de
+    mercado, que para estas es 0,20% de la prima.
     """
-    c = comisiones or {}
-    arancel = float(c.get("opciones", c.get("general", 0)) or 0)
-    derechos = float(c.get("derechos_mercado", 0) or 0)
-    iva = float(c.get("iva", 0) or 0)
-    return (arancel + derechos) * (1 + iva / 100.0) / 100.0
+    import costos
+    return costos.pct(comisiones, "opciones", derechos, iva_pct)
 
 
 # -- armado ----------------------------------------------------------
 
-def _combinar(series, spot, estructura, cfg, comisiones):
+def _combinar(series, spot, estructura, cfg, comisiones,
+              derechos=None, iva_pct=0):
     """Todas las combinaciones de una estructura para un vencimiento."""
     saltos = int(cfg.get("saltos") or 3)
     limite = float(cfg.get("limite_base_pct") or 5) / 100.0
     tope = float(cfg.get("riesgo_max_tabla_pct") or 45) / 100.0
-    costo_pata = _costos(comisiones)
+    costo_pata = _costos(comisiones, derechos, iva_pct)
 
     # una sola serie por base: si IOL repite, gana la que tenga las dos puntas
     por_base = {}
@@ -341,7 +340,8 @@ def a_favor(estructura, tendencia):
     return alcista if estructura == "BULL_CALL" else not alcista
 
 
-def analizar(series, spots, cfg, comisiones, cierres=None):
+def analizar(series, spots, cfg, comisiones, cierres=None,
+             derechos=None, iva_pct=0):
     """Todas las combinaciones que pasan el filtro de tabla.
 
     `spots` y `cierres` van por subyacente.
@@ -377,7 +377,8 @@ def analizar(series, spots, cfg, comisiones, cierres=None):
                 fuente = puts if est == "BEAR_PUT" else calls
                 if len(fuente) < 2:
                     continue
-                for f in _combinar(fuente, spot, est, cfg, comisiones):
+                for f in _combinar(fuente, spot, est, cfg, comisiones,
+                                   derechos, iva_pct):
                     f["tendencia"] = tendencias.get(sub)
                     f["a_favor"] = a_favor(est, tendencias.get(sub))
                     filas.append(f)
@@ -388,7 +389,7 @@ def analizar(series, spots, cfg, comisiones, cierres=None):
         "filas": filas,
         "spots": {k: round(v, 2) for k, v in spots.items()},
         "tendencias": tendencias,
-        "sin_comisiones": _costos(comisiones) <= 0,
+        "sin_comisiones": _costos(comisiones, derechos, iva_pct) <= 0,
         "umbral_alarma": float(cfg.get("riesgo_max_alarma_pct") or 33),
     }
 

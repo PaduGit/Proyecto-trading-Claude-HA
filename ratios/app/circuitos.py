@@ -37,11 +37,16 @@ def _punta(cot, simbolo, lado):
 
 
 def _costo(comisiones, moneda):
-    """Costo porcentual de una pata, en tanto por uno."""
+    """Costo porcentual de una pata, en tanto por uno.
+
+    Los circuitos saltan por bonos, que son valores publicos: pagan
+    derecho de mercado bajo y estan exentos de IVA. Los derechos y el
+    IVA viajan dentro del propio mapa para no arrastrar dos parametros
+    mas por cada funcion interna.
+    """
+    import costos
     c = comisiones or {}
-    base = c.get("bonos", c.get("general", 0)) or 0
-    derechos = c.get("derechos_mercado", 0) or 0
-    return (float(base) + float(derechos)) / 100.0
+    return costos.pct(c, "bonos", c.get("_derechos"), c.get("_iva_pct"))
 
 
 def _saltar(cot, bono, desde, hacia, comisiones):
@@ -260,11 +265,16 @@ def desde_bono(cot, bonos, bono, comisiones):
     return out
 
 
-def analizar(cot, bonos, tengo, comisiones, umbral_pct=0.0):
+def analizar(cot, bonos, tengo, comisiones, umbral_pct=0.0,
+             derechos=None, iva_pct=0):
     """Todos los circuitos ejecutables con lo que hay declarado.
 
     tengo: {"monedas": ["ARS", "MEP"], "bonos": ["AO29"]}
     """
+    comisiones = dict(comisiones or {})
+    comisiones["_derechos"] = derechos or {}
+    comisiones["_iva_pct"] = iva_pct
+
     monedas = [m for m in (tengo or {}).get("monedas", []) if m in MONEDAS]
     # un bono propio entra aunque no tenga las tres especies: los saltos
     # que necesiten la que falta se descartan solos al no haber punta
