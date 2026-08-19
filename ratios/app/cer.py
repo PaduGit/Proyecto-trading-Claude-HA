@@ -230,6 +230,11 @@ def _habil(d):
     return d.weekday() < 5 and d.isoformat() not in FERIADOS
 
 
+def es_habil(d):
+    """Publico: lo usa el monitor para saber si hay rueda."""
+    return _habil(d)
+
+
 def _restar_habiles(f, n):
     d = f
     while n > 0:

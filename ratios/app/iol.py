@@ -1,6 +1,8 @@
 """Cliente de la API de InvertirOnline."""
 
 import logging
+import time
+from contextlib import contextmanager
 import threading
 from datetime import datetime, timedelta
 from urllib.parse import quote
@@ -48,6 +50,9 @@ class IOL:
         self.session.headers["User-Agent"] = "ha-ratios/0.2"
 
     # -- auth ---------------------------------------------------------
+        # Etiqueta de quien esta pidiendo: ciclo, pestania, boton. Se
+        # guarda con cada llamada para poder ver de donde sale el consumo.
+        self.origen = "ciclo"
 
     def _pedir_token(self, data):
         try:
@@ -132,23 +137,40 @@ class IOL:
 
     def _get(self, path, timeout=30):
         self._asegurar_token()
+        tipo = _clasificar(path)
         try:
-            db.contar_request(_clasificar(path))
+            db.contar_request(tipo)
         except Exception:
             pass
         url = BASE + path
         cab = {"Authorization": "Bearer " + str(self._token)}
+        t0 = time.monotonic()
         r = self.session.get(url, headers=cab, timeout=timeout)
         if r.status_code == 401:
             self._expira = datetime.min
             self._asegurar_token()
             cab = {"Authorization": "Bearer " + str(self._token)}
             r = self.session.get(url, headers=cab, timeout=timeout)
+        # La direccion exacta queda registrada: el contador por tipo dice
+        # cuantas llamadas hubo, no cuales ni desde donde.
+        db.registrar_llamada(path, tipo, r.status_code,
+                             int((time.monotonic() - t0) * 1000),
+                             self.origen)
         if r.status_code == 429:
             raise IOLError("429: la API pidio frenar (limite de requests)")
         if r.status_code != 200:
             raise IOLError("%s -> %s: %s" % (path, r.status_code, r.text[:180]))
         return r.json()
+
+    @contextmanager
+    def como(self, origen):
+        """Marca el origen de las llamadas hechas dentro del bloque."""
+        previo = self.origen
+        self.origen = origen
+        try:
+            yield self
+        finally:
+            self.origen = previo
 
     # -- datos --------------------------------------------------------
 

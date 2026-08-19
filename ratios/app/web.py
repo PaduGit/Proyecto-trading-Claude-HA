@@ -61,11 +61,13 @@ def crear_app(monitor):
             "error": monitor.ultimo_error,
             "en_rueda": monitor._en_horario(),
             "hay_rueda": monitor.hay_rueda,
+            "snapshot_desde": getattr(monitor, "snapshot_desde", None),
         })
 
     @app.post("/api/refrescar")
     def refrescar():
-        ok, falta = monitor.ciclo_manual()
+        with monitor.iol.como("boton"):
+            ok, falta = monitor.ciclo_manual()
         if not ok and falta:
             return jsonify({"ok": False,
                             "mensaje": "Esperá %ds antes de volver a pedir."
@@ -349,6 +351,14 @@ def crear_app(monitor):
                 (ahora - c["ts"]).total_seconds() < VIDA_CACHE:
             return c["datos"]
 
+        # Con la rueda cerrada no se pide nada: los precios no se mueven
+        # y cada consulta gasta cupo mensual de la API. Se responde con lo
+        # ultimo guardado, marcado como viejo.
+        if not monitor._en_horario():
+            datos = monitor.cotizaciones_vigentes()
+            c["datos"], c["ts"] = datos, ahora
+            return datos
+
         cache = dict(monitor.cotizaciones)
         faltan = [s for s in BO.especies()
                   if s not in cache and s not in _sin_precio]
@@ -431,11 +441,18 @@ def crear_app(monitor):
             # los bonos declarados se suman al universo aunque les falte
             # alguna especie: pueden ser origen aunque no sean intermedios
             universo = sorted(set(puentes) | set(tengo.get("bonos") or []))
-            r = CI.analizar(cot, universo, tengo,
-                            monitor.cfg.get("comisiones") or {},
-                            float(monitor.cfg.get("rulo_umbral_pct") or 0),
-                            monitor.cfg.get("derechos_mercado") or {},
-                            monitor.cfg.get("iva_pct") or 0)
+            # El ciclo ya lo calculo: recalcular aca solo repetiria
+            # trabajo sobre las mismas cotizaciones.
+            with monitor.lock:
+                previo = dict(monitor.circuitos or {})
+            if previo and not monitor._en_horario():
+                r = previo
+            else:
+                r = CI.analizar(cot, universo, tengo,
+                                monitor.cfg.get("comisiones") or {},
+                                float(monitor.cfg.get("rulo_umbral_pct") or 0),
+                                monitor.cfg.get("derechos_mercado") or {},
+                                monitor.cfg.get("iva_pct") or 0)
             r["tengo"] = tengo
             r["candidatos"] = sorted(puentes)
             return jsonify(r)
@@ -762,6 +779,15 @@ def crear_app(monitor):
     @app.get("/api/requests")
     def requests_stats():
         return jsonify(db.resumen_requests(30))
+
+    @app.get("/api/requests/log")
+    def requests_log():
+        return jsonify({
+            "resumen": db.api_log_resumen(int(request.args.get("dias", 7))),
+            "ultimas": db.api_log(int(request.args.get("limite", 200)),
+                                  ruta=request.args.get("ruta") or None),
+            "retencion_dias": db.RETENCION_API_LOG,
+        })
 
     # -- exploracion --------------------------------------------------
 

@@ -39,6 +39,9 @@ class Monitor:
         self._ultimo_manual = datetime.min
         self._opc_estado = None     # persistencia del cruce, por combinacion
         self._opc_desarme = set()   # posiciones ya avisadas
+        self._rulo_avisado = set()  # circuitos ya avisados
+        self.circuitos = {}         # ultimo resultado del Rulo
+        self.snapshot_desde = None
 
     # -- estado persistente -------------------------------------------
 
@@ -97,14 +100,25 @@ class Monitor:
         return None
 
     def _en_horario(self):
+        """Si hay rueda ahora mismo, por calendario.
+
+        Incluye los feriados argentinos, que ya estaban cargados para el
+        calculo del CER. Sin esto, un feriado se trataba como dia habil y
+        se le seguia pidiendo datos a IOL toda la jornada.
+        """
         try:
             ini = datetime.strptime(self.cfg["market_open"], "%H:%M").time()
             fin = datetime.strptime(self.cfg["market_close"], "%H:%M").time()
         except ValueError:
             return True
         ahora = datetime.now()
-        if ahora.weekday() >= 5:
-            return False
+        try:
+            import cer as CER
+            if not CER.es_habil(ahora.date()):
+                return False
+        except Exception:
+            if ahora.weekday() >= 5:
+                return False
         return ini <= ahora.time() <= fin
 
     def segundos_desde_ciclo(self):
@@ -115,12 +129,24 @@ class Monitor:
     # -- obtencion de precios ----------------------------------------
 
     def simbolos_necesarios(self):
+        """Todo lo que el ciclo tiene que traer.
+
+        Incluye las especies con cronograma: antes las pedian las
+        pestanias de Bonos y Rulo al abrirlas, asi que el mismo dato se
+        bajaba una y otra vez. Pidiendolo una vez por ciclo, navegar no
+        consume nada.
+        """
         s = set()
         for p in self.pares:
             s.add(p["num"])
             s.add(p["den"])
         for t in self.cfg.get("arbitraje_tickers") or []:
             s.add((t.get("ticker") or "").upper())
+        try:
+            import bonos as BO
+            s |= set(BO.especies())
+        except Exception as e:
+            log.debug("especies de bonos: %s", e)
         s.discard("")
         return s
 
@@ -238,6 +264,33 @@ class Monitor:
         if cambio:
             db.set_estado(self.CLAVE_PUNTAS, json.dumps(guardadas))
         return mapa
+
+    def mapa_guardado(self):
+        """Cotizaciones armadas con la ultima punta conocida de cada
+        simbolo. Sirve para responder con la rueda cerrada sin tocar la
+        API: los datos ya los tenemos, pedirlos de nuevo no cambia nada
+        y consume cupo."""
+        out = {}
+        for sim, v in self._cargar_puntas().items():
+            medio = (v["compra"] + v["venta"]) / 2
+            out[sim] = {"simbolo": sim, "compra": v["compra"],
+                        "venta": v["venta"],
+                        "vol_compra": v.get("vol_compra") or 0,
+                        "vol_venta": v.get("vol_venta") or 0,
+                        "medio": medio, "ref": medio, "ultimo": medio,
+                        "moneda": "", "punta_vieja": True,
+                        "punta_ts": v.get("ts")}
+        return out
+
+    def cotizaciones_vigentes(self):
+        """Lo que hay que mostrar ahora: en rueda, lo del ciclo; fuera,
+        lo ultimo guardado. Nunca dispara un request."""
+        with self.lock:
+            mapa = dict(self.cotizaciones)
+        if mapa:
+            return mapa
+        return self.mapa_guardado()
+
 
     def puntas_frescas(self, mapa=None):
         """True si al menos un simbolo trajo punta propia este ciclo."""
@@ -585,6 +638,14 @@ class Monitor:
                 self.revisar_opciones(mapa)
             except Exception as e:
                 log.debug("revisar opciones: %s", e)
+            try:
+                self.revisar_rulo(mapa)
+            except Exception as e:
+                log.debug("revisar rulo: %s", e)
+            try:
+                self._guardar_snapshot()
+            except Exception as e:
+                log.debug("guardar snapshot: %s", e)
             self.ultimo_ciclo = datetime.now()
             if manual:
                 self._ultimo_manual = datetime.now()
@@ -628,6 +689,31 @@ class Monitor:
         subs = [s.strip().upper()
                 for s in (self.cfg.get("opc_subyacentes") or "GGAL").split(",")
                 if s.strip()]
+
+        # Fuera de rueda no se baja la cadena: son dos requests que
+        # devuelven series sin puntas, y ya tenemos la ultima buena.
+        if not self._en_horario():
+            guardado = db.get_estado("opc_ultima_cadena")
+            if guardado:
+                d = json.loads(guardado)
+                series = d.get("series") or []
+                hoy = date.today()
+                for x in series:
+                    try:
+                        x["dias"] = (date.fromisoformat(x["vencimiento"])
+                                     - hoy).days
+                    except Exception:
+                        pass
+                diag = {"en_panel": 0, "mapeadas": 0,
+                        "parseadas": len(series), "con_puntas": 0,
+                        "vencimientos": sorted({x["vencimiento"]
+                                                for x in series}),
+                        "campos": [], "sin_pedir": True}
+                return series, d.get("spots") or {}, diag, True, d.get("ts")
+            return [], {}, {"en_panel": 0, "mapeadas": 0, "parseadas": 0,
+                            "con_puntas": 0, "vencimientos": [],
+                            "campos": [], "sin_pedir": True}, False, None
+
         series, diag = OP.cadena(
             self.iol, subs, panel=self.cfg.get("opc_panel") or "De Acciones")
 
@@ -782,6 +868,122 @@ class Monitor:
                                 (val or {}).get("ganancia_pct"), None, titulo)
 
 
+    # -- rulo ---------------------------------------------------------
+
+    def revisar_rulo(self, cot=None):
+        """Circuitos del ciclo, y aviso cuando alguno supera el umbral.
+
+        Antes solo se calculaban al abrir la pestania, asi que un rulo
+        que aparecia y se cerraba entre dos miradas no se veia nunca.
+        """
+        import json
+        import circuitos as CI
+        cot = cot if cot is not None else dict(self.cotizaciones)
+        if not cot:
+            return 0
+        try:
+            tengo = json.loads(db.get_estado("tengo") or "null") or {
+                "monedas": [], "bonos": []}
+        except Exception:
+            tengo = {"monedas": [], "bonos": []}
+
+        puentes = [t["ticker"] for t in (self.cfg.get("arbitraje_tickers") or [])
+                   if t.get("ticker")]
+        universo = sorted(set(puentes) | set(tengo.get("bonos") or []))
+        if not universo:
+            return 0
+
+        r = CI.analizar(cot, universo, tengo,
+                        self.cfg.get("comisiones") or {},
+                        float(self.cfg.get("rulo_umbral_pct") or 0),
+                        self.cfg.get("derechos_mercado") or {},
+                        self.cfg.get("iva_pct") or 0)
+        with self.lock:
+            self.circuitos = r
+
+        umbral = float(self.cfg.get("rulo_umbral_pct") or 0)
+        if not umbral:
+            return 0
+        avisos = []
+        for g in r.get("grupos") or []:
+            for x in (g.get("circuitos") or [])[:1]:
+                if x.get("resultado_pct", 0) < umbral:
+                    continue
+                # con puntas repuestas de antes del cierre no es ejecutable
+                if any((cot.get(p.get("especie")) or {}).get("punta_vieja")
+                       for p in x.get("pasos") or []):
+                    continue
+                clave = "%s|%s" % (g.get("clave"), x.get("clave") or
+                                   "->".join(p.get("especie") or ""
+                                             for p in x.get("pasos") or []))
+                if clave in self._rulo_avisado:
+                    continue
+                self._rulo_avisado.add(clave)
+                avisos.append((g, x))
+        vivos = set()
+        for g in r.get("grupos") or []:
+            for x in (g.get("circuitos") or [])[:1]:
+                if x.get("resultado_pct", 0) >= umbral:
+                    vivos.add("%s|%s" % (g.get("clave"), x.get("clave") or
+                              "->".join(p.get("especie") or ""
+                                        for p in x.get("pasos") or [])))
+        self._rulo_avisado &= vivos
+
+        if avisos:
+            self._avisar_rulo(avisos)
+        return len(avisos)
+
+    def _avisar_rulo(self, avisos):
+        """Un solo aviso por ciclo, como en opciones."""
+        avisos.sort(key=lambda t: -t[1].get("resultado_pct", 0))
+        g0, x0 = avisos[0]
+        if len(avisos) == 1:
+            titulo = "Rulo %+.2f%% desde %s" % (
+                x0["resultado_pct"], g0.get("desde") or "")
+        else:
+            titulo = "%d rulos, el mejor %+.2f%%" % (
+                len(avisos), x0["resultado_pct"])
+        lineas = []
+        for g, x in avisos[:6]:
+            ruta = " -> ".join(p.get("especie") or "" for p in x.get("pasos") or [])
+            lineas.append("<b>%+.2f%%</b> desde %s · %s" % (
+                x["resultado_pct"], g.get("desde") or "", ruta))
+        self.notif.enviar(titulo, "<br>".join(lineas))
+        for g, x in avisos:
+            db.registrar_alerta(str(g.get("clave")), "rulo",
+                                x.get("resultado_pct"), None, titulo)
+
+    # -- snapshot persistente -----------------------------------------
+
+    def _guardar_snapshot(self):
+        """El Panel se alimenta de memoria y quedaba vacio tras cada
+        reinicio fuera de rueda. Guardarlo permite mostrar el ultimo
+        estado conocido sin pedir nada."""
+        import json
+        with self.lock:
+            datos = dict(self.snapshot)
+        if datos:
+            db.set_estado("snapshot_pares", json.dumps(
+                {"ts": datetime.now().isoformat(timespec="seconds"),
+                 "pares": datos}))
+
+    def _cargar_snapshot(self):
+        import json
+        try:
+            d = json.loads(db.get_estado("snapshot_pares") or "null") or {}
+        except Exception:
+            return
+        pares = d.get("pares") or {}
+        if not pares:
+            return
+        for v in pares.values():
+            v["viejo"] = True
+        with self.lock:
+            if not self.snapshot:
+                self.snapshot = pares
+        self.snapshot_desde = d.get("ts")
+
+
     # -- historico de bonos -------------------------------------------
 
     def cerrar_dia_bonos(self):
@@ -918,6 +1120,10 @@ class Monitor:
     def loop(self):
         db.init()
         try:
+            self._cargar_snapshot()
+        except Exception as e:
+            log.debug("snapshot guardado: %s", e)
+        try:
             self.iol.login()
         except Exception as e:
             self.ultimo_error = str(e)
@@ -940,14 +1146,17 @@ class Monitor:
                 if self._en_horario():
                     self.ciclo()
                     self.ultimo_error = None
-                elif not self.snapshot:
-                    self.ciclo()
+                # Fuera de rueda no se pide nada. Antes, si el snapshot
+                # estaba vacio se ciclaba igual, pero IOL no manda puntas
+                # con el mercado cerrado: el ciclo no lograba llenarlo y
+                # se repetia cada diez minutos gastando cupo.
 
                 hoy = datetime.now().date()
                 if hoy != ultimo_backfill and datetime.now().hour >= 18:
                     self.backfill()
                     self.cerrar_dia_bonos()
                     db.purgar()
+                    db.purgar_api_log()
                     ultimo_backfill = hoy
                     # domingos: completar los días que faltaron
                     if hoy.weekday() == 6:

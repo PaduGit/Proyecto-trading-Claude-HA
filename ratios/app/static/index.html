@@ -432,6 +432,13 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
 
   <section id="v-expl" hidden>
     <div id="e-consumo"></div>
+    <div style="display:flex;gap:6px;margin:10px 0">
+      <button class="secundario" id="log-ver" style="width:auto;padding:0 14px">
+        Ver llamadas</button>
+      <button class="secundario" id="log-todo" style="width:auto;padding:0 14px">
+        Ver detalle</button>
+    </div>
+    <div id="log-out"></div>
     <p class="nota">Consultá la API con la sesión que ya tiene la app. Solo lectura.</p>
     <div class="form">
       <div>
@@ -2528,6 +2535,51 @@ $("#op-out").addEventListener("click", async ev => {
   setTimeout(() => { b.textContent = "Copiar órdenes"; }, 1500);
 });
 
+
+/* ---------- registro de llamadas a la API ---------- */
+async function cargarLog(detalle){
+  const out = $("#log-out");
+  out.innerHTML = '<div class="vacio">Leyendo…</div>';
+  try{
+    const d = await (await fetch(base + "api/requests/log?dias=7")).json();
+    const r = d.resumen || {};
+    let h = '<div class="hallazgo"><h3>' + ent(r.total || 0) +
+      ' llamadas en ' + (r.dias || 7) + ' días</h3><div class="datos">' +
+      (r.por_origen || []).map(o =>
+        '<span>' + esc(o.origen) + ' <b>' + ent(o.n) + '</b></span>').join("") +
+      '</div></div>';
+
+    h += '<table class="tabla"><thead><tr><th>Dirección</th><th>Tipo</th>' +
+      '<th class="num">Veces</th><th class="num">ms</th></tr></thead><tbody>' +
+      (r.por_ruta || []).map(x =>
+        '<tr><td style="word-break:break-all;font-size:11px">' +
+          esc(x.ruta) + '</td><td>' + esc(x.tipo || "") + '</td>' +
+          '<td class="num">' + ent(x.n) + '</td>' +
+          '<td class="num">' + ent(x.ms || 0) + '</td></tr>').join("") +
+      '</tbody></table>';
+
+    if(detalle){
+      h += '<h3 style="margin:16px 0 6px">Últimas llamadas</h3>' +
+        '<table class="tabla"><thead><tr><th>Cuándo</th><th>Dirección</th>' +
+        '<th>Quién</th><th class="num">Est.</th></tr></thead><tbody>' +
+        (d.ultimas || []).map(x =>
+          '<tr><td style="font-size:11px">' +
+            esc((x.ts || "").replace("T"," ").slice(5)) + '</td>' +
+            '<td style="word-break:break-all;font-size:11px">' +
+              esc(x.ruta) + '</td>' +
+            '<td>' + esc(x.origen || "") + '</td>' +
+            '<td class="num">' + esc(x.status) + '</td></tr>').join("") +
+        '</tbody></table>';
+    }
+    h += '<div class="nota">Se guardan ' + (d.retencion_dias || 7) +
+      ' días de historial.</div>';
+    out.innerHTML = h;
+  }catch(e){
+    out.innerHTML = '<div class="msg error">No se pudo leer el registro.</div>';
+  }
+}
+$("#log-ver").addEventListener("click", () => cargarLog(false));
+$("#log-todo").addEventListener("click", () => cargarLog(true));
 
 cargarPanel();
 setInterval(() => { if(vista === "panel") cargarPanel(); }, 30000);

@@ -1,5 +1,45 @@
 # Registro de cambios
 
+## 0.20.4
+
+**Cero llamadas a IOL con la rueda cerrada.** El ciclo de fondo respetaba
+el horario, pero las pestanias no: cada vez que se tocaba Bonos, Rulo u
+Opciones se disparaban requests que devolvian precios sin puntas, o sea
+nada nuevo, y consumian cupo. Antes, ademas, si el snapshot estaba vacio
+se ciclaba igual fuera de horario, y como IOL no manda puntas con el
+mercado cerrado el ciclo nunca lograba llenarlo: se repetia cada diez
+minutos sin resultado.
+
+**El ciclo trae todo y las pestanias leen de memoria.** Las especies con
+cronograma se suman a los simbolos del ciclo, asi que Bonos y Rulo dejan
+de pedir al abrirlos. Navegar no consume nada y el mismo dato deja de
+bajarse una y otra vez. El boton de actualizar sigue pidiendo aunque este
+cerrado, para emergencias.
+
+**Alertas de Rulo.** No existian: los circuitos solo se calculaban al
+abrir la pestania, asi que uno que aparecia y se cerraba entre dos
+miradas no se veia nunca. Ahora se evaluan en cada ciclo, con un aviso
+agrupado por ciclo y sin repetir hasta que el circuito deja de cumplir.
+No dispara sobre puntas repuestas de antes del cierre.
+
+**El Panel ya no queda vacio tras un reinicio.** Los ratios vivian solo
+en memoria; al reiniciar fuera de rueda no habia forma de recuperarlos.
+Ahora el estado se guarda al cierre de cada ciclo.
+
+**El horario contempla los feriados.** Miraba solo el dia de la semana,
+asi que un feriado se trataba como jornada habil.
+
+**Registro de llamadas a la API.** Cada request queda anotado con su
+direccion completa, el tipo, el estado, cuanto tardo y quien lo pidio:
+ciclo, boton o pestania. El contador por tipo dice cuantas llamadas hubo,
+no cuales; esto dice de donde sale el consumo. Se ve en Explorar, debajo
+del consumo mensual, y se guardan 7 dias.
+
+**El contador de requests de hoy daba cero.** Las llamadas se registraban
+con la fecha local y el resumen las buscaba con date('now'), que en
+SQLite es UTC: pasadas las 21 hora argentina ya era el dia siguiente y no
+encontraba nada. Tambien afectaba al total del mes en el cambio de mes.
+
 ## 0.20.3
 
 **TX28 rendia -37,6%.** La fecha de emision cargada era la del canje de

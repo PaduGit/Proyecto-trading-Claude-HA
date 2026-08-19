@@ -3,7 +3,7 @@
 import os
 import sqlite3
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 
 RUTA = os.environ.get("RATIOS_DB", "/data/ratios.db")
 _local = threading.local()
@@ -271,21 +271,30 @@ def operaciones_recientes(n=60):
 
 
 def resumen_requests(dias=30):
+    """Consumo de la API.
+
+    Las fechas se calculan en Python y no con date('now'), que en SQLite
+    es UTC: despues de las 21 hora argentina ya es el dia siguiente en
+    UTC y el contador de hoy daba cero.
+    """
     c = conn()
+    hoy_str = datetime.now().date().isoformat()
+    desde = (datetime.now().date() - timedelta(days=dias)).isoformat()
+    mes_str = hoy_str[:7]
+
     por_dia = c.execute(
         "SELECT fecha, SUM(n) n FROM requests "
-        "WHERE fecha >= date('now', ?) GROUP BY fecha ORDER BY fecha",
-        ("-%d days" % dias,)).fetchall()
+        "WHERE fecha >= ? GROUP BY fecha ORDER BY fecha", (desde,)).fetchall()
     por_tipo = c.execute(
         "SELECT tipo, SUM(n) n FROM requests "
-        "WHERE substr(fecha,1,7) = strftime('%Y-%m','now') "
-        "GROUP BY tipo ORDER BY n DESC").fetchall()
+        "WHERE substr(fecha,1,7) = ? GROUP BY tipo ORDER BY n DESC",
+        (mes_str,)).fetchall()
     mes = c.execute(
         "SELECT COALESCE(SUM(n),0) n FROM requests "
-        "WHERE substr(fecha,1,7) = strftime('%Y-%m','now')").fetchone()["n"]
+        "WHERE substr(fecha,1,7) = ?", (mes_str,)).fetchone()["n"]
     hoy = c.execute(
         "SELECT COALESCE(SUM(n),0) n FROM requests "
-        "WHERE fecha = date('now')").fetchone()["n"]
+        "WHERE fecha = ?", (hoy_str,)).fetchone()["n"]
     return {
         "mes": mes,
         "hoy": hoy,
@@ -583,3 +592,84 @@ def opc_silenciar(combo, silenciar=True):
 def opc_marcas():
     return {r["combo"]: dict(r)
             for r in conn().execute("SELECT * FROM opc_seguidas")}
+
+
+# -- registro de llamadas a la API ------------------------------------
+
+ESQUEMA_API_LOG = """
+CREATE TABLE IF NOT EXISTS api_log (
+  id     INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts     TEXT NOT NULL,
+  ruta   TEXT NOT NULL,
+  tipo   TEXT,
+  status INTEGER,
+  ms     INTEGER,
+  origen TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_api_log_ts ON api_log(ts);
+"""
+
+RETENCION_API_LOG = 7      # dias
+
+
+def init_api_log():
+    c = conn()
+    c.executescript(ESQUEMA_API_LOG)
+    c.commit()
+
+
+def registrar_llamada(ruta, tipo=None, status=None, ms=None, origen=None):
+    """Una fila por request a IOL, con la direccion completa.
+
+    Es lo unico que permite ver de donde sale el consumo: el contador por
+    tipo dice cuantas, no cuales.
+    """
+    try:
+        c = conn()
+        c.execute(
+            "INSERT INTO api_log (ts, ruta, tipo, status, ms, origen) "
+            "VALUES (?,?,?,?,?,?)",
+            (datetime.now().isoformat(timespec="seconds"), ruta, tipo,
+             status, ms, origen))
+        c.commit()
+    except Exception:
+        pass       # el log nunca debe romper una consulta
+
+
+def api_log(limite=300, desde=None, ruta=None):
+    q = "SELECT * FROM api_log WHERE 1=1"
+    args = []
+    if desde:
+        q += " AND ts >= ?"
+        args.append(desde)
+    if ruta:
+        q += " AND ruta LIKE ?"
+        args.append("%" + ruta + "%")
+    q += " ORDER BY id DESC LIMIT ?"
+    args.append(int(limite))
+    return [dict(r) for r in conn().execute(q, args)]
+
+
+def api_log_resumen(dias=7):
+    desde = (datetime.now() - timedelta(days=dias)).isoformat(timespec="seconds")
+    c = conn()
+    por_ruta = c.execute(
+        "SELECT ruta, tipo, COUNT(*) n, MAX(ts) ultima, "
+        "       CAST(AVG(ms) AS INTEGER) ms "
+        "FROM api_log WHERE ts >= ? GROUP BY ruta ORDER BY n DESC LIMIT 60",
+        (desde,)).fetchall()
+    por_origen = c.execute(
+        "SELECT COALESCE(origen,'?') origen, COUNT(*) n FROM api_log "
+        "WHERE ts >= ? GROUP BY origen ORDER BY n DESC", (desde,)).fetchall()
+    total = c.execute("SELECT COUNT(*) n FROM api_log WHERE ts >= ?",
+                      (desde,)).fetchone()["n"]
+    return {"dias": dias, "total": total,
+            "por_ruta": [dict(r) for r in por_ruta],
+            "por_origen": [dict(r) for r in por_origen]}
+
+
+def purgar_api_log(dias=RETENCION_API_LOG):
+    c = conn()
+    c.execute("DELETE FROM api_log WHERE ts < ?",
+              ((datetime.now() - timedelta(days=dias)).isoformat(),))
+    c.commit()
