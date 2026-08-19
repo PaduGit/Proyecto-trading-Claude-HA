@@ -39,7 +39,9 @@ class Monitor:
         self._ultimo_manual = datetime.min
         self._opc_estado = None     # persistencia del cruce, por combinacion
         self._opc_desarme = set()   # posiciones ya avisadas
-        self._rulo_avisado = set()  # circuitos ya avisados
+        self._rulo_avisado = set()   # circuitos ya avisados
+        self._plazos_avisado = set()
+        self.plazos = []
         self.circuitos = {}         # ultimo resultado del Rulo
         self.snapshot_desde = None
 
@@ -553,14 +555,36 @@ class Monitor:
         except (TypeError, ValueError):
             return 0.0015
 
-    def evaluar_arbitraje(self):
-        """Vender en t0 y recomprar en t1 conviene si la punta compradora
-        de t0 supera a la vendedora de t1, neto de costos y por encima
-        de lo que rendiria la caucion a un dia."""
+    def dias_liquidacion(self, hoy=None):
+        """Dias corridos entre la liquidacion de t0 y la de t1.
+
+        Un viernes son tres: t0 liquida el viernes y t1 el lunes. Tomar
+        siempre uno triplicaba la TNA implicita de los viernes.
+        """
+        import cer as CER
+        d = hoy or date.today()
+        prox = d + timedelta(days=1)
+        while not CER.es_habil(prox):
+            prox += timedelta(days=1)
+        return max(1, (prox - d).days)
+
+    def evaluar_arbitraje(self, cot=None):
+        """Vender en t0 y recomprar en t1.
+
+        Se cobra hoy y se paga manana, asi que la diferencia de precios es
+        una tasa implicita. Conviene cuando esa TNA, neta de comisiones,
+        le gana a la caucion colocadora.
+
+        El t1 sale del panel del ciclo cuando esta: los paneles cotizan a
+        t1, asi que solo hace falta pedir el t0 de cada simbolo. Antes se
+        pedian los dos y era el doble de requests.
+        """
         filas = []
         tasa_anual = float(self.cfg.get("tasa_caucion_anual") or 0)
-        tasa_dia = tasa_anual / 365.0 / 100.0
+        dias = self.dias_liquidacion()
+        tasa_dia = tasa_anual / 365.0 / 100.0 * dias
         com_caucion = self.comision("cauciones")
+        cot = cot if cot is not None else dict(self.cotizaciones)
 
         for t in self.cfg.get("arbitraje_tickers") or []:
             sim = (t.get("ticker") or "").upper()
@@ -568,10 +592,14 @@ class Monitor:
                 continue
             mercado = t.get("mercado") or "bCBA"
             tipo = t.get("tipo") or "bonos"
-            fila = {"ticker": sim, "tipo": tipo}
+            fila = {"ticker": sim, "tipo": tipo, "dias": dias}
             try:
                 c0 = self.iol.cotizacion(mercado, sim, "t0")
-                c1 = self.iol.cotizacion(mercado, sim, "t1")
+                c1 = cot.get(sim)
+                if not c1 or not c1.get("venta"):
+                    c1 = self.iol.cotizacion(mercado, sim, "t1")
+                elif c1.get("punta_vieja"):
+                    fila["punta_vieja"] = True
             except IOLError as e:
                 fila["error"] = str(e)
                 filas.append(fila)
@@ -592,12 +620,14 @@ class Monitor:
             bruto = (c0["compra"] - c1["venta"]) / c1["venta"]
             costo = self.comision(tipo) * 2
             neto = bruto - costo
-            referencia = tasa_dia - com_caucion / 365.0
+            referencia = tasa_dia - com_caucion / 365.0 * dias
 
             fila.update({
                 "bruto_pct": bruto * 100,
                 "costo_pct": costo * 100,
                 "neto_pct": neto * 100,
+                "tna_pct": neto * 365.0 / dias * 100,
+                "tna_caucion_pct": referencia * 365.0 / dias * 100,
                 "caucion_dia_pct": referencia * 100,
                 "conviene": bool(c0["compra"] > c1["venta"] and neto > referencia),
                 "ejecutable": min(c0.get("vol_compra") or 0,
@@ -642,6 +672,10 @@ class Monitor:
                 self.revisar_rulo(mapa)
             except Exception as e:
                 log.debug("revisar rulo: %s", e)
+            try:
+                self.revisar_plazos(mapa)
+            except Exception as e:
+                log.debug("revisar plazos: %s", e)
             try:
                 self._guardar_snapshot()
             except Exception as e:
@@ -866,6 +900,66 @@ class Monitor:
         for pos, val, _m in salidas:
             db.registrar_alerta(pos["combo"], "opcion_desarme",
                                 (val or {}).get("ganancia_pct"), None, titulo)
+
+
+    # -- plazos -------------------------------------------------------
+
+    def revisar_plazos(self, cot=None):
+        """Avisa cuando vender en t0 y recomprar en t1 le gana a la
+        caucion colocadora, neto de comisiones.
+
+        Antes solo se calculaba al abrir la pestania, asi que una
+        oportunidad que duraba media rueda podia no verse nunca.
+        """
+        if not (self.cfg.get("arbitraje_tickers") or []):
+            return 0
+        filas = self.evaluar_arbitraje(cot)
+        with self.lock:
+            self.plazos = filas
+
+        avisos = []
+        for f in filas:
+            if f.get("error") or not f.get("conviene"):
+                self._plazos_avisado.discard(f["ticker"])
+                continue
+            if f.get("punta_vieja"):
+                continue        # el t1 es de antes del cierre
+            if not f.get("ejecutable"):
+                continue        # sin punta de los dos lados no se ejecuta
+            if f["ticker"] in self._plazos_avisado:
+                continue
+            self._plazos_avisado.add(f["ticker"])
+            avisos.append(f)
+
+        if avisos:
+            self._avisar_plazos(avisos)
+        return len(avisos)
+
+    def _avisar_plazos(self, avisos):
+        """Un solo aviso por ciclo, como en rulo y opciones."""
+        avisos.sort(key=lambda f: -(f.get("tna_pct") or 0))
+        m = avisos[0]
+        if len(avisos) == 1:
+            titulo = "%s: t0/t1 al %.1f%% TNA" % (m["ticker"], m["tna_pct"])
+        else:
+            titulo = "%d plazos, el mejor %s al %.1f%% TNA" % (
+                len(avisos), m["ticker"], m["tna_pct"])
+        lineas = []
+        for f in avisos[:8]:
+            lineas.append(
+                "<b>%s</b> %.1f%% TNA contra %.1f%% de caucion · vender t0 a "
+                "%s, recomprar t1 a %s · %s nominales" % (
+                    f["ticker"], f["tna_pct"], f.get("tna_caucion_pct") or 0,
+                    _n(f["compra_t0"]), _n(f["venta_t1"]),
+                    _n(f.get("ejecutable") or 0)))
+        if len(avisos) > 8:
+            lineas.append("y %d mas en la pestania." % (len(avisos) - 8))
+        lineas.append("Plazo de %d dia%s entre liquidaciones." % (
+            m.get("dias") or 1, "" if (m.get("dias") or 1) == 1 else "s"))
+        self.notif.enviar(titulo, "<br>".join(lineas))
+        for f in avisos:
+            db.registrar_alerta(f["ticker"], "plazos", f.get("tna_pct"),
+                                None, titulo)
 
 
     # -- rulo ---------------------------------------------------------

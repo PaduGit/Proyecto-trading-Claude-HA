@@ -182,7 +182,13 @@ def crear_app(monitor):
     @app.get("/api/arbitraje")
     def arbitraje():
         try:
-            filas = monitor.evaluar_arbitraje()
+            with monitor.lock:
+                previo = list(monitor.plazos or [])
+            if previo and not monitor._en_horario():
+                filas = previo      # fuera de rueda no se vuelve a pedir
+            else:
+                with monitor.iol.como("pestania"):
+                    filas = monitor.evaluar_arbitraje()
         except Exception as e:
             return jsonify({"error": str(e)}), 502
         return jsonify({

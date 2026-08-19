@@ -1,5 +1,55 @@
 # Registro de cambios
 
+## 0.20.7
+
+**Alertas de Plazos.** Vender en t0 y recomprar en t1 es cobrar hoy y
+pagar manana: la diferencia de precios es una tasa implicita. Se avisa
+cuando esa TNA, neta de comisiones, le gana a la caucion colocadora.
+Antes solo se calculaba al abrir la pestania, asi que una oportunidad que
+duraba media rueda podia no verse nunca. Un aviso agrupado por ciclo, sin
+repetir hasta que la oportunidad desaparece, y no dispara con puntas de
+antes del cierre ni sin nominales ejecutables.
+
+**La TNA se anualiza por dias corridos entre liquidaciones.** Un viernes
+son tres dias, porque t0 liquida el viernes y t1 el lunes; con feriado de
+por medio, cuatro. Tomar siempre uno inflaba por tres las oportunidades
+de los viernes: una diferencia de 0,15% da 54,8% de TNA a un dia y 18,2%
+a tres. Se muestra junto a la TNA de caucion para poder compararlas.
+
+**El t1 sale del panel.** Los paneles de acciones cotizan a t1, asi que
+solo hace falta pedir el t0 de cada ticker de arbitraje. Antes se pedian
+los dos y era el doble de requests.
+
+**Tres paneles nuevos:** Merval, Panel General y CEDEARs. Cada panel que
+se agrega saca especies de la lista de pedidos sueltos, que son la mayor
+parte del consumo.
+
+**La pestania Plazos lee del ciclo** y fuera de rueda no pide nada, como
+el resto.
+
+## 0.20.7
+
+**Alertas de Plazos.** Vender en t0 y recomprar en t1 deja plata hoy y la
+paga manana, asi que la diferencia de precios es una tasa implicita.
+Ahora se evalua en cada ciclo y avisa cuando esa TNA, neta de comisiones,
+le gana a la caucion colocadora. Antes solo se calculaba al abrir la
+pestania, asi que una oportunidad que duraba media rueda podia no verse
+nunca. Un aviso agrupado por ciclo, sin repetir hasta que desaparece.
+
+**La TNA se anualiza por dias corridos entre liquidaciones.** Un viernes
+son tres dias, y con feriado de por medio cuatro. Tomar siempre uno
+triplicaba la TNA implicita de los viernes: la misma diferencia de 0,15%
+da 54,8% de TNA un miercoles y 18,2% un viernes.
+
+**El t1 sale del panel.** Los paneles cotizan a t1, asi que solo hace
+falta pedir el t0 de cada ticker de arbitraje. Antes se pedian los dos y
+era el doble de requests. La pestania Plazos lee del ciclo y fuera de
+rueda no pide nada.
+
+**Tres paneles mas de Acciones:** Merval, Panel General y CEDEARs. Cada
+panel que se agrega borra pedidos sueltos del ciclo, que son la mayor
+parte del consumo: LOMA, HARG y los CEDEAR se pedian de a uno.
+
 ## 0.20.6
 
 **Posicion y Opciones seguian pidiendo con el mercado cerrado.** Posicion
