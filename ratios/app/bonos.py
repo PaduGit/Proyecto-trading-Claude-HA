@@ -342,6 +342,7 @@ def detalle(simbolo, cot, liq=None, par_mep=("AL30", "AL30D"), cer_actual=0):
         "factor_cer": factor_cer(cfg, cer_actual) or None,
         "moneda_flujo": cfg.get("moneda"),
         "aviso": cfg.get("verificar"),
+        "nota": cfg.get("derivacion"),
         "fila": f,
         "vencimiento": str(cfg["vencimiento"])[:10],
         "proximo_pago": m.get("proximo_pago"),

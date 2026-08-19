@@ -646,12 +646,18 @@ bonos:
     base: 30/360
     cer_base: 0
     nominal_base: 127.09
-    verificar: >-
-      El nominal de partida no es 100: se dedujo de la paridad de mercado
-      (90,67% sobre precio 48.735 da valor técnico 53.750). Ese número
-      depende del residual que calcula la app (75%): una fuente externa
-      indica 80%, lo que daría nominal 119,20. Si se corrige el cronograma
-      de amortización, hay que recalcular este valor.
+    derivacion: >-
+      El nominal de partida no es 100 porque el bono capitalizo parte de los
+      intereses hasta el 31/12/2013, en dos tramos step-up: entre 2003 y 2008
+      pago 2,79% en efectivo y capitalizo 3,04% anual (1,52% semestral), y
+      entre 2008 y 2013 pago 4,06% y capitalizo 1,77% (0,885% semestral).
+      Encadenando (1,0152)^10 x (1,00885)^10 se llega a 1,2699, o sea 127,0
+      por cada 100 nominales originales. El valor cargado, 127,09, difiere en
+      0,08% por convencion de dias y es el que usan las planillas de mercado.
+      Contrastado ademas contra la curva CER: con 127,09 el bono rinde 9,4%
+      con duration modificada 3,0, coherente con TX31 (9,5% a 2,5) y CUAP
+      (9,2% a 9,2). Con 120,4 rendiria 7,6% y con 140,3 rendiria 12,8%, dos
+      desarbitrajes que no se sostienen en un bono liquido.
     amortizacion:
       tipo: cuotas
       fechas_desde: 2024-06-30
@@ -702,10 +708,11 @@ bonos:
     base: 30/360
     cer_base: 0
     nominal_base: 138.92
-    verificar: >-
-      Capitalizó intereses hasta el 31/12/2013. El nominal de partida
-      refleja ese capital ya capitalizado: se dedujo de la paridad de
-      mercado (55,89% sobre precio 43.650 da valor técnico 78.100).
+    derivacion: >-
+      Capitalizo el 100% de los intereses hasta el 31/12/2013: 3,31% anual en
+      veinte cupones semestrales de 1,655%. (1,01655)^20 da 1,3882, o sea
+      138,82 por cada 100 nominales originales. El valor cargado, 138,92,
+      difiere en 0,07% por redondeo y no mueve la TIR.
     amortizacion:
       tipo: cuotas
       fechas_desde: 2036-06-30

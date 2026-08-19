@@ -1,5 +1,6 @@
 """Persistencia en SQLite. Vive en /data, que HA conserva entre reinicios."""
 
+import json
 import os
 import sqlite3
 import threading
@@ -673,3 +674,40 @@ def purgar_api_log(dias=RETENCION_API_LOG):
     c.execute("DELETE FROM api_log WHERE ts < ?",
               ((datetime.now() - timedelta(days=dias)).isoformat(),))
     c.commit()
+
+
+# -- cache de catalogo ------------------------------------------------
+
+def cache_get(clave, horas):
+    """Valor cacheado si no vencio, o None.
+
+    Para datos que no cambian todos los dias: la lista de instrumentos,
+    los paneles de cada instrumento, las series que pertenecen a un
+    subyacente. Pedirlos en cada visita gasta cupo sin traer nada nuevo.
+    """
+    r = conn().execute(
+        "SELECT valor FROM estado WHERE clave = ?", ("cache:" + clave,)
+    ).fetchone()
+    if not r:
+        return None
+    try:
+        d = json.loads(r["valor"])
+        puesto = datetime.fromisoformat(d["ts"])
+    except Exception:
+        return None
+    if (datetime.now() - puesto).total_seconds() > horas * 3600:
+        return None
+    return d.get("v")
+
+
+def cache_set(clave, valor):
+    set_estado("cache:" + clave, json.dumps(
+        {"ts": datetime.now().isoformat(timespec="seconds"), "v": valor}))
+
+
+def cache_borrar(prefijo=""):
+    c = conn()
+    cur = c.execute("DELETE FROM estado WHERE clave LIKE ?",
+                    ("cache:" + prefijo + "%",))
+    c.commit()
+    return cur.rowcount

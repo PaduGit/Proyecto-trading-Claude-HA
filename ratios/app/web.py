@@ -11,6 +11,7 @@ import db
 import bonos as BO
 import cer as CER
 import circuitos as CI
+import costos as CO
 import curva as CU
 import historico as H
 import opciones as OP
@@ -452,7 +453,8 @@ def crear_app(monitor):
                                 monitor.cfg.get("comisiones") or {},
                                 float(monitor.cfg.get("rulo_umbral_pct") or 0),
                                 monitor.cfg.get("derechos_mercado") or {},
-                                monitor.cfg.get("iva_pct") or 0)
+                                monitor.cfg.get("iva_pct") or 0,
+                                CO.esquema(monitor.cfg))
             r["tengo"] = tengo
             r["candidatos"] = sorted(puentes)
             return jsonify(r)
@@ -791,22 +793,47 @@ def crear_app(monitor):
 
     # -- exploracion --------------------------------------------------
 
+    # La lista de instrumentos y la de paneles son catalogo: cambian
+    # cuando BYMA agrega o saca un panel, no todos los dias. Pedirlas en
+    # cada visita a Explorar gastaba dos requests por vez.
+    HORAS_CATALOGO = 24 * 7
+
     @app.get("/api/explorar/instrumentos")
     def ex_instrumentos():
+        pais = request.args.get("pais", "argentina")
+        clave = "instrumentos:%s" % pais
+        if request.args.get("recargar") != "1":
+            v = db.cache_get(clave, HORAS_CATALOGO)
+            if v is not None:
+                return jsonify(v)
         try:
-            return jsonify(monitor.iol.instrumentos(
-                request.args.get("pais", "argentina")))
+            with monitor.iol.como("pestania"):
+                v = monitor.iol.instrumentos(pais)
         except IOLError as e:
             return jsonify({"error": str(e)}), 502
+        db.cache_set(clave, v)
+        return jsonify(v)
 
     @app.get("/api/explorar/paneles")
     def ex_paneles():
+        inst = request.args.get("instrumento", "Acciones")
+        pais = request.args.get("pais", "argentina")
+        clave = "paneles:%s:%s" % (pais, inst)
+        if request.args.get("recargar") != "1":
+            v = db.cache_get(clave, HORAS_CATALOGO)
+            if v is not None:
+                return jsonify(v)
         try:
-            return jsonify(monitor.iol.paneles(
-                request.args.get("instrumento", "Acciones"),
-                request.args.get("pais", "argentina")))
+            with monitor.iol.como("pestania"):
+                v = monitor.iol.paneles(inst, pais)
         except IOLError as e:
             return jsonify({"error": str(e)}), 502
+        db.cache_set(clave, v)
+        return jsonify(v)
+
+    @app.post("/api/explorar/recargar-catalogo")
+    def ex_recargar():
+        return jsonify({"borradas": db.cache_borrar("")})
 
     @app.get("/api/explorar/panel")
     def ex_panel():
@@ -816,7 +843,8 @@ def crear_app(monitor):
         if not panel:
             return jsonify({"error": "Elegí un panel."}), 400
         try:
-            d = monitor.iol.cotizacion_panel(instrumento, panel, pais)
+            with monitor.iol.como("pestania"):
+                d = monitor.iol.cotizacion_panel(instrumento, panel, pais)
         except IOLError as e:
             return jsonify({"error": str(e)}), 502
 

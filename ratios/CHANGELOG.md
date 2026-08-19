@@ -1,5 +1,48 @@
 # Registro de cambios
 
+## 0.20.5
+
+**Bonificacion intradiaria por broker.** Se elige el broker en la
+configuracion y el Rulo calcula con su esquema. No son la misma regla:
+IOL exige que se repita el mismo simbolo de negociacion, Eco bonifica el
+lado menor entre especies distintas mientras coincidan moneda y plazo, y
+Veta Flat no cobra arancel marginal porque va por abono. El porcentaje es
+configurable, con 100% por defecto. Solo alcanza al arancel del agente:
+los derechos de mercado son de BYMA y se pagan igual.
+
+Una consecuencia que conviene tener presente: **con el circuito de cuatro
+patas, IOL no bonifica nada**. Sus cuatro patas son simbolos distintos.
+La excepcion que valia antes —el circuito desde un bono propio recompraba
+la especie vendida— existia por las dos patas de mas que tenia la version
+de seis, y desaparecio al corregirlo. Las cuatro patas siguen siendo lo
+correcto, pero por las operaciones que ahorran, no por la bonificacion.
+
+Costo de un circuito de cuatro patas sobre bonos, con arancel 0,15% y
+derechos 0,01%: IOL 0,640%, Eco 0,340%, Veta 0,040%.
+
+**El catalogo deja de pedirse en cada visita.** La lista de instrumentos y
+la de paneles cambian cuando BYMA agrega o saca uno, no todos los dias, y
+se pedian dos requests cada vez que se entraba a Explorar. Ahora se
+guardan una semana, con una opcion para forzar la recarga.
+
+Lo mismo con las series que pertenecen a cada subyacente: cambian cuando
+se listan vencimientos nuevos, no cada diez minutos. Cacheadas medio dia,
+el modulo de Opciones baja de dos requests por ciclo a uno.
+
+**Las dos vistas del registro de llamadas eran la misma.** "Ver detalle"
+mostraba el resumen y ademas el log, asi que la parte de arriba era
+identica a la del otro boton. Ahora "Ver llamadas" es el log crudo, una
+linea por request con fecha y hora, y "Ver resumen" es solo el agrupado.
+Se saco el tiempo de respuesta de la vista; se sigue guardando.
+
+**DICP y CUAP: de que sale el nominal de partida.** La nota decia que se
+habia deducido de la paridad de mercado, que es circular y hacia dudar
+del numero. Se reemplazo por la derivacion real. El DICP capitalizo en
+dos tramos step-up y encadenandolos se llega a 127,0 por cada 100
+nominales; el CUAP capitalizo el 100% de los intereses y da 138,82. Los
+valores cargados difieren menos de una decima de punto por convencion de
+dias. Contrastado ademas contra la curva CER.
+
 ## 0.20.4
 
 **Cero llamadas a IOL con la rueda cerrada.** El ciclo de fondo respetaba

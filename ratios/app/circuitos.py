@@ -46,7 +46,8 @@ def _costo(comisiones, moneda):
     """
     import costos
     c = comisiones or {}
-    return costos.pct(c, "bonos", c.get("_derechos"), c.get("_iva_pct"))
+    return costos.pct_circuito(c, "bonos", c.get("_derechos"),
+                               c.get("_iva_pct"), c.get("_esquema"))
 
 
 def _saltar(cot, bono, desde, hacia, comisiones):
@@ -262,7 +263,7 @@ def desde_bono(cot, bonos, bono, comisiones):
 
 
 def analizar(cot, bonos, tengo, comisiones, umbral_pct=0.0,
-             derechos=None, iva_pct=0):
+             derechos=None, iva_pct=0, esquema=None):
     """Todos los circuitos ejecutables con lo que hay declarado.
 
     tengo: {"monedas": ["ARS", "MEP"], "bonos": ["AO29"]}
@@ -270,6 +271,7 @@ def analizar(cot, bonos, tengo, comisiones, umbral_pct=0.0,
     comisiones = dict(comisiones or {})
     comisiones["_derechos"] = derechos or {}
     comisiones["_iva_pct"] = iva_pct
+    comisiones["_esquema"] = esquema
 
     monedas = [m for m in (tengo or {}).get("monedas", []) if m in MONEDAS]
     # un bono propio entra aunque no tenga las tres especies: los saltos

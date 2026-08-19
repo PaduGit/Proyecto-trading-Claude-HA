@@ -436,7 +436,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       <button class="secundario" id="log-ver" style="width:auto;padding:0 14px">
         Ver llamadas</button>
       <button class="secundario" id="log-todo" style="width:auto;padding:0 14px">
-        Ver detalle</button>
+        Ver resumen</button>
     </div>
     <div id="log-out"></div>
     <p class="nota">Consultá la API con la sesión que ya tiene la app. Solo lectura.</p>
@@ -1732,6 +1732,7 @@ async function verBono(sim){
 
     $("#bono-cuerpo").innerHTML =
       (d.aviso ? '<div class="aviso">' + esc(d.aviso) + '</div>' : "") +
+      (d.nota ? '<p class="nota">' + esc(d.nota) + '</p>' : "") +
       '<dl class="kv">' +
       (pp ? '<dt>Próximo pago</dt><dd>' + esc(pp.fecha) + ' · ' +
         val(pp.total) + (pp.amortizacion ? ' <span style="color:var(--sage)">' +
@@ -2537,49 +2538,67 @@ $("#op-out").addEventListener("click", async ev => {
 
 
 /* ---------- registro de llamadas a la API ---------- */
-async function cargarLog(detalle){
+/* Dos vistas distintas: el log crudo dice que paso y cuando; el resumen
+   dice de donde sale el consumo. Mezclarlos hacia que el segundo boton
+   pareciera el primero. */
+async function logCrudo(){
   const out = $("#log-out");
   out.innerHTML = '<div class="vacio">Leyendo…</div>';
   try{
-    const d = await (await fetch(base + "api/requests/log?dias=7")).json();
-    const r = d.resumen || {};
-    let h = '<div class="hallazgo"><h3>' + ent(r.total || 0) +
-      ' llamadas en ' + (r.dias || 7) + ' días</h3><div class="datos">' +
-      (r.por_origen || []).map(o =>
-        '<span>' + esc(o.origen) + ' <b>' + ent(o.n) + '</b></span>').join("") +
-      '</div></div>';
-
-    h += '<table class="tabla"><thead><tr><th>Dirección</th><th>Tipo</th>' +
-      '<th class="num">Veces</th><th class="num">ms</th></tr></thead><tbody>' +
-      (r.por_ruta || []).map(x =>
-        '<tr><td style="word-break:break-all;font-size:11px">' +
-          esc(x.ruta) + '</td><td>' + esc(x.tipo || "") + '</td>' +
-          '<td class="num">' + ent(x.n) + '</td>' +
-          '<td class="num">' + ent(x.ms || 0) + '</td></tr>').join("") +
-      '</tbody></table>';
-
-    if(detalle){
-      h += '<h3 style="margin:16px 0 6px">Últimas llamadas</h3>' +
-        '<table class="tabla"><thead><tr><th>Cuándo</th><th>Dirección</th>' +
-        '<th>Quién</th><th class="num">Est.</th></tr></thead><tbody>' +
-        (d.ultimas || []).map(x =>
-          '<tr><td style="font-size:11px">' +
-            esc((x.ts || "").replace("T"," ").slice(5)) + '</td>' +
-            '<td style="word-break:break-all;font-size:11px">' +
-              esc(x.ruta) + '</td>' +
-            '<td>' + esc(x.origen || "") + '</td>' +
-            '<td class="num">' + esc(x.status) + '</td></tr>').join("") +
-        '</tbody></table>';
+    const d = await (await fetch(base + "api/requests/log?limite=300")).json();
+    const u = d.ultimas || [];
+    if(!u.length){
+      out.innerHTML = '<div class="vacio">Todavía no hay llamadas registradas.</div>';
+      return;
     }
-    h += '<div class="nota">Se guardan ' + (d.retencion_dias || 7) +
-      ' días de historial.</div>';
-    out.innerHTML = h;
+    out.innerHTML =
+      '<table class="tabla"><thead><tr><th>Fecha y hora</th>' +
+      '<th>Dirección</th><th>Quién</th><th class="num">Est.</th></tr></thead>' +
+      '<tbody>' + u.map(x =>
+        '<tr><td style="font-size:11px;white-space:nowrap">' +
+          esc((x.ts || "").replace("T", " ")) + '</td>' +
+          '<td style="word-break:break-all;font-size:11px">' +
+            esc(x.ruta) + '</td>' +
+          '<td style="font-size:11px">' + esc(x.origen || "") + '</td>' +
+          '<td class="num">' + esc(x.status) + '</td></tr>').join("") +
+      '</tbody></table>' +
+      '<div class="nota">Las ' + u.length + ' más recientes, de las últimas ' +
+      (d.retencion_dias || 7) + ' días.</div>';
   }catch(e){
     out.innerHTML = '<div class="msg error">No se pudo leer el registro.</div>';
   }
 }
-$("#log-ver").addEventListener("click", () => cargarLog(false));
-$("#log-todo").addEventListener("click", () => cargarLog(true));
+
+async function logResumen(){
+  const out = $("#log-out");
+  out.innerHTML = '<div class="vacio">Leyendo…</div>';
+  try{
+    const d = await (await fetch(base + "api/requests/log?dias=7&limite=1")).json();
+    const r = d.resumen || {};
+    if(!r.total){
+      out.innerHTML = '<div class="vacio">Todavía no hay llamadas registradas.</div>';
+      return;
+    }
+    out.innerHTML =
+      '<div class="hallazgo"><h3>' + ent(r.total) + ' llamadas en ' +
+        (r.dias || 7) + ' días</h3><div class="datos">' +
+        (r.por_origen || []).map(o => '<span>' + esc(o.origen) + ' <b>' +
+          ent(o.n) + '</b></span>').join("") + '</div></div>' +
+      '<table class="tabla"><thead><tr><th>Dirección</th><th>Tipo</th>' +
+      '<th class="num">Veces</th></tr></thead><tbody>' +
+      (r.por_ruta || []).map(x =>
+        '<tr><td style="word-break:break-all;font-size:11px">' + esc(x.ruta) +
+          '</td><td>' + esc(x.tipo || "") + '</td>' +
+          '<td class="num">' + ent(x.n) + '</td></tr>').join("") +
+      '</tbody></table>' +
+      '<div class="nota">Agrupado por dirección. Lo que más se repite es ' +
+      'donde conviene mirar si el consumo sube.</div>';
+  }catch(e){
+    out.innerHTML = '<div class="msg error">No se pudo leer el registro.</div>';
+  }
+}
+$("#log-ver").addEventListener("click", logCrudo);
+$("#log-todo").addEventListener("click", logResumen);
 
 cargarPanel();
 setInterval(() => { if(vista === "panel") cargarPanel(); }, 30000);

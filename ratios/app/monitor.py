@@ -878,6 +878,7 @@ class Monitor:
         """
         import json
         import circuitos as CI
+        import costos as CO
         cot = cot if cot is not None else dict(self.cotizaciones)
         if not cot:
             return 0
@@ -897,7 +898,8 @@ class Monitor:
                         self.cfg.get("comisiones") or {},
                         float(self.cfg.get("rulo_umbral_pct") or 0),
                         self.cfg.get("derechos_mercado") or {},
-                        self.cfg.get("iva_pct") or 0)
+                        self.cfg.get("iva_pct") or 0,
+                        CO.esquema(self.cfg))
         with self.lock:
             self.circuitos = r
 

@@ -1,5 +1,5 @@
 name: Ratios IOL
-version: "0.20.4"
+version: "0.20.5"
 slug: ratios_iol
 description: Monitor de ratios entre especies, arbitraje de plazos y screener
 url: https://github.com/PaduGit/Proyecto-trading-Claude-HA
@@ -64,6 +64,9 @@ options:
       panel: Merval
       pais: argentina
   iva_pct: 21
+  broker: iol
+  bonificacion_intradiaria: true
+  bonificacion_pct: 100
   derechos_mercado:
     - instrumento: acciones
       pct: 0.05
@@ -169,6 +172,9 @@ schema:
       panel: str
       pais: str
   iva_pct: float(0,50)
+  broker: list(iol|eco|veta)
+  bonificacion_intradiaria: bool
+  bonificacion_pct: float(0,100)
   derechos_mercado:
     - instrumento: str
       pct: float(0,10)

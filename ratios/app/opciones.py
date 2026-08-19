@@ -154,30 +154,44 @@ def parsear_serie(crudo, de_quien):
     }
 
 
-def mapa_subyacentes(iol, subyacentes, mercado="bCBA"):
-    """Símbolo de opción -> subyacente. Un request por subyacente."""
+def mapa_subyacentes(iol, subyacentes, mercado="bCBA", horas_cache=12):
+    """Simbolo de opcion -> subyacente.
+
+    Se cachea por medio dia: la lista de series de un subyacente cambia
+    cuando se listan vencimientos nuevos, no cada diez minutos. Sin
+    cache, este era un request por subyacente en cada ciclo, o sea la
+    mitad del consumo del modulo para un dato que no se mueve.
+    """
+    import db
     de_quien = {}
     for sub in subyacentes:
-        try:
-            d = iol.opciones_de(sub, mercado)
-        except Exception as e:
-            log.warning("opciones de %s: %s", sub, e)
-            continue
-        filas = d if isinstance(d, list) else (d or {}).get("titulos") or []
-        for t in filas:
-            sim = str((t or {}).get("simbolo") or "").upper()
-            if sim:
-                de_quien[sim] = sub
+        clave = "opciones_de:%s:%s" % (mercado, sub)
+        simbolos = db.cache_get(clave, horas_cache) if horas_cache else None
+        if simbolos is None:
+            try:
+                d = iol.opciones_de(sub, mercado)
+            except Exception as e:
+                log.warning("opciones de %s: %s", sub, e)
+                continue
+            filas = d if isinstance(d, list) else (d or {}).get("titulos") or []
+            simbolos = [str((t or {}).get("simbolo") or "").upper()
+                        for t in filas]
+            simbolos = [x for x in simbolos if x]
+            if simbolos:
+                db.cache_set(clave, simbolos)
+        for sim in simbolos:
+            de_quien[sim] = sub
     return de_quien
 
 
 def cadena(iol, subyacentes, panel="De Acciones",
-           instrumento="Opciones", pais="argentina", mercado="bCBA"):
+           instrumento="Opciones", pais="argentina", mercado="bCBA",
+           horas_cache=12):
     """La cadena con puntas. Un request de panel más uno por subyacente.
 
     Devuelve (series, diagnostico).
     """
-    de_quien = mapa_subyacentes(iol, subyacentes, mercado)
+    de_quien = mapa_subyacentes(iol, subyacentes, mercado, horas_cache)
     d = iol.cotizacion_panel(instrumento, panel, pais)
     crudos = (d or {}).get("titulos") or []
 

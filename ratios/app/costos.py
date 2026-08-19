@@ -69,3 +69,141 @@ def detalle(comisiones, instrumento, derechos=None, iva_pct=0):
             "derecho_pct": derecho, "iva_pct": 0 if exento else _num(iva_pct),
             "iva_monto_pct": round(iva, 6), "exento_iva": exento,
             "total_pct": round(arancel + derecho + iva, 6)}
+
+
+# -- bonificacion intradiaria -----------------------------------------
+#
+# La cobra el broker sobre su propio arancel, no sobre los derechos de
+# mercado, que son de BYMA y se pagan igual. Cada broker la define
+# distinto y eso cambia que circuitos cierran:
+#
+# - IOL exige que la segunda operacion sea del MISMO simbolo, el mismo
+#   dia, en igual plazo y moneda, y por cantidad igual o menor. En un
+#   rulo desde pesos las cuatro patas son simbolos distintos, asi que no
+#   bonifica nada. Si bonifica en los circuitos desde un bono propio,
+#   que terminan recomprando la especie que se vendio.
+# - Eco bonifica el lado menor entre especies distintas mientras
+#   coincidan moneda y plazo, que es exactamente la forma de un rulo.
+# - Veta Flat no tiene arancel marginal: cobra un abono mensual fijo, que
+#   no es costo del circuito porque no depende de operarlo.
+
+ESQUEMAS = {
+    "iol":  {"nombre": "IOL", "regla": "simbolo", "pct": 100},
+    "eco":  {"nombre": "Eco Valores", "regla": "moneda_plazo", "pct": 100},
+    "veta": {"nombre": "Veta Flat", "regla": "sin_arancel", "pct": 100},
+}
+
+
+def esquema(cfg):
+    b = (cfg.get("broker") or "iol").strip().lower()
+    e = dict(ESQUEMAS.get(b) or ESQUEMAS["iol"])
+    if cfg.get("bonificacion_pct") is not None:
+        try:
+            e["pct"] = float(cfg["bonificacion_pct"])
+        except (TypeError, ValueError):
+            pass
+    if not cfg.get("bonificacion_intradiaria", True):
+        e["pct"] = 0
+    return e
+
+
+def patas_bonificadas(patas, esq):
+    """Indices de las patas cuyo arancel se bonifica.
+
+    `patas`: lista de dicts con simbolo, accion (Comprar/Vender), moneda,
+    plazo e importe.
+    """
+    regla = esq.get("regla")
+    if regla == "sin_arancel":
+        return set(range(len(patas)))
+    if not esq.get("pct"):
+        return set()
+
+    if regla == "simbolo":
+        # la segunda operacion del mismo simbolo, y solo esa
+        vistos, out = {}, set()
+        for i, p in enumerate(patas):
+            k = (p.get("simbolo"), p.get("plazo"), p.get("moneda"))
+            if k in vistos:
+                out.add(i)
+            else:
+                vistos[k] = i
+        return out
+
+    if regla == "moneda_plazo":
+        # el lado menor de cada par compra/venta que comparte moneda y
+        # plazo, aunque las especies sean distintas
+        out = set()
+        grupos = {}
+        for i, p in enumerate(patas):
+            grupos.setdefault((p.get("moneda"), p.get("plazo")), []).append(i)
+        for idxs in grupos.values():
+            compras = [i for i in idxs
+                       if (patas[i].get("accion") or "").lower().startswith("c")]
+            ventas = [i for i in idxs if i not in compras]
+            if not compras or not ventas:
+                continue
+            tot_c = sum(patas[i].get("importe") or 0 for i in compras)
+            tot_v = sum(patas[i].get("importe") or 0 for i in ventas)
+            out |= set(compras if tot_c <= tot_v else ventas)
+        return out
+    return set()
+
+
+def costo_patas(patas, instrumento, comisiones, derechos=None, iva_pct=0,
+                esq=None):
+    """Costo total en tanto por uno del importe de cada pata.
+
+    Devuelve (total, detalle_por_pata). El derecho de mercado se cobra
+    siempre; lo que se bonifica es el arancel.
+    """
+    inst = (instrumento or "").strip().lower()
+    com = comisiones or {}
+    der = derechos or {}
+    arancel = _num(com.get(inst, com.get("general")))
+    derecho = _num(der.get(inst, der.get(FAMILIA.get(inst, ""))))
+    iva = 0 if inst in EXENTOS_IVA else _num(iva_pct)
+
+    esq = esq or ESQUEMAS["iol"]
+    bonif = patas_bonificadas(patas, esq)
+    pct = _num(esq.get("pct")) / 100.0
+
+    total, detalle = 0.0, []
+    for i, p in enumerate(patas):
+        a = arancel * (1 - pct) if i in bonif else arancel
+        c = (a + derecho) * (1 + iva / 100.0) / 100.0
+        total += c * (p.get("importe") or 0)
+        detalle.append({"pata": i, "bonificada": i in bonif,
+                        "arancel_pct": round(a, 6),
+                        "costo_pct": round(c * 100, 6)})
+    return total, detalle
+
+
+# Factor que multiplica el arancel de cada pata en un circuito de cuatro
+# patas. Es exacto para esa forma, que es la unica que genera el Rulo:
+# dos grupos de moneda, cada uno con una compra y una venta de importe
+# equivalente.
+FACTOR_ARANCEL = {"simbolo": 1.0,        # IOL: cuatro simbolos distintos
+                  "moneda_plazo": 0.5,   # Eco: el lado menor de cada grupo
+                  "sin_arancel": 0.0}    # Veta: abono fijo, sin marginal
+
+
+def pct_circuito(comisiones, instrumento, derechos=None, iva_pct=0, esq=None):
+    """Costo por pata dentro de un circuito, con la bonificacion del
+    broker ya aplicada sobre el arancel."""
+    inst = (instrumento or "").strip().lower()
+    com = comisiones or {}
+    der = derechos or {}
+    arancel = _num(com.get(inst, com.get("general")))
+    derecho = _num(der.get(inst, der.get(FAMILIA.get(inst, ""))))
+
+    esq = esq or ESQUEMAS["iol"]
+    factor = FACTOR_ARANCEL.get(esq.get("regla"), 1.0)
+    pct = _num(esq.get("pct")) / 100.0
+    # la bonificacion es parcial si el broker no perdona el 100%
+    arancel *= 1 - (1 - factor) * pct
+
+    total = arancel + derecho
+    if inst not in EXENTOS_IVA:
+        total *= 1 + _num(iva_pct) / 100.0
+    return total / 100.0
