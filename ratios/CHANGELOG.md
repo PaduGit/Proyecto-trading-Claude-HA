@@ -1,5 +1,25 @@
 # Registro de cambios
 
+## 0.20.6
+
+**Posicion y Opciones seguian pidiendo con el mercado cerrado.** Posicion
+consultaba la cotizacion de cada ticker que no estuviera en el mapa del
+ciclo, uno por uno, en cada visita; fuera de rueda el mapa esta vacio,
+asi que los pedia todos cada vez. Opciones hacia lo mismo con los cierres
+del subyacente para las medias. Ahora ninguna pestania llama a IOL fuera
+de horario.
+
+**El origen del registro decia "ciclo" para todo.** Solo estaban
+etiquetados el boton de refrescar y Explorar; el resto quedaba con el
+valor por defecto, asi que el log mostraba como ciclo lo que en realidad
+disparaba una pestania. Era el peor error posible en una herramienta cuya
+razon de ser es decir de donde sale el consumo.
+
+**Copiar y borrar el registro.** Copiar saca lo que se este mostrando en
+texto separado por tabulaciones, listo para pegar en una planilla. Borrar
+lo vacia: sirve para medir desde cero, se limpia, se hace algo, y lo que
+aparece es exactamente eso.
+
 ## 0.20.5
 
 **Bonificacion intradiaria por broker.** Se elige el broker en la

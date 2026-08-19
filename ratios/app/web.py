@@ -132,8 +132,9 @@ def crear_app(monitor):
 
         cache = monitor.cotizaciones
         try:
-            a = cache.get(num) or monitor.iol.cotizacion(mercado, num, plazo)
-            b = cache.get(den) or monitor.iol.cotizacion(mercado, den, plazo)
+            with monitor.iol.como("pestania"):
+                a = cache.get(num) or monitor.iol.cotizacion(mercado, num, plazo)
+                b = cache.get(den) or monitor.iol.cotizacion(mercado, den, plazo)
         except IOLError as e:
             return jsonify({"error": str(e)}), 502
 
@@ -225,14 +226,22 @@ def crear_app(monitor):
     # -- posicion -----------------------------------------------------
 
     def _precios_para(grupo):
-        """Precio de referencia de cada ticker del grupo."""
+        """Precio de referencia de cada ticker del grupo.
+
+        Fuera de rueda no se pide nada: con el mercado cerrado el ticker
+        que falta va a seguir faltando, y pedirlo uno por uno en cada
+        visita a Posicion era de lo que mas consumia.
+        """
         precios = {}
-        cache = monitor.cotizaciones
+        cache = monitor.cotizaciones_vigentes()
+        abierto = monitor._en_horario()
         for tk in grupo["tickers"]:
             c = cache.get(tk)
-            if not c:
+            if not c and abierto:
                 try:
-                    c = monitor.iol.cotizacion(grupo.get("mercado") or "bCBA", tk)
+                    with monitor.iol.como("pestania"):
+                        c = monitor.iol.cotizacion(
+                            grupo.get("mercado") or "bCBA", tk)
                 except IOLError:
                     continue
             if c and c.get("ref"):
@@ -369,7 +378,8 @@ def crear_app(monitor):
         # alcanzarlos a todos o los ultimos nunca aparecen.
         for sim in faltan[:30]:
             try:
-                cache[sim] = monitor.iol.cotizacion("bCBA", sim, "t1")
+                with monitor.iol.como("pestania"):
+                    cache[sim] = monitor.iol.cotizacion("bCBA", sim, "t1")
             except Exception:
                 _sin_precio.add(sim)
                 continue     # una especie sin precio no puede tumbar la tabla
@@ -486,10 +496,13 @@ def crear_app(monitor):
         from datetime import date, timedelta
         desde = (date.today() - timedelta(days=90)).isoformat()
         ultimo = db.ultimo_cierre_guardado(sim)
-        if not ultimo or ultimo < (date.today() - timedelta(days=1)).isoformat():
+        if monitor._en_horario() and (
+                not ultimo
+                or ultimo < (date.today() - timedelta(days=1)).isoformat()):
             try:
-                serie = monitor.iol.serie(mercado, sim, desde,
-                                          date.today().isoformat())
+                with monitor.iol.como("pestania"):
+                    serie = monitor.iol.serie(mercado, sim, desde,
+                                              date.today().isoformat())
                 filas = []
                 for p in serie or []:
                     f = str(p.get("fechaHora") or "")[:10]
@@ -782,6 +795,10 @@ def crear_app(monitor):
     def requests_stats():
         return jsonify(db.resumen_requests(30))
 
+    @app.post("/api/requests/log/borrar")
+    def requests_log_borrar():
+        return jsonify({"borradas": db.borrar_api_log()})
+
     @app.get("/api/requests/log")
     def requests_log():
         return jsonify({
@@ -948,8 +965,9 @@ def _traer_historico(monitor, mercado, simbolo, dias):
     hasta = datetime.now().date()
     desde = hasta - timedelta(days=max(dias, 400))
     try:
-        datos = monitor.iol.serie(mercado, simbolo, desde.isoformat(),
-                                  hasta.isoformat())
+        with monitor.iol.como("pestania"):
+            datos = monitor.iol.serie(mercado, simbolo, desde.isoformat(),
+                                      hasta.isoformat())
     except IOLError as e:
         log.warning("historico %s: %s", simbolo, e)
         return

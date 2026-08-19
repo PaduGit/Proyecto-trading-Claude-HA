@@ -437,6 +437,10 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
         Ver llamadas</button>
       <button class="secundario" id="log-todo" style="width:auto;padding:0 14px">
         Ver resumen</button>
+      <button class="secundario" id="log-copiar" style="width:auto;padding:0 14px">
+        Copiar</button>
+      <button class="secundario" id="log-borrar" style="width:auto;padding:0 14px">
+        Borrar</button>
     </div>
     <div id="log-out"></div>
     <p class="nota">Consultá la API con la sesión que ya tiene la app. Solo lectura.</p>
@@ -2538,6 +2542,9 @@ $("#op-out").addEventListener("click", async ev => {
 
 
 /* ---------- registro de llamadas a la API ---------- */
+/* Lo ultimo que se mostro, para poder copiarlo tal cual. */
+let logUltimo = [];
+
 /* Dos vistas distintas: el log crudo dice que paso y cuando; el resumen
    dice de donde sale el consumo. Mezclarlos hacia que el segundo boton
    pareciera el primero. */
@@ -2564,6 +2571,8 @@ async function logCrudo(){
       '</tbody></table>' +
       '<div class="nota">Las ' + u.length + ' más recientes, de las últimas ' +
       (d.retencion_dias || 7) + ' días.</div>';
+    logUltimo = ["fecha_hora	direccion	quien	estado"].concat(
+      u.map(x => [x.ts, x.ruta, x.origen || "", x.status].join("	")));
   }catch(e){
     out.innerHTML = '<div class="msg error">No se pudo leer el registro.</div>';
   }
@@ -2593,10 +2602,44 @@ async function logResumen(){
       '</tbody></table>' +
       '<div class="nota">Agrupado por dirección. Lo que más se repite es ' +
       'donde conviene mirar si el consumo sube.</div>';
+    logUltimo = ["direccion	tipo	veces	ultima"].concat(
+      (r.por_ruta || []).map(x =>
+        [x.ruta, x.tipo || "", x.n, x.ultima || ""].join("	")));
   }catch(e){
     out.innerHTML = '<div class="msg error">No se pudo leer el registro.</div>';
   }
 }
+
+
+$("#log-copiar").addEventListener("click", async b => {
+  const btn = b.target;
+  if(!logUltimo.length){
+    alert("Mostrá primero las llamadas o el resumen.");
+    return;
+  }
+  const txt = logUltimo.join("\n");
+  const ta = document.createElement("textarea");
+  ta.value = txt; document.body.appendChild(ta); ta.select();
+  try{ document.execCommand("copy"); btn.textContent = "Copiado"; }
+  catch(e){ btn.textContent = "No se pudo"; }
+  document.body.removeChild(ta);
+  setTimeout(() => { btn.textContent = "Copiar"; }, 1500);
+});
+
+$("#log-borrar").addEventListener("click", async b => {
+  /* Vaciarlo sirve para medir desde cero: se limpia, se hace algo, y lo
+     que aparece es exactamente eso. */
+  if(!confirm("¿Vaciar el registro de llamadas? No se puede deshacer.")) return;
+  b.target.disabled = true;
+  try{
+    const d = await (await fetch(base + "api/requests/log/borrar",
+      {method:"POST"})).json();
+    logUltimo = [];
+    $("#log-out").innerHTML = '<div class="vacio">Registro vacío. Se ' +
+      'borraron ' + ent(d.borradas || 0) + ' llamadas.</div>';
+  }catch(e){ alert("No se pudo borrar."); }
+  finally{ b.target.disabled = false; }
+});
 $("#log-ver").addEventListener("click", logCrudo);
 $("#log-todo").addEventListener("click", logResumen);
 

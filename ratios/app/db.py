@@ -669,6 +669,16 @@ def api_log_resumen(dias=7):
             "por_origen": [dict(r) for r in por_origen]}
 
 
+def borrar_api_log():
+    """Vacia el registro entero. Util para medir desde cero: se limpia,
+    se hace algo, y lo que aparece es exactamente eso."""
+    c = conn()
+    n = c.execute("SELECT COUNT(*) n FROM api_log").fetchone()["n"]
+    c.execute("DELETE FROM api_log")
+    c.commit()
+    return n
+
+
 def purgar_api_log(dias=RETENCION_API_LOG):
     c = conn()
     c.execute("DELETE FROM api_log WHERE ts < ?",
