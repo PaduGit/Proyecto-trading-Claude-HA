@@ -184,8 +184,11 @@ def crear_app(monitor):
         try:
             with monitor.lock:
                 previo = list(monitor.plazos or [])
-            if previo and not monitor._en_horario():
-                filas = previo      # fuera de rueda no se vuelve a pedir
+            if not monitor._en_horario():
+                # Fuera de rueda no se pide nunca, aunque no haya previo:
+                # el t0 con el mercado cerrado no existe, asi que pedirlo
+                # solo gasta cupo para devolver lo mismo.
+                filas = previo
             else:
                 with monitor.iol.como("pestania"):
                     filas = monitor.evaluar_arbitraje()
@@ -193,6 +196,7 @@ def crear_app(monitor):
             return jsonify({"error": str(e)}), 502
         return jsonify({
             "filas": filas,
+            "hay_rueda": monitor._en_horario(),
             "tasa_caucion_anual": monitor.cfg.get("tasa_caucion_anual"),
             "ts": datetime.now().isoformat(timespec="seconds"),
         })

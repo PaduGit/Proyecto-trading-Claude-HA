@@ -239,29 +239,41 @@ class Monitor:
         cambio = False
 
         for sim, c in mapa.items():
+            guardado = guardadas.get(sim) or {}
             if c.get("compra") and c.get("venta"):
                 guardadas[sim] = {
                     "compra": c["compra"], "venta": c["venta"],
                     "vol_compra": c.get("vol_compra") or 0,
                     "vol_venta": c.get("vol_venta") or 0,
+                    "ultimo": c.get("ultimo") or guardado.get("ultimo") or 0,
+                    "moneda": c.get("moneda") or guardado.get("moneda") or "",
                     "ts": ahora}
                 c["punta_vieja"] = False
                 c["punta_ts"] = ahora
                 cambio = True
                 continue
 
-            vieja = guardadas.get(sim)
-            if not vieja:
+            # Sin puntas igual se guarda el ultimo operado: hay especies
+            # que cierran sin punta y solo con ultimo, y si no se guardan
+            # desaparecen de la tabla en vez de mostrarse atenuadas.
+            if c.get("ultimo"):
+                g = dict(guardado)
+                g.update({"ultimo": c["ultimo"], "ts_ultimo": ahora,
+                          "moneda": c.get("moneda") or g.get("moneda") or ""})
+                guardadas[sim] = g
+                cambio = True
+
+            if not guardado.get("compra"):
                 c["punta_vieja"] = False    # nunca hubo, no hay que marcar
                 continue
-            c["compra"] = vieja["compra"]
-            c["venta"] = vieja["venta"]
-            c["vol_compra"] = vieja.get("vol_compra") or 0
-            c["vol_venta"] = vieja.get("vol_venta") or 0
+            c["compra"] = guardado["compra"]
+            c["venta"] = guardado["venta"]
+            c["vol_compra"] = guardado.get("vol_compra") or 0
+            c["vol_venta"] = guardado.get("vol_venta") or 0
             c["medio"] = (c["compra"] + c["venta"]) / 2
             c["ref"] = c["medio"] or c.get("ultimo") or 0
             c["punta_vieja"] = True
-            c["punta_ts"] = vieja.get("ts")
+            c["punta_ts"] = guardado.get("ts")
 
         if cambio:
             db.set_estado(self.CLAVE_PUNTAS, json.dumps(guardadas))
@@ -274,13 +286,19 @@ class Monitor:
         y consume cupo."""
         out = {}
         for sim, v in self._cargar_puntas().items():
-            medio = (v["compra"] + v["venta"]) / 2
-            out[sim] = {"simbolo": sim, "compra": v["compra"],
-                        "venta": v["venta"],
+            compra = v.get("compra") or 0
+            venta = v.get("venta") or 0
+            ultimo = v.get("ultimo") or 0
+            medio = (compra + venta) / 2 if compra and venta else 0
+            if not (medio or ultimo):
+                continue
+            out[sim] = {"simbolo": sim, "compra": compra, "venta": venta,
                         "vol_compra": v.get("vol_compra") or 0,
                         "vol_venta": v.get("vol_venta") or 0,
-                        "medio": medio, "ref": medio, "ultimo": medio,
-                        "moneda": "", "punta_vieja": True,
+                        "medio": medio, "ref": medio or ultimo,
+                        "ultimo": ultimo or medio,
+                        "moneda": v.get("moneda") or "",
+                        "punta_vieja": bool(medio),
                         "punta_ts": v.get("ts")}
         return out
 

@@ -313,52 +313,53 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
     </div>
   </div>
   <nav role="tablist">
-    <button role="tab" aria-selected="true" data-vista="panel">Panel</button>
-    <button role="tab" aria-selected="false" data-vista="calc">Calcular</button>
+    <button role="tab" aria-selected="true" data-vista="panel">Ratios</button>
     <button role="tab" aria-selected="false" data-vista="bonos">Bonos</button>
     <button role="tab" aria-selected="false" data-vista="rulo">Rulo</button>
     <button role="tab" aria-selected="false" data-vista="opc">Opciones</button>
-    <button role="tab" aria-selected="false" data-vista="pos">Posición</button>
     <button role="tab" aria-selected="false" data-vista="plazos">Plazos</button>
+    <button role="tab" aria-selected="false" data-vista="pos">Posición</button>
     <button role="tab" aria-selected="false" data-vista="reg">Registro</button>
     <button role="tab" aria-selected="false" data-vista="expl">Explorar</button>
   </nav>
 </header>
 
 <main>
-  <section id="v-panel"></section>
-
-  <section id="v-calc" hidden>
-    <div class="chips" id="c-chips"></div>
-    <div class="form">
-      <div>
-        <label for="c-num">Numerador</label>
-        <input id="c-num" list="tickers" placeholder="GD30"
-               autocapitalize="characters" autocomplete="off">
+  <section id="v-panel">
+    <div id="panel-out"></div>
+    <details id="calc-caja" style="margin-top:18px">
+      <summary>Calcular un ratio</summary>
+      <div class="chips" id="c-chips"></div>
+      <div class="form">
+        <div>
+          <label for="c-num">Numerador</label>
+          <input id="c-num" list="tickers" placeholder="GD30"
+                 autocapitalize="characters" autocomplete="off">
+        </div>
+        <div>
+          <label for="c-den">Denominador</label>
+          <input id="c-den" list="tickers" placeholder="AL30"
+                 autocapitalize="characters" autocomplete="off">
+        </div>
+        <datalist id="tickers"></datalist>
+        <div>
+          <label for="c-mer">Mercado</label>
+          <select id="c-mer">
+            <option value="bCBA">bCBA</option><option value="nYSE">nYSE</option>
+            <option value="nASDAQ">nASDAQ</option><option value="aMEX">aMEX</option>
+            <option value="rOFX">rOFX</option>
+          </select>
+        </div>
+        <div>
+          <label for="c-plazo">Plazo</label>
+          <select id="c-plazo">
+            <option value="t1">t1</option><option value="t0">t0</option>
+          </select>
+        </div>
+        <div class="ancho"><button class="primario" id="c-btn">Calcular ratio</button></div>
       </div>
-      <div>
-        <label for="c-den">Denominador</label>
-        <input id="c-den" list="tickers" placeholder="AL30"
-               autocapitalize="characters" autocomplete="off">
-      </div>
-      <datalist id="tickers"></datalist>
-      <div>
-        <label for="c-mer">Mercado</label>
-        <select id="c-mer">
-          <option value="bCBA">bCBA</option><option value="nYSE">nYSE</option>
-          <option value="nASDAQ">nASDAQ</option><option value="aMEX">aMEX</option>
-          <option value="rOFX">rOFX</option>
-        </select>
-      </div>
-      <div>
-        <label for="c-plazo">Plazo</label>
-        <select id="c-plazo">
-          <option value="t1">t1</option><option value="t0">t0</option>
-        </select>
-      </div>
-      <div class="ancho"><button class="primario" id="c-btn">Calcular ratio</button></div>
-    </div>
-    <div id="c-out"></div>
+      <div id="c-out"></div>
+    </details>
   </section>
 
   <section id="v-bonos" hidden>
@@ -419,9 +420,10 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
   </section>
 
   <section id="v-plazos" hidden>
-    <p class="nota">Vender en t0 y recomprar en t1: conviene cuando la punta
-      compradora de t0 supera a la vendedora de t1, neto de comisiones y por
-      encima de la caución a un día.</p>
+    <p class="nota">Vender en t0 y recomprar en t1 es cobrar hoy y pagar
+      mañana: la diferencia de precios es una tasa implícita. Conviene cuando
+      esa TNA, neta de comisiones, le gana a la caución colocadora. Se anualiza
+      por días corridos entre liquidaciones, así que un viernes cuenta tres.</p>
     <button class="primario" id="p-btn">Calcular ahora</button>
     <div id="p-out" style="margin-top:12px"></div>
   </section>
@@ -638,15 +640,15 @@ document.querySelectorAll("nav button").forEach(b => {
     document.querySelectorAll("nav button").forEach(x =>
       x.setAttribute("aria-selected", x === b));
     vista = b.dataset.vista;
-    ["panel","calc","bonos","rulo","opc","pos","plazos","reg","expl"].forEach(v =>
+    ["panel","bonos","rulo","opc","plazos","pos","reg","expl"].forEach(v =>
       $("#v-"+v).hidden = (v !== vista));
     if(vista === "bonos") cargarBonos();
     if(vista === "rulo") cargarCircuitos();
     if(vista === "opc") cargarOpciones();
+    if(vista === "plazos") cargarPlazos();
     if(vista === "pos") cargarPosicion();
     if(vista === "reg") cargarRegistro();
     if(vista === "expl") iniciarExplorar();
-    if(vista === "calc") cargarRecientes();
   });
 });
 
@@ -684,7 +686,7 @@ async function cargarPanel(){
   ultimoEstado = d;
   pintarReloj(d.hace_seg, d.poll_seconds);
 
-  const cont = $("#v-panel");
+  const cont = $("#panel-out");
   let cab = "";
   if(d.hay_rueda === false)
     cab = '<div class="aviso">Ningún título se movió: parece un día sin rueda. ' +
@@ -926,6 +928,7 @@ $("#o-guardar").addEventListener("click", async () => {
     if(vista === "bonos") cargarBonos();
     if(vista === "rulo") cargarCircuitos();
     if(vista === "opc") cargarOpciones();
+    if(vista === "plazos") cargarPlazos();
     if(vista === "pos") cargarPosicion();
     if(vista === "reg") cargarRegistro();
   }catch(e){
@@ -987,6 +990,9 @@ async function calcular(){
 
 /* ---------- arbitraje de plazos ---------- */
 $("#p-btn").addEventListener("click", calcularPlazos);
+/* Ahora que Plazos se calcula en cada ciclo, la pestaña muestra sola lo
+   que ya hay; el botón queda para forzar. */
+const cargarPlazos = calcularPlazos;
 async function calcularPlazos(){
   const out = $("#p-out");
   $("#p-btn").disabled = true;
@@ -1007,17 +1013,20 @@ async function calcularPlazos(){
         '<div class="aviso">La tasa de caución está en 0. Cargala en la ' +
         'configuración para que la comparación sirva.</div>') +
       (hay ? '<div class="msg ok">Hay al menos una oportunidad.</div>' : "") +
+      (d.hay_rueda === false ? '<div class="aviso">Mercado cerrado: es el ' +
+        'último cálculo de la rueda, no es ejecutable.</div>' : "") +
       '<div class="hallazgo"><div class="scroll"><table class="tabla"><thead><tr>' +
-      '<th>Ticker</th><th>Compra t0</th><th>Venta t1</th><th>Neto</th>' +
-      '<th>Caución</th><th>Cant.</th></tr></thead><tbody>' +
+      '<th>Ticker</th><th>Compra t0</th><th>Venta t1</th><th>TNA</th>' +
+      '<th>TNA caución</th><th>Cant.</th></tr></thead><tbody>' +
       d.filas.slice().sort((a,b) =>
         (b.conviene?1:0) - (a.conviene?1:0) ||
         (b.neto_pct ?? -999) - (a.neto_pct ?? -999)).map(f => f.error
         ? '<tr><td>' + esc(f.ticker) + '</td><td colspan="5" style="text-align:left;' +
           'color:var(--muted)">' + esc(f.error) + '</td></tr>'
-        : '<tr class="' + (f.conviene ? "si" : "flojo") + '"><td>' + esc(f.ticker) + '</td>' +
+        : '<tr class="' + (f.conviene ? "si" : "flojo") + '"><td>' + esc(f.ticker) +
+          (f.punta_vieja ? ' <span class="tocar">t1 viejo</span>' : "") + '</td>' +
           '<td>' + precio(f.compra_t0) + '</td><td>' + precio(f.venta_t1) + '</td>' +
-          '<td>' + pct(f.neto_pct) + '</td><td>' + pct(f.caucion_dia_pct) + '</td>' +
+          '<td>' + pct(f.tna_pct) + '</td><td>' + pct(f.tna_caucion_pct) + '</td>' +
           '<td>' + ent(f.ejecutable) + '</td></tr>').join("") +
       '</tbody></table></div></div>';
   }catch(e){
@@ -2562,7 +2571,8 @@ async function logCrudo(){
       '<table class="tabla"><thead><tr><th>Fecha y hora</th>' +
       '<th>Dirección</th><th>Quién</th><th class="num">Est.</th></tr></thead>' +
       '<tbody>' + u.map(x =>
-        '<tr><td style="font-size:11px;white-space:nowrap">' +
+        '<tr data-ruta="' + esc(x.ruta) + '" style="cursor:pointer">' +
+          '<td style="font-size:11px;white-space:nowrap">' +
           esc((x.ts || "").replace("T", " ")) + '</td>' +
           '<td style="word-break:break-all;font-size:11px">' +
             esc(x.ruta) + '</td>' +
@@ -2596,7 +2606,8 @@ async function logResumen(){
       '<table class="tabla"><thead><tr><th>Dirección</th><th>Tipo</th>' +
       '<th class="num">Veces</th></tr></thead><tbody>' +
       (r.por_ruta || []).map(x =>
-        '<tr><td style="word-break:break-all;font-size:11px">' + esc(x.ruta) +
+        '<tr data-ruta="' + esc(x.ruta) + '" style="cursor:pointer">' +
+          '<td style="word-break:break-all;font-size:11px">' + esc(x.ruta) +
           '</td><td>' + esc(x.tipo || "") + '</td>' +
           '<td class="num">' + ent(x.n) + '</td></tr>').join("") +
       '</tbody></table>' +
@@ -2639,6 +2650,32 @@ $("#log-borrar").addEventListener("click", async b => {
       'borraron ' + ent(d.borradas || 0) + ' llamadas.</div>';
   }catch(e){ alert("No se pudo borrar."); }
   finally{ b.target.disabled = false; }
+});
+
+$("#log-out").addEventListener("click", ev => {
+  /* Tocar una linea copia su direccion: es lo que se quiere pegar en el
+     navegador o mandar para consultar. */
+  const tr = ev.target.closest("tr[data-ruta]");
+  if(!tr) return;
+  const ta = document.createElement("textarea");
+  ta.value = tr.dataset.ruta;
+  document.body.appendChild(ta); ta.select();
+  let ok = false;
+  try{ ok = document.execCommand("copy"); }catch(e){}
+  document.body.removeChild(ta);
+  const previo = tr.style.background;
+  tr.style.background = ok ? "var(--panel-2)" : "";
+  const aviso = document.createElement("div");
+  aviso.className = "nota";
+  aviso.textContent = ok ? "Dirección copiada." : "No se pudo copiar.";
+  aviso.style.cssText = "position:fixed;left:50%;bottom:24px;" +
+    "transform:translateX(-50%);background:var(--panel-2);padding:6px 14px;" +
+    "border:1px solid var(--rule);border-radius:3px;z-index:99";
+  document.body.appendChild(aviso);
+  setTimeout(() => {
+    tr.style.background = previo;
+    aviso.remove();
+  }, 1200);
 });
 $("#log-ver").addEventListener("click", logCrudo);
 $("#log-todo").addEventListener("click", logResumen);

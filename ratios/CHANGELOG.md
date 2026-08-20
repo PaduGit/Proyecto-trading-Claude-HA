@@ -1,5 +1,36 @@
 # Registro de cambios
 
+## 0.20.8
+
+**Las especies sin punta desaparecian de la tabla.** El snapshot guardaba
+solo los simbolos que tenian bid y ask, asi que los CER que cierran sin
+punta y solo con ultimo operado —los TZX, TX28, TX31, X30S6— se perdian
+al cerrar el mercado y la tabla mostraba tres bonos en vez de trece. Ahora
+tambien se guarda el ultimo, y esas especies vuelven a verse atenuadas,
+como dice el texto de ayuda de esa misma pantalla.
+
+**Plazos pedia a IOL con el mercado cerrado.** La condicion exigia que
+hubiera un calculo previo del ciclo para servirlo, y fuera de rueda no lo
+hay, asi que caia en la rama que pide. Ahora no pide nunca fuera de
+horario.
+
+**Plazos carga sola.** Ahora que se calcula en cada ciclo no tiene sentido
+que dependa de un boton; se muestra al entrar y el boton queda para
+forzar. La tabla pasa a mostrar TNA y TNA de caucion en vez de la tasa
+diaria, que es como se compara de verdad, y marca cuando el t1 viene de
+antes del cierre.
+
+**Panel y Calcular son una sola pestania, Ratios.** El panel de pares
+queda arriba y el calculador debajo, en un desplegable: lo que se mira
+seguido primero y lo ocasional sin estorbar. Plazos pasa antes de
+Posicion.
+
+**Tocar una linea del registro copia su direccion.** En las dos vistas.
+
+**El cierre de mercado por defecto pasa a las 17:00.** Estaba en 17:15, y
+esos quince minutos hacian que la ultima foto guardada fuera de la
+subasta de cierre en vez de la rueda plena.
+
 ## 0.20.7
 
 **Alertas de Plazos.** Vender en t0 y recomprar en t1 es cobrar hoy y
