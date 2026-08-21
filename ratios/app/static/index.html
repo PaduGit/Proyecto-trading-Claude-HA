@@ -319,6 +319,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
     <button role="tab" aria-selected="false" data-vista="opc">Opciones</button>
     <button role="tab" aria-selected="false" data-vista="plazos">Plazos</button>
     <button role="tab" aria-selected="false" data-vista="pos">Posición</button>
+    <button role="tab" aria-selected="false" data-vista="alertas">Alertas</button>
     <button role="tab" aria-selected="false" data-vista="reg">Registro</button>
     <button role="tab" aria-selected="false" data-vista="expl">Explorar</button>
   </nav>
@@ -326,8 +327,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
 
 <main>
   <section id="v-panel">
-    <div id="panel-out"></div>
-    <details id="calc-caja" style="margin-top:18px">
+    <details id="calc-caja">
       <summary>Calcular un ratio</summary>
       <div class="chips" id="c-chips"></div>
       <div class="form">
@@ -360,6 +360,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       </div>
       <div id="c-out"></div>
     </details>
+    <div id="panel-out" style="margin-top:18px"></div>
   </section>
 
   <section id="v-bonos" hidden>
@@ -372,16 +373,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       moneda, lo que se gana es un porcentaje; desde un bono, son nominales
       de ese mismo bono.</p>
 
-    <div class="hallazgo">
-      <h3>Qué tengo</h3>
-      <div class="periodos" id="cir-monedas" style="margin-bottom:8px"></div>
-      <div id="cir-bonos" class="chips"></div>
-      <div style="display:flex;gap:6px;margin-top:8px">
-        <select id="cir-add" style="flex:1"></select>
-        <button class="secundario" id="cir-add-btn"
-          style="width:auto;padding:0 14px">Agregar</button>
-      </div>
-    </div>
+    <div id="cir-tengo" class="nota"></div>
 
     <button class="primario" id="cir-btn" style="margin-top:12px">
       Buscar circuitos</button>
@@ -417,7 +409,22 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       <button class="secundario" id="pos-importar">Importar lo pegado</button>
       <div id="pos-msg"></div>
     </details>
-  </section>
+      <h3 style="margin:22px 0 6px">Tenencias</h3>
+    <p class="nota">Título y cantidad por broker. Los bonos de brokers
+      locales son los que el Rulo usa como punto de partida; los del
+      exterior se guardan pero no participan, porque no liquidan contra el
+      mercado local.</p>
+    <div id="ten-out"></div>
+    <details style="margin-top:12px">
+      <summary>Cargar pegando JSON</summary>
+      <textarea id="ten-json" rows="8" style="width:100%;margin-top:8px"
+        placeholder='{"reemplazar":"todo","tenencias":[{"broker":"IOL","simbolo":"AL30","cantidad":1200}]}'></textarea>
+      <button class="primario" id="ten-cargar" style="margin-top:8px">
+        Cargar</button>
+      <div class="nota">Con <b>reemplazar</b> en "todo" se pisa la lista
+        entera; con el nombre de un broker, solo la de ese broker.</div>
+    </details>
+</section>
 
   <section id="v-plazos" hidden>
     <p class="nota">Vender en t0 y recomprar en t1 es cobrar hoy y pagar
@@ -426,6 +433,15 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       por días corridos entre liquidaciones, así que un viernes cuenta tres.</p>
     <button class="primario" id="p-btn">Calcular ahora</button>
     <div id="p-out" style="margin-top:12px"></div>
+  </section>
+
+  <section id="v-alertas" hidden>
+    <p class="nota">Se avisa cuando la alerta pasa a cumplirse, no mientras
+      se mantiene. <b>Comprar</b> mira la punta vendedora y <b>vender</b> la
+      compradora: es contra la que se ejecuta. No dispara con puntas de antes
+      del cierre.</p>
+    <button class="primario" id="al-nueva">Nueva alerta</button>
+    <div id="al-out" style="margin-top:12px"></div>
   </section>
 
   <section id="v-reg" hidden>
@@ -640,13 +656,15 @@ document.querySelectorAll("nav button").forEach(b => {
     document.querySelectorAll("nav button").forEach(x =>
       x.setAttribute("aria-selected", x === b));
     vista = b.dataset.vista;
-    ["panel","bonos","rulo","opc","plazos","pos","reg","expl"].forEach(v =>
+    ["panel","bonos","rulo","opc","plazos","pos","alertas","reg","expl"]
+      .forEach(v =>
       $("#v-"+v).hidden = (v !== vista));
     if(vista === "bonos") cargarBonos();
     if(vista === "rulo") cargarCircuitos();
     if(vista === "opc") cargarOpciones();
     if(vista === "plazos") cargarPlazos();
-    if(vista === "pos") cargarPosicion();
+    if(vista === "alertas") cargarAlertas();
+    if(vista === "pos"){ cargarPosicion(); cargarTenencias(); }
     if(vista === "reg") cargarRegistro();
     if(vista === "expl") iniciarExplorar();
   });
@@ -929,7 +947,8 @@ $("#o-guardar").addEventListener("click", async () => {
     if(vista === "rulo") cargarCircuitos();
     if(vista === "opc") cargarOpciones();
     if(vista === "plazos") cargarPlazos();
-    if(vista === "pos") cargarPosicion();
+    if(vista === "alertas") cargarAlertas();
+    if(vista === "pos"){ cargarPosicion(); cargarTenencias(); }
     if(vista === "reg") cargarRegistro();
   }catch(e){
     $("#o-msg").innerHTML = '<div class="msg error">No se pudo guardar.</div>';
@@ -2028,50 +2047,22 @@ function dibujarCurva(){
 
 
 /* ---------- circuitos ---------- */
+/* Lo que se tiene ya no se declara aca: los bonos salen de Tenencias y las
+   monedas de la configuracion. Mantener dos lugares para lo mismo era
+   pedir que se desincronizaran. */
 let cTengo = {monedas: [], bonos: []};
-let cCandidatos = [];
-
-const MONEDAS_C = [["ARS","Pesos"],["MEP","MEP"],["CABLE","Cable"]];
 
 function pintarTengo(){
-  $("#cir-monedas").innerHTML = MONEDAS_C.map(([k,t]) =>
-    '<button aria-pressed="' + cTengo.monedas.includes(k) +
-    '" onclick="toggleMoneda(\'' + k + '\')">' + t + '</button>').join("");
-  $("#cir-bonos").innerHTML = cTengo.bonos.length
-    ? cTengo.bonos.map(b => '<span>' + esc(b) +
-        '<b onclick="quitarBono(\'' + esc(b) + '\')">✕</b></span>').join("")
-    : '<span style="border:none;color:var(--muted);padding-left:0">' +
-      'Sin bonos declarados</span>';
-  $("#cir-add").innerHTML = '<option value="">Agregar un bono…</option>' +
-    cCandidatos.filter(b => !cTengo.bonos.includes(b))
-      .map(b => '<option>' + esc(b) + '</option>').join("");
+  const caja = $("#cir-tengo");
+  if(!caja) return;
+  const bonos = cTengo.bonos.length ? cTengo.bonos.join(", ")
+    : "ningún bono cargado en Tenencias";
+  const mon = cTengo.monedas.length ? cTengo.monedas.join(", ")
+    : "ninguna moneda configurada";
+  caja.innerHTML = "Parte desde <b>" + esc(bonos) + "</b> y desde <b>" +
+    esc(mon) + "</b>. Los bonos se cargan en Posición → Tenencias; " +
+    "las monedas, en la configuración del add-on.";
 }
-
-async function guardarTengo(){
-  try{
-    await fetch(base + "api/circuitos/tengo", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify(cTengo)});
-  }catch(e){ /* si falla, se pierde al recargar y no es grave */ }
-}
-
-function toggleMoneda(m){
-  const i = cTengo.monedas.indexOf(m);
-  if(i >= 0) cTengo.monedas.splice(i,1); else cTengo.monedas.push(m);
-  pintarTengo(); guardarTengo(); cargarCircuitos();
-}
-
-function quitarBono(b){
-  cTengo.bonos = cTengo.bonos.filter(x => x !== b);
-  pintarTengo(); guardarTengo(); cargarCircuitos();
-}
-
-$("#cir-add-btn").addEventListener("click", () => {
-  const v = $("#cir-add").value;
-  if(!v) return;
-  cTengo.bonos.push(v);
-  pintarTengo(); guardarTengo(); cargarCircuitos();
-});
 
 $("#cir-btn").addEventListener("click", () => cargarCircuitos());
 
@@ -2158,14 +2149,14 @@ async function cargarCircuitos(){
       out.innerHTML = '<div class="msg error">' + esc(d.error) + '</div>';
       return;
     }
-    cCandidatos = d.candidatos || [];
     if(d.tengo) cTengo = d.tengo;
     pintarTengo();
 
     if(!cTengo.monedas.length && !cTengo.bonos.length){
       out.innerHTML = '<div class="vacio" style="padding:14px">' +
-        'Marcá arriba qué tenés disponible: monedas, bonos o ambos. ' +
-        'Solo se buscan los circuitos que podrías ejecutar.</div>';
+        'No hay de dónde partir. Cargá tus bonos en Posición → Tenencias, ' +
+        'y revisá que la configuración tenga al menos una moneda en ' +
+        '<b>monedas_rulo</b>.</div>';
       return;
     }
     if(!d.grupos || !d.grupos.length){
@@ -2679,6 +2670,216 @@ $("#log-out").addEventListener("click", ev => {
 });
 $("#log-ver").addEventListener("click", logCrudo);
 $("#log-todo").addEventListener("click", logResumen);
+
+/* ---------- alertas de precio ---------- */
+/* Comprar mira la punta vendedora y vender la compradora: es contra la
+   que se ejecuta. */
+let alEditando = null;
+
+function alFila(a){
+  const e = a.estado || {};
+  const conds = (a.condiciones || []).map(c => {
+    const d = (e.detalle || []).find(x => x.simbolo === c.simbolo &&
+      x.operacion === c.operacion && x.precio === c.precio) || {};
+    return '<div class="paso">' +
+      '<span class="ac ' + (c.operacion === "comprar" ? "c" : "v") + '">' +
+        (c.operacion === "comprar" ? "Comprar" : "Vender") + '</span>' +
+      '<span class="es">' + esc(c.simbolo) + '</span>' +
+      '<span class="pr">a ' + (c.operacion === "comprar" ? "≤ " : "≥ ") +
+        precio(c.precio) + '</span>' +
+      '<span class="im">' + (d.actual ? precio(d.actual) : "sin punta") +
+        (d.cumple ? " ✓" : "") + '</span></div>';
+  }).join("");
+  return '<div class="circuito' + (e.cumple ? " gana" : "") +
+    (a.activa ? "" : " flojo") + '">' +
+    '<div><span class="r">' + esc(a.titulo) + '</span> ' +
+      '<span style="color:var(--muted);font-size:11px">' +
+      (a.modo === "alguna" ? "alguna condición" : "todas las condiciones") +
+      (a.activa ? "" : " · pausada") + '</span></div>' +
+    '<div class="ej">' + (e.cumple ? "Se cumple ahora"
+      : e.punta_vieja ? "Puntas de antes del cierre"
+      : e.sin_precio ? "Falta cotización de algún símbolo"
+      : (e.cumplen || 0) + " de " + (e.total || 0) + " condiciones") + '</div>' +
+    conds +
+    '<div class="op-acc">' +
+      '<button class="secundario" data-al-activar="' + a.id + '" ' +
+        'data-val="' + (a.activa ? "0" : "1") + '">' +
+        (a.activa ? "Pausar" : "Activar") + '</button>' +
+      '<button class="secundario" data-al-editar="' + a.id + '">Modificar</button>' +
+      '<button class="secundario" data-al-borrar="' + a.id + '">Eliminar</button>' +
+    '</div></div>';
+}
+
+async function cargarAlertas(){
+  const out = $("#al-out");
+  try{
+    const d = await (await fetch(base + "api/alertas-precio")).json();
+    alEditando = null;
+    if(!(d.alertas || []).length){
+      out.innerHTML = '<div class="vacio">Todavía no hay alertas.</div>';
+      return;
+    }
+    out.innerHTML = d.alertas.map(alFila).join("") +
+      (d.hay_rueda === false ? '<div class="nota">Mercado cerrado: los ' +
+        'precios son los de la última rueda.</div>' : "");
+  }catch(e){
+    out.innerHTML = '<div class="msg error">No se pudieron leer.</div>';
+  }
+}
+
+function alFormulario(a){
+  const conds = (a && a.condiciones && a.condiciones.length
+    ? a.condiciones : [{simbolo:"", operacion:"vender", precio:""}]);
+  return '<div class="hallazgo"><h3>' + (a ? "Modificar" : "Nueva") +
+    ' alerta</h3>' +
+    '<div class="form"><div><label for="al-tit">Título</label>' +
+    '<input id="al-tit" value="' + esc((a && a.titulo) || "") +
+      '" placeholder="Cambio TZXM9 por DICP"></div>' +
+    '<div><label for="al-modo">Se cumple cuando</label>' +
+    '<select id="al-modo"><option value="todas"' +
+      (a && a.modo === "alguna" ? "" : " selected") +
+      '>Todas las condiciones</option>' +
+    '<option value="alguna"' + (a && a.modo === "alguna" ? " selected" : "") +
+      '>Alguna condición</option></select></div></div>' +
+    '<div id="al-conds">' + conds.map(alCondFila).join("") + '</div>' +
+    '<div class="op-acc">' +
+      '<button class="secundario" id="al-mas">Agregar condición</button>' +
+      '<button class="primario" id="al-guardar" style="width:auto;padding:0 16px">' +
+        'Guardar</button>' +
+      '<button class="secundario" id="al-cancelar">Cancelar</button>' +
+    '</div></div>';
+}
+
+function alCondFila(c){
+  c = c || {simbolo:"", operacion:"vender", precio:""};
+  return '<div class="form al-cond" style="margin-top:8px">' +
+    '<div><label>Símbolo</label><input class="al-sim" list="tickers" ' +
+      'value="' + esc(c.simbolo || "") + '" placeholder="TZXM9"></div>' +
+    '<div><label>Operación</label><select class="al-op">' +
+      '<option value="vender"' + (c.operacion === "comprar" ? "" : " selected") +
+        '>Vender</option>' +
+      '<option value="comprar"' + (c.operacion === "comprar" ? " selected" : "") +
+        '>Comprar</option></select></div>' +
+    '<div><label>Precio límite</label><input class="al-precio" ' +
+      'inputmode="decimal" value="' + (c.precio ?? "") + '"></div>' +
+    '<div><label>&nbsp;</label>' +
+      '<button class="secundario al-quitar">Quitar</button></div></div>';
+}
+
+$("#al-nueva").addEventListener("click", () => {
+  $("#al-out").innerHTML = alFormulario(null);
+});
+
+$("#al-out").addEventListener("click", async ev => {
+  const t = ev.target;
+  if(t.id === "al-cancelar"){ cargarAlertas(); return; }
+  if(t.id === "al-mas"){
+    $("#al-conds").insertAdjacentHTML("beforeend", alCondFila(null));
+    return;
+  }
+  if(t.classList.contains("al-quitar")){
+    const filas = document.querySelectorAll("#al-conds .al-cond");
+    if(filas.length > 1) t.closest(".al-cond").remove();
+    return;
+  }
+  if(t.id === "al-guardar"){
+    const condiciones = [];
+    document.querySelectorAll("#al-conds .al-cond").forEach(f => {
+      const sim = f.querySelector(".al-sim").value.trim().toUpperCase();
+      const pr = parseFloat(f.querySelector(".al-precio").value
+        .replace(/\./g, "").replace(",", "."));
+      if(sim && pr > 0)
+        condiciones.push({simbolo: sim,
+          operacion: f.querySelector(".al-op").value, precio: pr});
+    });
+    if(!condiciones.length){ alert("Cargá al menos una condición."); return; }
+    const cuerpo = {titulo: $("#al-tit").value.trim(),
+      modo: $("#al-modo").value, condiciones};
+    if(alEditando) cuerpo.id = alEditando;
+    t.disabled = true;
+    try{
+      const r = await (await fetch(base + "api/alertas-precio", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify(cuerpo)})).json();
+      if(r.error){ alert(r.error); return; }
+      cargarAlertas();
+    }catch(e){ alert("No se pudo guardar."); }
+    finally{ t.disabled = false; }
+    return;
+  }
+
+  const b = t.closest("[data-al-activar],[data-al-editar],[data-al-borrar]");
+  if(!b) return;
+  try{
+    if(b.dataset.alActivar){
+      await fetch(base + "api/alertas-precio/" + b.dataset.alActivar +
+        "/activar", {method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({activa: b.dataset.val === "1"})});
+      cargarAlertas();
+    }else if(b.dataset.alBorrar){
+      if(!confirm("¿Eliminar la alerta?")) return;
+      await fetch(base + "api/alertas-precio/" + b.dataset.alBorrar +
+        "/borrar", {method:"POST"});
+      cargarAlertas();
+    }else{
+      const d = await (await fetch(base + "api/alertas-precio")).json();
+      const a = (d.alertas || []).find(x => x.id == b.dataset.alEditar);
+      if(!a) return;
+      alEditando = a.id;
+      $("#al-out").innerHTML = alFormulario(a);
+    }
+  }catch(e){ alert("No se pudo."); }
+});
+
+/* ---------- tenencias ---------- */
+async function cargarTenencias(){
+  const out = $("#ten-out");
+  if(!out) return;
+  try{
+    const d = await (await fetch(base + "api/tenencias")).json();
+    const t = d.tenencias || [];
+    if(!t.length){
+      out.innerHTML = '<div class="vacio">Todavía no cargaste tenencias.</div>';
+      return;
+    }
+    const brokers = [...new Set(t.map(x => x.broker))];
+    out.innerHTML = brokers.map(br => {
+      const filas = t.filter(x => x.broker === br);
+      const fuera = filas[0].extranjero;
+      return '<div class="hallazgo"><h3>' + esc(br) +
+        (fuera ? ' <span class="tocar">exterior</span>' : "") + '</h3>' +
+        '<table class="tabla"><tbody>' + filas.map(f =>
+          '<tr><td>' + esc(f.simbolo) + '</td>' +
+          '<td class="num">' + ent(f.cantidad) + '</td></tr>').join("") +
+        '</tbody></table></div>';
+    }).join("") +
+    '<div class="nota">El Rulo parte de: ' +
+      ((d.en_rulo && d.en_rulo.bonos || []).join(", ") || "ningún bono") +
+      ' · monedas ' +
+      ((d.en_rulo && d.en_rulo.monedas || []).join(", ") || "ninguna") +
+      '</div>';
+  }catch(e){
+    out.innerHTML = '<div class="msg error">No se pudieron leer.</div>';
+  }
+}
+
+$("#ten-cargar").addEventListener("click", async e => {
+  const b = e.target;
+  let cuerpo;
+  try{ cuerpo = JSON.parse($("#ten-json").value); }
+  catch(err){ alert("El JSON no es válido: " + err.message); return; }
+  b.disabled = true;
+  try{
+    const r = await (await fetch(base + "api/tenencias", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(cuerpo)})).json();
+    if(r.error){ alert(r.error); return; }
+    alert("Se cargaron " + ent(r.cargadas) + " tenencias.");
+    $("#ten-json").value = "";
+    cargarTenencias();
+  }catch(err){ alert("No se pudo cargar."); }
+  finally{ b.disabled = false; }
+});
 
 cargarPanel();
 setInterval(() => { if(vista === "panel") cargarPanel(); }, 30000);

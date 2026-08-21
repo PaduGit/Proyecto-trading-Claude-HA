@@ -456,9 +456,7 @@ def crear_app(monitor):
             # solo cotiza en pesos, así que venderlo y recomprarlo paga su
             # propio spread sin convertir nada.
             puentes = [b for b in bonos_cfg if (b + "D") in esps]
-            tengo = db.get_estado("rulo_tengo")
-            import json as _j
-            tengo = _j.loads(tengo) if tengo else {"monedas": [], "bonos": []}
+            tengo = monitor.tengo_actual()
             # los bonos declarados se suman al universo aunque les falte
             # alguna especie: pueden ser origen aunque no sean intermedios
             universo = sorted(set(puentes) | set(tengo.get("bonos") or []))
@@ -481,16 +479,6 @@ def crear_app(monitor):
         except Exception as e:
             log.exception("circuitos")
             return jsonify({"error": str(e)}), 500
-
-    @app.post("/api/circuitos/tengo")
-    def circuitos_tengo():
-        d = request.get_json(silent=True) or {}
-        import json as _j
-        tengo = {"monedas": [m for m in (d.get("monedas") or [])
-                             if m in CI.MONEDAS],
-                 "bonos": [str(b).upper() for b in (d.get("bonos") or [])]}
-        db.set_estado("rulo_tengo", _j.dumps(tengo))
-        return jsonify(tengo)
 
     @app.get("/api/rulo")
     def rulo_tabla():
@@ -644,6 +632,57 @@ def crear_app(monitor):
             return jsonify(diag)
         except Exception as e:
             return jsonify({"error": str(e)}), 500
+
+    # -- alertas de precio y tenencias --------------------------------
+
+    @app.get("/api/alertas-precio")
+    def alertas_precio_listar():
+        cot = monitor.cotizaciones_vigentes()
+        out = []
+        for a in db.alertas_precio():
+            a["estado"] = monitor.evaluar_alerta(a, cot)
+            out.append(a)
+        return jsonify({"alertas": out, "hay_rueda": monitor._en_horario()})
+
+    @app.post("/api/alertas-precio")
+    def alertas_precio_crear():
+        d = request.get_json(silent=True) or {}
+        if not (d.get("condiciones") or []):
+            return jsonify({"error": "hace falta al menos una condición"}), 400
+        return jsonify({"id": db.guardar_alerta_precio(d, d.get("id"))})
+
+    @app.post("/api/alertas-precio/<int:aid>/activar")
+    def alertas_precio_activar(aid):
+        d = request.get_json(silent=True) or {}
+        db.activar_alerta_precio(aid, bool(d.get("activa", True)))
+        monitor._precio_avisado.discard(aid)
+        return jsonify({"id": aid, "activa": bool(d.get("activa", True))})
+
+    @app.post("/api/alertas-precio/<int:aid>/borrar")
+    def alertas_precio_borrar(aid):
+        monitor._precio_avisado.discard(aid)
+        return jsonify({"borradas": db.borrar_alerta_precio(aid)})
+
+    @app.get("/api/tenencias")
+    def tenencias_listar():
+        fuera = monitor.brokers_extranjeros()
+        filas = db.tenencias()
+        for f in filas:
+            f["extranjero"] = f["broker"].upper() in fuera
+        return jsonify({
+            "tenencias": filas,
+            "brokers_extranjeros": sorted(fuera),
+            "en_rulo": monitor.tengo_actual(),
+        })
+
+    @app.post("/api/tenencias")
+    def tenencias_cargar():
+        d = request.get_json(silent=True) or {}
+        filas = d.get("tenencias")
+        if not isinstance(filas, list):
+            return jsonify({"error": "falta la lista 'tenencias'"}), 400
+        n = db.guardar_tenencias(filas, d.get("reemplazar") or "todo")
+        return jsonify({"cargadas": n, "en_rulo": monitor.tengo_actual()})
 
     @app.get("/api/cer")
     def cer_estado():

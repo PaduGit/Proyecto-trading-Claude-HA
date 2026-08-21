@@ -1,5 +1,40 @@
 # Registro de cambios
 
+## 0.21.0
+
+**Alertas de precio.** Pestania nueva. Una alerta es un titulo, un modo y
+una o mas condiciones de tres datos: simbolo, operacion y precio limite.
+Comprar mira la punta vendedora y vender la compradora, que es contra la
+que se ejecuta, asi que no hace falta aclarar el sentido de la
+comparacion: vender a 89 se cumple cuando la punta compradora llega a 89.
+
+Con modo "todas" sirve para armar un cambio entre dos titulos: vender
+TZXM9 arriba de 89 y comprar DICP abajo de 47.000, avisando solo cuando
+las dos se dan a la vez. Con modo "alguna" y dos condiciones sobre el
+mismo simbolo queda una alerta de rango, sin necesidad de un tipo aparte.
+
+Cada alerta se pausa, se modifica y se elimina. La pantalla muestra el
+precio actual de cada condicion y cuales se cumplen. Avisa al cruzar, no
+mientras se mantiene, y no dispara con puntas de antes del cierre. Los
+simbolos de las alertas activas entran solos al ciclo.
+
+**Tenencias.** Titulo y cantidad por broker, dentro de Posicion, cargadas
+pegando JSON. Con "reemplazar" en "todo" se pisa la lista entera; con el
+nombre de un broker, solo esa cuenta, que es lo habitual porque se mira
+un broker por vez.
+
+Reemplazan al "tengo" del Rulo, y solo entran las de brokers locales: un
+titulo en una cuenta del exterior no liquida contra el mercado local, asi
+que no puede ser una pata del circuito. Los brokers extranjeros y las
+monedas del Rulo pasan a la configuracion, que es donde corresponde algo
+que no cambia seguido.
+
+Por eso el Rulo pierde los botones de monedas y bonos: mantener dos
+lugares para declarar lo mismo era pedir que se desincronizaran. En su
+lugar queda una linea que dice desde donde parte y donde se edita.
+
+**En Ratios, el calculador va arriba.**
+
 ## 0.20.8
 
 **Las especies sin punta desaparecian de la tabla.** El snapshot guardaba

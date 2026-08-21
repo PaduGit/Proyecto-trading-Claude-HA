@@ -721,3 +721,140 @@ def cache_borrar(prefijo=""):
                     ("cache:" + prefijo + "%",))
     c.commit()
     return cur.rowcount
+
+
+# -- alertas de precio y tenencias ------------------------------------
+
+ESQUEMA_ALERTAS = """
+CREATE TABLE IF NOT EXISTS alerta_precio (
+  id     INTEGER PRIMARY KEY AUTOINCREMENT,
+  titulo TEXT NOT NULL,
+  modo   TEXT NOT NULL DEFAULT 'todas',
+  activa INTEGER NOT NULL DEFAULT 1,
+  creada TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS alerta_cond (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  alerta_id INTEGER NOT NULL,
+  simbolo   TEXT NOT NULL,
+  operacion TEXT NOT NULL,
+  precio    REAL NOT NULL,
+  orden     INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS ix_cond_alerta ON alerta_cond(alerta_id);
+CREATE TABLE IF NOT EXISTS tenencia (
+  broker   TEXT NOT NULL,
+  simbolo  TEXT NOT NULL,
+  cantidad REAL NOT NULL,
+  ts       TEXT NOT NULL,
+  PRIMARY KEY (broker, simbolo)
+);
+"""
+
+
+def init_alertas():
+    c = conn()
+    c.executescript(ESQUEMA_ALERTAS)
+    c.commit()
+
+
+def alertas_precio(solo_activas=False):
+    c = conn()
+    q = "SELECT * FROM alerta_precio"
+    if solo_activas:
+        q += " WHERE activa = 1"
+    q += " ORDER BY id"
+    out = []
+    for a in c.execute(q):
+        d = dict(a)
+        d["condiciones"] = [dict(r) for r in c.execute(
+            "SELECT * FROM alerta_cond WHERE alerta_id=? ORDER BY orden, id",
+            (a["id"],))]
+        out.append(d)
+    return out
+
+
+def guardar_alerta_precio(d, alerta_id=None):
+    """Crea o reescribe una alerta con sus condiciones."""
+    c = conn()
+    titulo = (d.get("titulo") or "").strip() or "Sin titulo"
+    modo = "alguna" if (d.get("modo") or "todas") == "alguna" else "todas"
+    if alerta_id:
+        c.execute("UPDATE alerta_precio SET titulo=?, modo=? WHERE id=?",
+                  (titulo, modo, alerta_id))
+        c.execute("DELETE FROM alerta_cond WHERE alerta_id=?", (alerta_id,))
+    else:
+        cur = c.execute(
+            "INSERT INTO alerta_precio (titulo, modo, creada) VALUES (?,?,?)",
+            (titulo, modo, datetime.now().isoformat(timespec="seconds")))
+        alerta_id = cur.lastrowid
+    for i, cond in enumerate(d.get("condiciones") or []):
+        sim = (cond.get("simbolo") or "").strip().upper()
+        op = "comprar" if (cond.get("operacion") or "").lower().startswith("c") \
+            else "vender"
+        try:
+            precio = float(cond.get("precio"))
+        except (TypeError, ValueError):
+            continue
+        if not sim or precio <= 0:
+            continue
+        c.execute(
+            "INSERT INTO alerta_cond (alerta_id, simbolo, operacion, precio, "
+            "orden) VALUES (?,?,?,?,?)", (alerta_id, sim, op, precio, i))
+    c.commit()
+    return alerta_id
+
+
+def activar_alerta_precio(alerta_id, activa):
+    c = conn()
+    c.execute("UPDATE alerta_precio SET activa=? WHERE id=?",
+              (1 if activa else 0, alerta_id))
+    c.commit()
+
+
+def borrar_alerta_precio(alerta_id):
+    c = conn()
+    c.execute("DELETE FROM alerta_cond WHERE alerta_id=?", (alerta_id,))
+    cur = c.execute("DELETE FROM alerta_precio WHERE id=?", (alerta_id,))
+    c.commit()
+    return cur.rowcount
+
+
+def tenencias(broker=None):
+    q = "SELECT * FROM tenencia"
+    args = []
+    if broker:
+        q += " WHERE broker = ?"
+        args.append(broker)
+    q += " ORDER BY broker, simbolo"
+    return [dict(r) for r in conn().execute(q, args)]
+
+
+def guardar_tenencias(filas, reemplazar="todo"):
+    """Pisa la lista entera o la de un broker.
+
+    Reemplazar por broker permite actualizar una cuenta sin tocar la otra,
+    que es lo habitual: se mira el saldo de un broker por vez.
+    """
+    c = conn()
+    if reemplazar == "todo":
+        c.execute("DELETE FROM tenencia")
+    elif reemplazar:
+        c.execute("DELETE FROM tenencia WHERE broker = ?", (reemplazar,))
+    ahora = datetime.now().isoformat(timespec="seconds")
+    n = 0
+    for f in filas or []:
+        br = (f.get("broker") or "").strip()
+        sim = (f.get("simbolo") or "").strip().upper()
+        try:
+            cant = float(f.get("cantidad"))
+        except (TypeError, ValueError):
+            continue
+        if not br or not sim:
+            continue
+        c.execute(
+            "INSERT OR REPLACE INTO tenencia (broker, simbolo, cantidad, ts) "
+            "VALUES (?,?,?,?)", (br, sim, cant, ahora))
+        n += 1
+    c.commit()
+    return n

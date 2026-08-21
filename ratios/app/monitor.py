@@ -11,6 +11,9 @@ from iol import IOLError
 
 log = logging.getLogger("monitor")
 
+# Simbolos que en tenencias representan efectivo, no un titulo.
+MONEDAS_TENENCIA = {"ARS", "$", "MEP", "D", "CABLE", "C", "USD"}
+
 VENTANA_DIAS = 90
 MIN_MUESTRA_Z = 20
 MIN_MUESTRA_PROPIA = 15
@@ -41,6 +44,7 @@ class Monitor:
         self._opc_desarme = set()   # posiciones ya avisadas
         self._rulo_avisado = set()   # circuitos ya avisados
         self._plazos_avisado = set()
+        self._precio_avisado = set()
         self.plazos = []
         self.circuitos = {}         # ultimo resultado del Rulo
         self.snapshot_desde = None
@@ -149,6 +153,14 @@ class Monitor:
             s |= set(BO.especies())
         except Exception as e:
             log.debug("especies de bonos: %s", e)
+        # los simbolos de las alertas de precio: sin cotizacion no hay
+        # forma de evaluarlas
+        try:
+            for a in db.alertas_precio(solo_activas=True):
+                for c in a.get("condiciones") or []:
+                    s.add(c["simbolo"])
+        except Exception as e:
+            log.debug("simbolos de alertas: %s", e)
         s.discard("")
         return s
 
@@ -695,6 +707,10 @@ class Monitor:
             except Exception as e:
                 log.debug("revisar plazos: %s", e)
             try:
+                self.revisar_alertas_precio(mapa)
+            except Exception as e:
+                log.debug("revisar alertas de precio: %s", e)
+            try:
                 self._guardar_snapshot()
             except Exception as e:
                 log.debug("guardar snapshot: %s", e)
@@ -920,6 +936,104 @@ class Monitor:
                                 (val or {}).get("ganancia_pct"), None, titulo)
 
 
+    def brokers_extranjeros(self):
+        return {b.strip().upper()
+                for b in (self.cfg.get("brokers_extranjeros") or "").split(",")
+                if b.strip()}
+
+    def tengo_actual(self):
+        """Que hay para armar circuitos.
+
+        Los bonos salen de las tenencias, y solo las de brokers locales:
+        un titulo en una cuenta del exterior no liquida contra el mercado
+        local, asi que no puede ser una pata del rulo. Las monedas salen
+        de la configuracion, que es donde se elige en cuales se opera.
+        """
+        fuera = self.brokers_extranjeros()
+        monedas = [m.strip().upper()
+                   for m in (self.cfg.get("monedas_rulo") or "ARS,MEP").split(",")
+                   if m.strip()]
+        bonos = sorted({t["simbolo"] for t in db.tenencias()
+                        if t["broker"].upper() not in fuera
+                        and t["cantidad"]
+                        and t["simbolo"] not in MONEDAS_TENENCIA})
+        return {"monedas": monedas, "bonos": bonos}
+
+
+    # -- alertas de precio --------------------------------------------
+
+    def evaluar_alerta(self, alerta, cot):
+        """Estado de una alerta y de cada una de sus condiciones.
+
+        Comprar mira la punta vendedora y vender la compradora: es contra
+        la que se ejecuta. Con puntas repuestas de antes del cierre no se
+        da por cumplida ninguna.
+        """
+        detalle, cumplen, hay_vieja, falta = [], 0, False, False
+        for cond in alerta.get("condiciones") or []:
+            c = cot.get(cond["simbolo"]) or {}
+            if c.get("punta_vieja"):
+                hay_vieja = True
+            if cond["operacion"] == "comprar":
+                actual = c.get("venta") or 0        # pago el ask
+                ok = bool(actual) and actual <= cond["precio"]
+            else:
+                actual = c.get("compra") or 0       # cobro el bid
+                ok = bool(actual) and actual >= cond["precio"]
+            if not actual:
+                falta = True
+            cumplen += 1 if ok else 0
+            detalle.append({"simbolo": cond["simbolo"],
+                            "operacion": cond["operacion"],
+                            "precio": cond["precio"], "actual": actual,
+                            "cumple": ok})
+        total = len(detalle)
+        if not total:
+            return {"cumple": False, "detalle": detalle}
+        cumple = cumplen == total if alerta["modo"] == "todas" else cumplen > 0
+        return {"cumple": cumple and not hay_vieja and not falta,
+                "cumplen": cumplen, "total": total,
+                "punta_vieja": hay_vieja, "sin_precio": falta,
+                "detalle": detalle}
+
+    def revisar_alertas_precio(self, cot=None):
+        """Avisa cuando una alerta pasa a cumplirse, no mientras se
+        mantiene: vuelve a armarse cuando deja de cumplirse."""
+        cot = cot if cot is not None else dict(self.cotizaciones)
+        if not cot:
+            return 0
+        avisos = []
+        for a in db.alertas_precio(solo_activas=True):
+            r = self.evaluar_alerta(a, cot)
+            if not r["cumple"]:
+                self._precio_avisado.discard(a["id"])
+                continue
+            if a["id"] in self._precio_avisado:
+                continue
+            self._precio_avisado.add(a["id"])
+            avisos.append((a, r))
+        if avisos:
+            self._avisar_precio(avisos)
+        return len(avisos)
+
+    def _avisar_precio(self, avisos):
+        if len(avisos) == 1:
+            titulo = avisos[0][0]["titulo"]
+        else:
+            titulo = "%d alertas de precio" % len(avisos)
+        lineas = []
+        for a, r in avisos:
+            partes = ["%s %s a %s (esta %s)" % (
+                d["operacion"], d["simbolo"], _n(d["precio"]), _n(d["actual"]))
+                for d in r["detalle"]]
+            union = " y " if a["modo"] == "todas" else " o "
+            lineas.append("<b>%s</b>: %s" % (a["titulo"], union.join(partes)))
+        self.notif.enviar(titulo, "<br>".join(lineas))
+        for a, r in avisos:
+            db.registrar_alerta(str(a["id"]), "precio", None, None,
+                                a["titulo"])
+
+
     # -- plazos -------------------------------------------------------
 
     def revisar_plazos(self, cot=None):
@@ -994,11 +1108,7 @@ class Monitor:
         cot = cot if cot is not None else dict(self.cotizaciones)
         if not cot:
             return 0
-        try:
-            tengo = json.loads(db.get_estado("tengo") or "null") or {
-                "monedas": [], "bonos": []}
-        except Exception:
-            tengo = {"monedas": [], "bonos": []}
+        tengo = self.tengo_actual()
 
         puentes = [t["ticker"] for t in (self.cfg.get("arbitraje_tickers") or [])
                    if t.get("ticker")]

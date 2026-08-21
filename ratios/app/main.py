@@ -130,6 +130,7 @@ def main():
     db.init_posicion()
     db.init_opciones()
     db.init_api_log()
+    db.init_alertas()
     cer.init()
     historico.init()
     curva.init()
