@@ -953,10 +953,22 @@ class Monitor:
         monedas = [m.strip().upper()
                    for m in (self.cfg.get("monedas_rulo") or "ARS,MEP").split(",")
                    if m.strip()]
+        try:
+            import bonos as BO
+            con_cronograma = set(BO.cargar()[0])
+        except Exception:
+            con_cronograma = set()
+
+        # Solo bonos con cronograma cargado: una accion o un CEDEAR no
+        # tiene especie D ni C, asi que no puede cruzar de moneda y solo
+        # ensuciaria el universo de circuitos.
         bonos = sorted({t["simbolo"] for t in db.tenencias()
                         if t["broker"].upper() not in fuera
                         and t["cantidad"]
-                        and t["simbolo"] not in MONEDAS_TENENCIA})
+                        and t["simbolo"] not in MONEDAS_TENENCIA
+                        and (t.get("tipo") or "") in ("bonos", "letras", "")
+                        and (not con_cronograma
+                             or t["simbolo"] in con_cronograma)})
         return {"monedas": monedas, "bonos": bonos}
 
 

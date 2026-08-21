@@ -5,8 +5,8 @@
 **Alertas de precio.** Pestania nueva. Una alerta es un titulo, un modo y
 una o mas condiciones de tres datos: simbolo, operacion y precio limite.
 Comprar mira la punta vendedora y vender la compradora, que es contra la
-que se ejecuta, asi que no hace falta aclarar el sentido de la
-comparacion: vender a 89 se cumple cuando la punta compradora llega a 89.
+que se ejecuta, asi que no hace falta aclarar el sentido: vender a 89 se
+cumple cuando la punta compradora llega a 89.
 
 Con modo "todas" sirve para armar un cambio entre dos titulos: vender
 TZXM9 arriba de 89 y comprar DICP abajo de 47.000, avisando solo cuando
@@ -18,22 +18,35 @@ precio actual de cada condicion y cuales se cumplen. Avisa al cruzar, no
 mientras se mantiene, y no dispara con puntas de antes del cierre. Los
 simbolos de las alertas activas entran solos al ciclo.
 
-**Tenencias.** Titulo y cantidad por broker, dentro de Posicion, cargadas
-pegando JSON. Con "reemplazar" en "todo" se pisa la lista entera; con el
-nombre de un broker, solo esa cuenta, que es lo habitual porque se mira
-un broker por vez.
+**Tenencias, con pestania propia.** Titulo, cantidad, broker y tipo,
+cargados pegando JSON. Con "reemplazar" en "todo" se pisa la lista
+entera; con el nombre de un broker, solo esa cuenta, que es lo habitual
+porque se mira un broker por vez. La pantalla filtra por broker y por
+tipo y ordena por cualquier columna.
 
-Reemplazan al "tengo" del Rulo, y solo entran las de brokers locales: un
-titulo en una cuenta del exterior no liquida contra el mercado local, asi
-que no puede ser una pata del circuito. Los brokers extranjeros y las
-monedas del Rulo pasan a la configuracion, que es donde corresponde algo
-que no cambia seguido.
+Reemplazan al "tengo" del Rulo, y solo entran los bonos con cronograma
+cargado y de brokers locales: una accion o un CEDEAR no tiene especie D
+ni C, asi que no puede cruzar de moneda, y un titulo en una cuenta del
+exterior no liquida contra el mercado local. Los brokers extranjeros y
+las monedas del Rulo pasan a la configuracion.
 
 Por eso el Rulo pierde los botones de monedas y bonos: mantener dos
-lugares para declarar lo mismo era pedir que se desincronizaran. En su
-lugar queda una linea que dice desde donde parte y donde se edita.
+lugares para declarar lo mismo era pedir que se desincronizaran.
 
-**En Ratios, el calculador va arriba.**
+**La curva se ajusta por emisor.** Un provincial rinde por encima de la
+curva nacional por su propio riesgo de credito, y mezclarlos hacia dos
+danios a la vez: el provincial se mostraba barato cuando solo reflejaba
+su spread, y de paso empujaba la curva dejando a los nacionales caros.
+PBA28 queda en su propia familia y, al ser el unico, sin desvio hasta que
+haya mas de su clase. Hay un filtro de emisor en la tabla, que arranca
+mostrando todos.
+
+Despues de actualizar conviene correr "Recalcular desvios": los z-score
+guardados se calcularon con PBA28 dentro de la curva nacional.
+
+**Posicion se mudo a Ratios**, debajo del panel de pares, que es donde
+tiene sentido leerla. En Ratios el calculador va arriba. Y la pestania
+Plazos pasa a llamarse Pases.
 
 ## 0.20.8
 

@@ -730,6 +730,7 @@ bonos:
 
   PBA28:
     nombre: Prov. Buenos Aires CER 9% 28/04/2028
+    emisor_tipo: provincia
     ley: argentina
     emisor: Provincia de Buenos Aires
     moneda: ARS

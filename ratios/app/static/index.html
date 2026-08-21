@@ -317,8 +317,8 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
     <button role="tab" aria-selected="false" data-vista="bonos">Bonos</button>
     <button role="tab" aria-selected="false" data-vista="rulo">Rulo</button>
     <button role="tab" aria-selected="false" data-vista="opc">Opciones</button>
-    <button role="tab" aria-selected="false" data-vista="plazos">Plazos</button>
-    <button role="tab" aria-selected="false" data-vista="pos">Posición</button>
+    <button role="tab" aria-selected="false" data-vista="plazos">Pases</button>
+    <button role="tab" aria-selected="false" data-vista="pos">Tenencias</button>
     <button role="tab" aria-selected="false" data-vista="alertas">Alertas</button>
     <button role="tab" aria-selected="false" data-vista="reg">Registro</button>
     <button role="tab" aria-selected="false" data-vista="expl">Explorar</button>
@@ -361,6 +361,23 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       <div id="c-out"></div>
     </details>
     <div id="panel-out" style="margin-top:18px"></div>
+    <h3 style="margin:22px 0 6px">Posición</h3>
+    <div id="pos-out"></div>
+    <button class="secundario" id="pos-nuevo" style="margin-top:14px">
+      + Nuevo grupo</button>
+    <details class="avanzado">
+      <summary>Respaldo</summary>
+      <p class="nota" style="margin-top:10px">Copiá este texto y guardalo
+        afuera. Si algún día hay que reconstruir, lo pegás acá y volvés
+        a tener los grupos y movimientos.</p>
+      <button class="secundario" id="pos-exportar">Exportar</button>
+      <textarea id="pos-texto" style="width:100%;min-height:110px;
+        background:var(--panel);border:1px solid var(--rule);color:var(--bone);
+        font-family:var(--mono);font-size:10px;padding:8px;border-radius:3px;
+        margin-top:8px" placeholder="Pegá acá un respaldo para importarlo"></textarea>
+      <button class="secundario" id="pos-importar">Importar lo pegado</button>
+      <div id="pos-msg"></div>
+    </details>
   </section>
 
   <section id="v-bonos" hidden>
@@ -393,36 +410,23 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
   </section>
 
   <section id="v-pos" hidden>
-    <div id="pos-out"></div>
-    <button class="secundario" id="pos-nuevo" style="margin-top:14px">
-      + Nuevo grupo</button>
-    <details class="avanzado">
-      <summary>Respaldo</summary>
-      <p class="nota" style="margin-top:10px">Copiá este texto y guardalo
-        afuera. Si algún día hay que reconstruir, lo pegás acá y volvés
-        a tener los grupos y movimientos.</p>
-      <button class="secundario" id="pos-exportar">Exportar</button>
-      <textarea id="pos-texto" style="width:100%;min-height:110px;
-        background:var(--panel);border:1px solid var(--rule);color:var(--bone);
-        font-family:var(--mono);font-size:10px;padding:8px;border-radius:3px;
-        margin-top:8px" placeholder="Pegá acá un respaldo para importarlo"></textarea>
-      <button class="secundario" id="pos-importar">Importar lo pegado</button>
-      <div id="pos-msg"></div>
-    </details>
-      <h3 style="margin:22px 0 6px">Tenencias</h3>
+    <div class="periodos" id="ten-broker" style="margin-bottom:6px"></div>
+    <div class="periodos" id="ten-tipo" style="margin-bottom:10px"></div>
+    <div id="ten-out"></div>
     <p class="nota">Título y cantidad por broker. Los bonos de brokers
       locales son los que el Rulo usa como punto de partida; los del
       exterior se guardan pero no participan, porque no liquidan contra el
       mercado local.</p>
-    <div id="ten-out"></div>
     <details style="margin-top:12px">
       <summary>Cargar pegando JSON</summary>
       <textarea id="ten-json" rows="8" style="width:100%;margin-top:8px"
-        placeholder='{"reemplazar":"todo","tenencias":[{"broker":"IOL","simbolo":"AL30","cantidad":1200}]}'></textarea>
+        placeholder='{"reemplazar":"IOL","tenencias":[{"broker":"IOL","simbolo":"AL30","cantidad":1200,"tipo":"bonos"}]}'></textarea>
       <button class="primario" id="ten-cargar" style="margin-top:8px">
         Cargar</button>
       <div class="nota">Con <b>reemplazar</b> en "todo" se pisa la lista
-        entera; con el nombre de un broker, solo la de ese broker.</div>
+        entera; con el nombre de un broker, solo la de ese broker. El
+        <b>tipo</b> puede ser moneda, bonos, letras, bcra, on, cedears,
+        acciones u otros.</div>
     </details>
 </section>
 
@@ -659,12 +663,13 @@ document.querySelectorAll("nav button").forEach(b => {
     ["panel","bonos","rulo","opc","plazos","pos","alertas","reg","expl"]
       .forEach(v =>
       $("#v-"+v).hidden = (v !== vista));
+    if(vista === "panel") cargarPosicion();
     if(vista === "bonos") cargarBonos();
     if(vista === "rulo") cargarCircuitos();
     if(vista === "opc") cargarOpciones();
     if(vista === "plazos") cargarPlazos();
     if(vista === "alertas") cargarAlertas();
-    if(vista === "pos"){ cargarPosicion(); cargarTenencias(); }
+    if(vista === "pos") cargarTenencias();
     if(vista === "reg") cargarRegistro();
     if(vista === "expl") iniciarExplorar();
   });
@@ -943,12 +948,13 @@ $("#o-guardar").addEventListener("click", async () => {
     if(!r.ok){ $("#o-msg").innerHTML = '<div class="msg error">' +
       esc(d.error || "No se pudo guardar.") + '</div>'; return; }
     $("#dlg-op").close();
+    if(vista === "panel") cargarPosicion();
     if(vista === "bonos") cargarBonos();
     if(vista === "rulo") cargarCircuitos();
     if(vista === "opc") cargarOpciones();
     if(vista === "plazos") cargarPlazos();
     if(vista === "alertas") cargarAlertas();
-    if(vista === "pos"){ cargarPosicion(); cargarTenencias(); }
+    if(vista === "pos") cargarTenencias();
     if(vista === "reg") cargarRegistro();
   }catch(e){
     $("#o-msg").innerHTML = '<div class="msg error">No se pudo guardar.</div>';
@@ -1535,6 +1541,7 @@ $("#rehacer-curva").addEventListener("click", async e => {
       : "Desvíos recalculados.\n\n" + d.puntos + " puntos nuevos\n" +
         "Total: " + d.total + " de " + d.especies + " especies\n" +
         (d.desde ? d.desde + " a " + d.hasta : ""));
+    if(vista === "panel") cargarPosicion();
     if(vista === "bonos") cargarBonos();
   }catch(err){ alert("No se pudo recalcular."); }
 });
@@ -1585,6 +1592,7 @@ $("#reintentar-precio").addEventListener("click", async e => {
     alert(d.reintentadas
       ? "Se vuelven a pedir " + d.reintentadas + " especies."
       : "No había ninguna apartada.");
+    if(vista === "panel") cargarPosicion();
     if(vista === "bonos") cargarBonos();
   }catch(err){ alert("No se pudo."); }
 });
@@ -1852,13 +1860,19 @@ async function graficarTir(sim, periodo){
 }
 
 /* ---------- filtros ---------- */
-const filtro = {ley: "todas", tipo: "todos", moneda: "todas"};
+const filtro = {ley: "todas", tipo: "todos", moneda: "todas",
+                emisor: "todos"};
 
 const LEYES = [["todas","Todas"],["AR","Argentina"],["NY","Nueva York"]];
 const TIPOS = [["todos","Todos"],["hard_dollar","Hard dollar"],["cer","CER"],
                ["tasa_fija","Tasa fija $"],["dual","Duales"]];
 const MONEDAS = [["todas","Todas"],["ARS","Pesos"],["MEP","D · MEP"],
                  ["CABLE","C · Cable"]];
+/* La curva se ajusta por emisor: un provincial rinde por encima de la
+   nacional por su propio riesgo de crédito. El filtro es solo para mirar;
+   por defecto se ven todos. */
+const EMISORES = [["todos","Todos"],["nacion","Nación"],
+                  ["provincia","Provincia"],["bcra","BCRA"]];
 
 /* color por moneda de cotización, para el gráfico con varias series */
 const COLOR_MONEDA = {ARS:"#E9E5DC", MEP:"#6FA88C", CABLE:"#7FA6B8"};
@@ -1869,6 +1883,7 @@ function selectorFamilias(filas){
     const hay = k => k === "todas" || k === "todos" ||
       filas.some(f => (clave === "ley" ? f.ley_cod
                      : clave === "tipo" ? f.tipo
+                     : clave === "emisor" ? (f.emisor || "nacion")
                      : f.moneda_cotiza) === k);
     const disp = opciones.filter(([k]) => hay(k));
     if(disp.length < 3) return "";
@@ -1880,7 +1895,8 @@ function selectorFamilias(filas){
   };
   return fila("Ley", LEYES, "ley") +
          fila("Tipo", TIPOS, "tipo") +
-         fila("Moneda", MONEDAS, "moneda");
+         fila("Moneda", MONEDAS, "moneda") +
+         fila("Emisor", EMISORES, "emisor");
 }
 
 function elegirFiltro(clave, valor){
@@ -1892,7 +1908,8 @@ function filtrarFamilia(filas){
   return filas.filter(f =>
     (filtro.ley === "todas" || f.ley_cod === filtro.ley) &&
     (filtro.tipo === "todos" || f.tipo === filtro.tipo) &&
-    (filtro.moneda === "todas" || f.moneda_cotiza === filtro.moneda));
+    (filtro.moneda === "todas" || f.moneda_cotiza === filtro.moneda) &&
+    (filtro.emisor === "todos" || (f.emisor || "nacion") === filtro.emisor));
 }
 
 /* ---------- orden de la tabla ---------- */
@@ -2832,36 +2849,108 @@ $("#al-out").addEventListener("click", async ev => {
 });
 
 /* ---------- tenencias ---------- */
+const TIPOS_TEN = [["", "Todos"], ["moneda", "Efectivo"], ["bonos", "Bonos"],
+  ["letras", "Letras"], ["bcra", "BCRA"], ["on", "ON"],
+  ["cedears", "CEDEARs"], ["acciones", "Acciones"], ["otros", "Otros"]];
+let tenDatos = [];
+let tenFiltro = {broker: "", tipo: ""};
+let tenOrden = {col: "simbolo", asc: true};
+
+function tenPintar(){
+  const out = $("#ten-out");
+  if(!out) return;
+  let filas = tenDatos.filter(t =>
+    (!tenFiltro.broker || t.broker === tenFiltro.broker) &&
+    (!tenFiltro.tipo || (t.tipo || "otros") === tenFiltro.tipo));
+  const c = tenOrden.col, signo = tenOrden.asc ? 1 : -1;
+  filas = filas.slice().sort((a, b) => {
+    const x = a[c], y = b[c];
+    if(typeof x === "number" && typeof y === "number") return (x - y) * signo;
+    return String(x ?? "").localeCompare(String(y ?? "")) * signo;
+  });
+  if(!filas.length){
+    out.innerHTML = '<div class="vacio">Nada con esos filtros.</div>';
+    return;
+  }
+  const flecha = k => tenOrden.col === k ? (tenOrden.asc ? " ↑" : " ↓") : "";
+  out.innerHTML =
+    '<table class="tabla"><thead><tr>' +
+      '<th onclick="tenOrdenar(\'simbolo\')">Especie' + flecha("simbolo") + '</th>' +
+      '<th onclick="tenOrdenar(\'tipo\')">Tipo' + flecha("tipo") + '</th>' +
+      '<th onclick="tenOrdenar(\'broker\')">Broker' + flecha("broker") + '</th>' +
+      '<th class="num" onclick="tenOrdenar(\'cantidad\')">Cantidad' +
+        flecha("cantidad") + '</th></tr></thead><tbody>' +
+    filas.map(t =>
+      '<tr><td>' + esc(t.simbolo) +
+        (t.extranjero ? ' <span class="tocar">exterior</span>' : "") + '</td>' +
+      '<td style="font-size:11px;color:var(--muted)">' +
+        esc((TIPOS_TEN.find(x => x[0] === (t.tipo || "otros")) || ["", "?"])[1]) +
+        '</td>' +
+      '<td style="font-size:11px">' + esc(t.broker) + '</td>' +
+      '<td class="num">' + ent(t.cantidad) + '</td></tr>').join("") +
+    '</tbody></table>' +
+    '<div class="nota">' + filas.length + ' de ' + tenDatos.length +
+      ' líneas.</div>';
+}
+
+function tenOrdenar(col){
+  if(tenOrden.col === col) tenOrden.asc = !tenOrden.asc;
+  else { tenOrden.col = col; tenOrden.asc = true; }
+  tenPintar();
+}
+
+function tenChips(){
+  const brokers = [...new Set(tenDatos.map(t => t.broker))].sort();
+  $("#ten-broker").innerHTML = [["", "Todos"]].concat(brokers.map(b => [b, b]))
+    .map(([k, t]) => '<button class="' +
+      (tenFiltro.broker === k ? "activo" : "") + '" data-broker="' + esc(k) +
+      '">' + esc(t) + '</button>').join("");
+  const presentes = new Set(tenDatos.map(t => t.tipo || "otros"));
+  $("#ten-tipo").innerHTML = TIPOS_TEN
+    .filter(([k]) => !k || presentes.has(k))
+    .map(([k, t]) => '<button class="' +
+      (tenFiltro.tipo === k ? "activo" : "") + '" data-tipo="' + k + '">' +
+      t + '</button>').join("");
+}
+
 async function cargarTenencias(){
   const out = $("#ten-out");
   if(!out) return;
   try{
     const d = await (await fetch(base + "api/tenencias")).json();
-    const t = d.tenencias || [];
-    if(!t.length){
-      out.innerHTML = '<div class="vacio">Todavía no cargaste tenencias.</div>';
+    tenDatos = d.tenencias || [];
+    if(!tenDatos.length){
+      $("#ten-broker").innerHTML = "";
+      $("#ten-tipo").innerHTML = "";
+      out.innerHTML = '<div class="vacio">Todavía no cargaste tenencias. ' +
+        'Se pegan abajo en formato JSON.</div>';
       return;
     }
-    const brokers = [...new Set(t.map(x => x.broker))];
-    out.innerHTML = brokers.map(br => {
-      const filas = t.filter(x => x.broker === br);
-      const fuera = filas[0].extranjero;
-      return '<div class="hallazgo"><h3>' + esc(br) +
-        (fuera ? ' <span class="tocar">exterior</span>' : "") + '</h3>' +
-        '<table class="tabla"><tbody>' + filas.map(f =>
-          '<tr><td>' + esc(f.simbolo) + '</td>' +
-          '<td class="num">' + ent(f.cantidad) + '</td></tr>').join("") +
-        '</tbody></table></div>';
-    }).join("") +
-    '<div class="nota">El Rulo parte de: ' +
-      ((d.en_rulo && d.en_rulo.bonos || []).join(", ") || "ningún bono") +
-      ' · monedas ' +
-      ((d.en_rulo && d.en_rulo.monedas || []).join(", ") || "ninguna") +
-      '</div>';
+    tenChips();
+    tenPintar();
+    const r = d.en_rulo || {};
+    out.insertAdjacentHTML("beforeend",
+      '<div class="nota">El Rulo parte de <b>' +
+      ((r.bonos || []).join(", ") || "ningún bono") + '</b> y de <b>' +
+      ((r.monedas || []).join(", ") || "ninguna moneda") + '</b>. ' +
+      'Solo entran bonos con cronograma cargado y de brokers locales.</div>');
   }catch(e){
     out.innerHTML = '<div class="msg error">No se pudieron leer.</div>';
   }
 }
+
+$("#ten-broker").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-broker]");
+  if(!b) return;
+  tenFiltro.broker = b.dataset.broker;
+  tenChips(); tenPintar();
+});
+$("#ten-tipo").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-tipo]");
+  if(!b) return;
+  tenFiltro.tipo = b.dataset.tipo;
+  tenChips(); tenPintar();
+});
 
 $("#ten-cargar").addEventListener("click", async e => {
   const b = e.target;

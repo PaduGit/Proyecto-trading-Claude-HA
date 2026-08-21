@@ -102,6 +102,19 @@ def _moneda_cotiza(info, simbolo):
     return "ARS"
 
 
+EMISORES = {"nacion": "Nación", "provincia": "Provincia", "bcra": "BCRA"}
+
+
+def emisor_de(cfg):
+    """Quien emite, para agrupar la curva.
+
+    Va en `emisor_tipo` y no en `emisor`, que ya existia con el nombre
+    largo del emisor y se muestra en pantalla.
+    """
+    e = (cfg.get("emisor_tipo") or "nacion").strip().lower()
+    return e if e in EMISORES else "nacion"
+
+
 def _familia(cfg, info, simbolo=""):
     """Agrupa para la curva.
 
@@ -110,14 +123,21 @@ def _familia(cfg, info, simbolo=""):
 
     Las especies C también van aparte: liquidan en dólar cable, que es
     otra moneda que el MEP de las D. Mezclarlas desplaza la curva.
+
+    Y el emisor separa: un provincial rinde por encima de la curva
+    nacional por su propio riesgo de crédito. Mezclarlos hace dos daños a
+    la vez, porque el provincial se muestra barato cuando solo refleja su
+    spread, y de paso empuja la curva y deja a los nacionales caros.
     """
+    emisor = emisor_de(cfg)
+    sufijo = "" if emisor == "nacion" else "-" + emisor.upper()
     if (cfg.get("ajuste") or "").lower() == "cer":
-        return "CER"
+        return "CER" + sufijo
     ley = "AR" if (cfg.get("ley") or "").startswith("arg") else "NY"
     moneda = info["moneda"]
     if moneda == "USD" and simbolo.endswith("C"):
         moneda = "CABLE"
-    return "%s-%s" % (moneda, ley)
+    return "%s-%s%s" % (moneda, ley, sufijo)
 
 
 def _tir(esp_cfg, precio, liq, filas):
@@ -181,7 +201,9 @@ def fila(simbolo, info, cot, mep, liq=None, cer_actual=0):
                 "q_ask": cot.get("vol_venta") or 0,
                 "tir_bid": None, "tir_ask": None, "tir_last": None,
                 "md": None, "last_viejo": False,
-                "ley": cfg.get("ley"), "familia": "CER",
+                "ley": cfg.get("ley"),
+                "familia": _familia(cfg, info, simbolo),
+                "emisor": emisor_de(cfg),
                 "tipo": _tipo(cfg),
                 "moneda_cotiza": _moneda_cotiza(info, simbolo),
                 "ley_cod": "AR" if (cfg.get("ley") or "").startswith("arg") else "NY",
@@ -220,6 +242,7 @@ def fila(simbolo, info, cot, mep, liq=None, cer_actual=0):
         "moneda": "CER" if es_cer else info["moneda"],
         "ley": cfg.get("ley"),
         "familia": _familia(cfg, info, simbolo),
+        "emisor": emisor_de(cfg),
         "tipo": _tipo(cfg),
         "moneda_cotiza": _moneda_cotiza(info, simbolo),
         "ley_cod": "AR" if (cfg.get("ley") or "").startswith("arg") else "NY",
@@ -341,6 +364,7 @@ def detalle(simbolo, cot, liq=None, par_mep=("AL30", "AL30D"), cer_actual=0):
         "cer_base": cfg.get("cer_base"),
         "factor_cer": factor_cer(cfg, cer_actual) or None,
         "moneda_flujo": cfg.get("moneda"),
+        "emisor": emisor_de(cfg),
         "aviso": cfg.get("verificar"),
         "nota": cfg.get("derivacion"),
         "fila": f,

@@ -746,15 +746,25 @@ CREATE TABLE IF NOT EXISTS tenencia (
   broker   TEXT NOT NULL,
   simbolo  TEXT NOT NULL,
   cantidad REAL NOT NULL,
+  tipo     TEXT,
   ts       TEXT NOT NULL,
   PRIMARY KEY (broker, simbolo)
 );
 """
 
 
+# Los que puede tener una tenencia. Salen de como agrupa el broker.
+TIPOS_TENENCIA = ("moneda", "bonos", "letras", "bcra", "on", "cedears",
+                  "acciones", "otros")
+
+
 def init_alertas():
     c = conn()
     c.executescript(ESQUEMA_ALERTAS)
+    # bases de versiones anteriores no tienen la columna
+    cols = {r["name"] for r in c.execute("PRAGMA table_info(tenencia)")}
+    if "tipo" not in cols:
+        c.execute("ALTER TABLE tenencia ADD COLUMN tipo TEXT")
     c.commit()
 
 
@@ -852,9 +862,13 @@ def guardar_tenencias(filas, reemplazar="todo"):
             continue
         if not br or not sim:
             continue
+        tipo = (f.get("tipo") or "").strip().lower()
+        if tipo not in TIPOS_TENENCIA:
+            tipo = "otros"
         c.execute(
-            "INSERT OR REPLACE INTO tenencia (broker, simbolo, cantidad, ts) "
-            "VALUES (?,?,?,?)", (br, sim, cant, ahora))
+            "INSERT OR REPLACE INTO tenencia "
+            "(broker, simbolo, cantidad, tipo, ts) VALUES (?,?,?,?,?)",
+            (br, sim, cant, tipo, ahora))
         n += 1
     c.commit()
     return n
