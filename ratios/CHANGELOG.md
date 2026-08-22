@@ -1,5 +1,34 @@
 # Registro de cambios
 
+## 0.21.1
+
+**Tenencias pasa a ser un tablero.** Pestania propia, con filtros por
+broker y por tipo y ordenamiento por cualquier columna. El JSON acepta
+ahora un campo `tipo`: moneda, bonos, letras, bcra, on, cedears, acciones
+u otros.
+
+Con el tipo cargado, el Rulo toma solo bonos con cronograma: una accion o
+un CEDEAR no tiene especie D ni C, asi que no puede cruzar de moneda y
+solo ensuciaba el universo de circuitos.
+
+**Posicion se mudo a Ratios**, debajo del panel de pares. Tenerla junto a
+las tenencias confundia dos cosas distintas: una es el seguimiento de la
+estrategia de ratios y la otra es que hay en cada cuenta.
+
+**La curva se ajusta por emisor.** Un provincial rinde por encima de la
+curva nacional por su propio riesgo de credito, y mezclarlos hacia dos
+danios a la vez: el provincial se mostraba barato cuando solo reflejaba
+su spread, y de paso empujaba la curva dejando a los nacionales caros.
+PBA28 queda en su propia familia y, al ser el unico, sin desvio hasta que
+haya mas de su clase. Hay un filtro de emisor en la tabla, que arranca
+mostrando todos.
+
+Despues de actualizar conviene correr "Recalcular desvios": los z-score
+guardados se calcularon con PBA28 dentro de la curva nacional.
+
+**La pestania Plazos pasa a llamarse Pases.** Y en Ratios el calculador
+va arriba.
+
 ## 0.21.0
 
 **Alertas de precio.** Pestania nueva. Una alerta es un titulo, un modo y
