@@ -1,5 +1,5 @@
 name: Ratios IOL
-version: "0.21.1"
+version: "0.21.2"
 slug: ratios_iol
 description: Monitor de ratios entre especies, arbitraje de plazos y screener
 url: https://github.com/PaduGit/Proyecto-trading-Claude-HA
@@ -71,6 +71,7 @@ options:
       pais: argentina
   iva_pct: 21
   broker: iol
+  broker_propio: IOL-ALE
   brokers_extranjeros: ""
   monedas_rulo: "ARS,MEP"
   bonificacion_intradiaria: true
@@ -181,6 +182,7 @@ schema:
       pais: str
   iva_pct: float(0,50)
   broker: list(iol|eco|veta)
+  broker_propio: str?
   brokers_extranjeros: str?
   monedas_rulo: str?
   bonificacion_intradiaria: bool

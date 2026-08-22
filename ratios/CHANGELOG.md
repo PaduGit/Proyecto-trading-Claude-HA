@@ -1,5 +1,33 @@
 # Registro de cambios
 
+## 0.21.2
+
+**Traer la tenencia de IOL por API.** Boton en la pestania Tenencias que
+baja las posiciones de la cuenta configurada, traduce los tipos de IOL a
+los de la app y pisa solo ese broker: la cuenta del exterior y las
+cargadas a mano quedan intactas. El nombre sale de `broker_propio`, con
+IOL-ALE por defecto.
+
+IOL no informa el efectivo disponible, asi que los pesos y dolares hay
+que seguir agregandolos a mano con tipo moneda. El boton lo avisa, porque
+sin eso el Rulo no sabe con que se cuenta para partir desde una moneda.
+
+**La curva del grafico ya no contradice a la tabla.** El grafico ajustaba
+una recta lineal sobre la duration y el desvio del backend una recta
+sobre su logaritmo: eran dos curvas distintas, asi que un bono podia
+salir verde en el grafico y con desvio negativo en la tabla. Ahora las
+dos usan el mismo ajuste, y la curva se dibuja por tramos en vez de como
+una recta, que es lo que dejaba el tramo corto siempre por debajo.
+
+**Se nombran los mas despegados.** Antes aparecian los nombres solo si
+habia catorce bonos o menos, asi que con la tabla completa no se veia
+ninguno. Ahora se etiquetan los dos de arriba y los dos de abajo de cada
+familia.
+
+**El grafico agrupa por familia, no por moneda.** Ahora que la curva
+separa por emisor, el grafico respeta lo mismo: un provincial ya no se
+ajusta junto a los nacionales.
+
 ## 0.21.1
 
 **Tenencias pasa a ser un tablero.** Pestania propia, con filtros por

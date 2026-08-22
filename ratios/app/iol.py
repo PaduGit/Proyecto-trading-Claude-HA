@@ -201,6 +201,14 @@ class IOL:
             d = self._get("/api/v2/%s/Titulos/%s/Cotizacion" % (mercado, simbolo))
         return normalizar(d, simbolo)
 
+    def portafolio(self, pais="argentina"):
+        """Tenencia de la cuenta configurada.
+
+        Devuelve los titulos, no el efectivo: para el disponible por
+        moneda hay otro endpoint. Las cantidades vienen en nominales.
+        """
+        return self._get("/api/v2/portafolio/%s" % pais, timeout=45)
+
     def opciones_de(self, simbolo, mercado="bCBA"):
         """Series que corresponden a un subyacente.
 

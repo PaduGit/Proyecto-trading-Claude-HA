@@ -684,6 +684,62 @@ def crear_app(monitor):
         n = db.guardar_tenencias(filas, d.get("reemplazar") or "todo")
         return jsonify({"cargadas": n, "en_rulo": monitor.tengo_actual()})
 
+    # IOL agrupa por tipo de instrumento; se traduce a los tipos que usa
+    # la app para poder filtrar el tablero.
+    TIPO_IOL = {
+        "cedears": "cedears", "acciones": "acciones",
+        "tit. publicos": "bonos", "titulos publicos": "bonos",
+        "letras": "letras", "obligaciones negociables": "on",
+        "bonos": "bonos",
+    }
+
+    @app.post("/api/tenencias/traer")
+    def tenencias_traer():
+        """Baja la tenencia de la cuenta configurada y la carga.
+
+        Solo reemplaza ese broker: la cuenta del exterior y las que se
+        cargan a mano quedan intactas.
+        """
+        nombre = (request.args.get("broker")
+                  or monitor.cfg.get("broker_propio") or "IOL").strip()
+        filas, vacios = [], []
+        try:
+            with monitor.iol.como("boton"):
+                for pais in ("argentina", "estados_Unidos"):
+                    d = monitor.iol.portafolio(pais)
+                    # la respuesta trae los titulos bajo "activos" o bajo
+                    # "positions" segun la version; se aceptan las dos
+                    activos = ((d or {}).get("activos")
+                               or (d or {}).get("positions") or [])
+                    if not activos:
+                        vacios.append(pais)
+                    for a in activos:
+                        t = (a or {}).get("titulo") or (a or {}).get("asset") \
+                            or {}
+                        sim = (t.get("simbolo") or t.get("symbol")
+                               or "").strip().upper()
+                        try:
+                            cant = float(a.get("cantidad")
+                                         or a.get("quantity") or 0)
+                        except (TypeError, ValueError):
+                            cant = 0
+                        if not sim or not cant:
+                            continue
+                        tipo = TIPO_IOL.get(
+                            (t.get("tipo") or t.get("type")
+                             or "").strip().lower(), "otros")
+                        filas.append({"broker": nombre, "simbolo": sim,
+                                      "cantidad": cant, "tipo": tipo})
+        except IOLError as e:
+            return jsonify({"error": str(e)}), 502
+
+        if not filas:
+            return jsonify({"error": "IOL no devolvió posiciones"}), 502
+        n = db.guardar_tenencias(filas, nombre)
+        return jsonify({"cargadas": n, "broker": nombre,
+                        "sin_posiciones": vacios,
+                        "en_rulo": monitor.tengo_actual()})
+
     @app.get("/api/cer")
     def cer_estado():
         try:

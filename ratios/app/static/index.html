@@ -412,6 +412,8 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
   <section id="v-pos" hidden>
     <div class="periodos" id="ten-broker" style="margin-bottom:6px"></div>
     <div class="periodos" id="ten-tipo" style="margin-bottom:10px"></div>
+    <button class="primario" id="ten-traer" style="margin-bottom:12px">
+      Traer tenencia de IOL</button>
     <div id="ten-out"></div>
     <p class="nota">Título y cantidad por broker. Los bonos de brokers
       locales son los que el Rulo usa como punto de partida; los del
@@ -1973,17 +1975,22 @@ function textoZ(f){
 
 /* ---------- curva TIR vs duration ---------- */
 
+/* Recta sobre log(duration), igual que el backend. La curva real es
+   cóncava: ajustada en lineal, los extremos quedan siempre mal medidos y
+   el gráfico contradecía los desvíos de la tabla. */
 function ajuste(puntos){
   const n = puntos.length;
-  if(n < 2) return null;
-  const xs = puntos.map(p=>p.md), ys = puntos.map(p=>p.tir_last);
-  const sx=xs.reduce((a,b)=>a+b,0), sy=ys.reduce((a,b)=>a+b,0);
-  const sxy=puntos.reduce((a,p)=>a+p.md*p.tir_last,0);
-  const sxx=xs.reduce((a,b)=>a+b*b,0);
-  const den=(n*sxx-sx*sx)||1;
-  const pend=(n*sxy-sx*sy)/den;
-  const ord=(sy-pend*sx)/n;
-  return v => ord + pend*v;
+  if(n < 3) return null;
+  const lx = p => Math.log(Math.max(p.md, 0.05));
+  const xs = puntos.map(lx), ys = puntos.map(p => p.tir_last);
+  const sx = xs.reduce((a,b)=>a+b,0), sy = ys.reduce((a,b)=>a+b,0);
+  const sxy = puntos.reduce((a,p,i)=>a+xs[i]*ys[i],0);
+  const sxx = xs.reduce((a,b)=>a+b*b,0);
+  const den = n*sxx - sx*sx;
+  if(Math.abs(den) < 1e-9) return null;
+  const pend = (n*sxy - sx*sy)/den;
+  const ord = (sy - pend*sx)/n;
+  return v => ord + pend*Math.log(Math.max(v, 0.05));
 }
 
 function dibujarCurva(){
@@ -1998,10 +2005,11 @@ function dibujarCurva(){
     return;
   }
 
-  /* cada moneda de cotización es una unidad distinta: no se ajusta
-     una sola recta sobre pesos, MEP y cable juntos */
-  const monedas = [...new Set(usar.map(f => f.moneda_cotiza))];
-  const mezcla = monedas.length > 1;
+  /* Se agrupa por familia, que es lo que usa el backend para el desvío:
+     separa moneda, ley y emisor. Antes se agrupaba solo por moneda, así
+     que un provincial se ajustaba junto a los nacionales. */
+  const familias = [...new Set(usar.map(f => f.familia))];
+  const mezcla = familias.length > 1;
 
   const W=320,H=190,ml=30,mr=10,mt=14,mb=26;
   const xs=usar.map(p=>p.md), ys=usar.map(p=>p.tir_last);
@@ -2012,44 +2020,64 @@ function dibujarCurva(){
   const X=v=>ml+(v-x0)/(x1-x0)*(W-ml-mr);
   const Y=v=>mt+(y1-v)/(y1-y0)*(H-mt-mb);
 
-  const grupos = monedas.map(mon => ({
-    mon, col: COLOR_MONEDA[mon] || "var(--bone)",
-    pts: usar.filter(f => f.moneda_cotiza === mon),
+  const PALETA = ["var(--bone)", "var(--sage)", "var(--amber)",
+                  "#7FA6B8", "#B88F7F"];
+  const grupos = familias.map((fam, i) => ({
+    fam,
+    col: mezcla ? PALETA[i % PALETA.length] : "var(--bone)",
+    pts: usar.filter(f => f.familia === fam),
   }));
 
   let svg = "";
+  const etiquetar = new Set();
   grupos.forEach(g => {
     const fit = ajuste(g.pts);
-    if(fit && g.pts.length >= 2)
-      svg += '<line x1="'+X(x0)+'" y1="'+Y(fit(x0))+'" x2="'+X(x1)+
-        '" y2="'+Y(fit(x1))+'" stroke="'+g.col+'" stroke-width="1" ' +
-        'stroke-dasharray="1 3" opacity=".7"/>';
+    if(fit){
+      /* la curva se dibuja por tramos: en log no es una recta */
+      const pasos = 40, pts = [];
+      for(let i = 0; i <= pasos; i++){
+        const v = Math.max(x0 + (x1 - x0) * i / pasos, 0.05);
+        pts.push(X(v).toFixed(1) + "," + Y(fit(v)).toFixed(1));
+      }
+      svg += '<polyline points="' + pts.join(" ") + '" fill="none" stroke="' +
+        g.col + '" stroke-width="1" stroke-dasharray="1 3" opacity=".7"/>';
+
+      /* solo se nombran los más despegados: con veinte bonos, poner
+         todos los nombres no deja leer ninguno */
+      const conR = g.pts.map(p => ({p, r: p.tir_last - fit(p.md)}))
+        .sort((a, b) => b.r - a.r);
+      conR.slice(0, 2).forEach(x => etiquetar.add(x.p.simbolo));
+      conR.slice(-2).forEach(x => etiquetar.add(x.p.simbolo));
+    }
     g.pts.forEach(p => {
       let col = g.col;
-      if(!mezcla && fit){
+      if(fit){
         const r = p.tir_last - fit(p.md);
         col = r > 0.15 ? "var(--sage)" : r < -0.15 ? "var(--coral)" : "var(--bone)";
       }
       svg += '<circle cx="'+X(p.md).toFixed(1)+'" cy="'+Y(p.tir_last).toFixed(1)+
         '" r="3" fill="'+col+'"/>';
-      if(usar.length <= 14)
-        svg += '<text x="'+(X(p.md)+5).toFixed(1)+'" y="'+(Y(p.tir_last)+3).toFixed(1)+
-          '" style="font-size:7px">'+esc(p.simbolo)+'</text>';
+      if(etiquetar.has(p.simbolo) || usar.length <= 8){
+        const der = X(p.md) < (W - mr - 40);
+        svg += '<text x="'+(X(p.md) + (der ? 5 : -5)).toFixed(1) +
+          '" y="'+(Y(p.tir_last)+3).toFixed(1) + '" style="font-size:7px"' +
+          (der ? "" : ' text-anchor="end"') + '>'+esc(p.simbolo)+'</text>';
+      }
     });
   });
 
-  const nombreMon = m => (MONEDAS.find(x => x[0] === m) || [,m])[1];
   const leyenda = mezcla
     ? '<div class="leyenda" style="flex-wrap:wrap">' + grupos.map(g =>
         '<span><i style="border-top-color:'+g.col+'"></i>'+
-        esc(nombreMon(g.mon))+'</span>').join("") + '</div>'
+        esc(g.fam) + ' (' + g.pts.length + ')</span>').join("") + '</div>'
     : "";
 
   cont.innerHTML =
-    (mezcla ? '<div class="aviso">Hay ' + monedas.length + ' monedas de ' +
-      'cotización en esta selección. Cada una se ajusta por separado: una ' +
-      'TIR en pesos y una en MEP no son comparables. Elegí una moneda para ' +
-      'ver quién se despega.</div>' : "") +
+    (mezcla ? '<div class="aviso">Hay ' + familias.length + ' familias en ' +
+      'esta selección y cada una se ajusta por separado: una TIR en pesos y ' +
+      'una en MEP no son comparables, y un provincial rinde por encima de la ' +
+      'curva nacional por su propio riesgo. Filtrá para ver una sola.</div>'
+      : "") +
     '<svg class="chart" viewBox="0 0 '+W+' '+H+'" style="height:190px" role="img">' +
     svg +
     '<text x="2" y="'+(mt+4)+'" style="font-size:8px">'+y1.toFixed(1)+'%</text>' +
@@ -2058,8 +2086,10 @@ function dibujarCurva(){
     '<text x="'+(W-mr)+'" y="'+(H-6)+'" text-anchor="end" style="font-size:8px">'+
       x1.toFixed(1)+'</text></svg>' + leyenda +
     '<div class="nota">TIR del último operado contra duration modificada.' +
-    (mezcla ? "" : ' En verde los que rinden más de lo que la curva sugiere ' +
-      'para su plazo, en rojo los que rinden menos.') + '</div>';
+    ' En verde los que rinden más de lo que la curva sugiere para su plazo, ' +
+    'en rojo los que rinden menos. Se nombran los dos más despegados de cada ' +
+    'lado. La curva se ajusta sobre el logaritmo de la duration, igual que ' +
+    'el desvío de la tabla.</div>';
 }
 
 
@@ -2950,6 +2980,30 @@ $("#ten-tipo").addEventListener("click", ev => {
   if(!b) return;
   tenFiltro.tipo = b.dataset.tipo;
   tenChips(); tenPintar();
+});
+
+
+$("#ten-traer").addEventListener("click", async e => {
+  /* Baja la tenencia de la cuenta configurada en el add-on y pisa solo
+     ese broker: la del exterior y las cargadas a mano quedan intactas. */
+  const b = e.target;
+  b.disabled = true;
+  const previo = b.textContent;
+  b.textContent = "Bajando…";
+  try{
+    const r = await (await fetch(base + "api/tenencias/traer",
+      {method:"POST"})).json();
+    if(r.error){ alert("No se pudo: " + r.error); return; }
+    let msg = "Se cargaron " + ent(r.cargadas) + " posiciones en " +
+      r.broker + ".";
+    if((r.sin_posiciones || []).length)
+      msg += "\nSin posiciones en: " + r.sin_posiciones.join(", ") + ".";
+    msg += "\n\nIOL no informa el efectivo disponible: si tenés pesos o " +
+      "dólares en esa cuenta, agregalos a mano con tipo moneda.";
+    alert(msg);
+    cargarTenencias();
+  }catch(err){ alert("No se pudo consultar."); }
+  finally{ b.disabled = false; b.textContent = previo; }
 });
 
 $("#ten-cargar").addEventListener("click", async e => {
