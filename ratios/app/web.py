@@ -684,14 +684,34 @@ def crear_app(monitor):
         n = db.guardar_tenencias(filas, d.get("reemplazar") or "todo")
         return jsonify({"cargadas": n, "en_rulo": monitor.tengo_actual()})
 
-    # IOL agrupa por tipo de instrumento; se traduce a los tipos que usa
-    # la app para poder filtrar el tablero.
-    TIPO_IOL = {
-        "cedears": "cedears", "acciones": "acciones",
-        "tit. publicos": "bonos", "titulos publicos": "bonos",
-        "letras": "letras", "obligaciones negociables": "on",
-        "bonos": "bonos",
-    }
+    # IOL agrupa por tipo de instrumento y no lo escribe siempre igual:
+    # "TIT. PUBLICOS", "TitulosPublicos" y "titulos publicos" son el
+    # mismo tipo. Se compara sin puntos, espacios ni acentos, buscando la
+    # raiz adentro del texto.
+    TIPO_IOL = (
+        ("cedear", "cedears"),
+        ("obligacion", "on"),
+        ("negociable", "on"),
+        ("letra", "letras"),
+        ("titulopublico", "bonos"),
+        ("titulospublicos", "bonos"),
+        ("titpublico", "bonos"),
+        ("publico", "bonos"),
+        ("bono", "bonos"),
+        ("accion", "acciones"),
+        ("fondo", "fci"),
+        ("fci", "fci"),
+    )
+
+    def _tipo_iol(txt):
+        import unicodedata
+        t = unicodedata.normalize("NFKD", str(txt or ""))
+        t = "".join(ch for ch in t if not unicodedata.combining(ch))
+        t = "".join(ch for ch in t.lower() if ch.isalnum())
+        for clave, valor in TIPO_IOL:
+            if clave in t:
+                return valor
+        return "otros"
 
     @app.post("/api/tenencias/traer")
     def tenencias_traer():
@@ -725,19 +745,57 @@ def crear_app(monitor):
                             cant = 0
                         if not sim or not cant:
                             continue
-                        tipo = TIPO_IOL.get(
-                            (t.get("tipo") or t.get("type")
-                             or "").strip().lower(), "otros")
+                        tipo = _tipo_iol(t.get("tipo") or t.get("type")
+                                         or a.get("tipo"))
                         filas.append({"broker": nombre, "simbolo": sim,
                                       "cantidad": cant, "tipo": tipo})
         except IOLError as e:
             return jsonify({"error": str(e)}), 502
 
+        # El portafolio trae solo titulos; el efectivo sale de otro
+        # endpoint. Sin el disponible por moneda, el Rulo no sabe con que
+        # se cuenta para partir desde una moneda.
+        monedas = []
+        try:
+            with monitor.iol.como("boton"):
+                ec = monitor.iol.estado_cuenta()
+            for cu in (ec or {}).get("cuentas") or []:
+                tipo_cta = (cu.get("tipo") or "").lower()
+                if "estados_unidos" in tipo_cta:
+                    sim = "CABLE"          # dolar que liquida afuera
+                elif "dolares" in tipo_cta:
+                    sim = "MEP"            # dolar que liquida local
+                elif "pesos" in tipo_cta:
+                    sim = "ARS"
+                else:
+                    continue
+                # El total de la cuenta, no el del plazo inmediato: lo
+                # que liquida en 24 o 48 horas igual esta disponible para
+                # operar, solo que con esa fecha de liquidacion.
+                monto = cu.get("disponible")
+                if monto is None:
+                    monto = cu.get("saldo") or 0
+                try:
+                    monto = float(monto)
+                except (TypeError, ValueError):
+                    monto = 0
+                if not monto:
+                    continue
+                filas.append({"broker": nombre, "simbolo": sim,
+                              "cantidad": monto, "tipo": "moneda"})
+                monedas.append("%s %s" % (sim, monto))
+        except IOLError as e:
+            log.warning("estado de cuenta: %s", e)
+
         if not filas:
             return jsonify({"error": "IOL no devolvió posiciones"}), 502
         n = db.guardar_tenencias(filas, nombre)
+        sin_clasificar = sorted({f["simbolo"] for f in filas
+                                 if f["tipo"] == "otros"})
         return jsonify({"cargadas": n, "broker": nombre,
                         "sin_posiciones": vacios,
+                        "sin_clasificar": sin_clasificar,
+                        "monedas": monedas,
                         "en_rulo": monitor.tengo_actual()})
 
     @app.get("/api/cer")

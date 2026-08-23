@@ -209,6 +209,10 @@ class IOL:
         """
         return self._get("/api/v2/portafolio/%s" % pais, timeout=45)
 
+    def estado_cuenta(self):
+        """Saldos por cuenta y moneda. El portafolio trae solo titulos."""
+        return self._get("/api/v2/estadocuenta", timeout=45)
+
     def opciones_de(self, simbolo, mercado="bCBA"):
         """Series que corresponden a un subyacente.
 

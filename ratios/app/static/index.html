@@ -428,7 +428,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       <div class="nota">Con <b>reemplazar</b> en "todo" se pisa la lista
         entera; con el nombre de un broker, solo la de ese broker. El
         <b>tipo</b> puede ser moneda, bonos, letras, bcra, on, cedears,
-        acciones u otros.</div>
+        acciones, fci u otros.</div>
     </details>
 </section>
 
@@ -1206,7 +1206,10 @@ function resumenPanel(d){
       (t.venta ? precio(t.venta) : "—") + '</td></tr>').join("") +
     '</tbody></table></div></div>' +
     '<details class="avanzado"><summary>Respuesta cruda</summary>' +
-    '<pre class="crudo">' + esc(JSON.stringify(d.muestra_cruda, null, 2)) + '</pre></details>';
+    '<button class="secundario" style="width:auto;padding:0 14px;margin:6px 0" ' +
+      'onclick="copiarCrudo(this)">Copiar</button>' +
+    '<pre class="crudo">' + esc(JSON.stringify(d.muestra_cruda, null, 2)) +
+    '</pre></details>';
 }
 
 $("#e-path-btn").addEventListener("click", async () => {
@@ -1217,12 +1220,36 @@ $("#e-path-btn").addEventListener("click", async () => {
     const r = await fetch(base + "api/explorar/raw?path=" + encodeURIComponent(path));
     const d = await r.json();
     out.innerHTML = r.ok
-      ? '<button class="secundario" onclick="this.nextElementSibling.classList.toggle(\'completo\')">' +
-        'Ver completa / plegar</button><pre class="crudo">' +
-        esc(JSON.stringify(d.respuesta, null, 2)) + '</pre>'
+      ? '<div style="display:flex;gap:6px;margin-bottom:6px">' +
+        '<button class="secundario" style="width:auto;padding:0 14px" ' +
+          'onclick="this.closest(\'div\').nextElementSibling.classList.toggle(\'completo\')">' +
+          'Ver completa / plegar</button>' +
+        '<button class="secundario" style="width:auto;padding:0 14px" ' +
+          'onclick="copiarCrudo(this)">Copiar</button></div>' +
+        '<pre class="crudo">' + esc(JSON.stringify(d.respuesta, null, 2)) +
+        '</pre>'
       : '<div class="msg error">' + esc(d.error || "Falló.") + '</div>';
   }catch(e){ out.innerHTML = '<div class="msg error">No se pudo consultar.</div>'; }
 });
+
+
+/* Copia la respuesta cruda completa, no lo que se ve: el <pre> viene
+   recortado en alto y seleccionarlo a mano en el teléfono es imposible. */
+function copiarCrudo(btn){
+  const pre = btn.parentElement.querySelector("pre.crudo")
+    || btn.closest("details, div").querySelector("pre.crudo")
+    || btn.nextElementSibling;
+  if(!pre) return;
+  const ta = document.createElement("textarea");
+  ta.value = pre.textContent;
+  document.body.appendChild(ta); ta.select();
+  let ok = false;
+  try{ ok = document.execCommand("copy"); }catch(e){}
+  document.body.removeChild(ta);
+  const previo = btn.textContent;
+  btn.textContent = ok ? "Copiado" : "No se pudo";
+  setTimeout(() => { btn.textContent = previo; }, 1500);
+}
 
 /* ---------- posición ---------- */
 let grupos = [];
@@ -2881,7 +2908,8 @@ $("#al-out").addEventListener("click", async ev => {
 /* ---------- tenencias ---------- */
 const TIPOS_TEN = [["", "Todos"], ["moneda", "Efectivo"], ["bonos", "Bonos"],
   ["letras", "Letras"], ["bcra", "BCRA"], ["on", "ON"],
-  ["cedears", "CEDEARs"], ["acciones", "Acciones"], ["otros", "Otros"]];
+  ["cedears", "CEDEARs"], ["acciones", "Acciones"], ["fci", "FCI"],
+  ["otros", "Otros"]];
 let tenDatos = [];
 let tenFiltro = {broker: "", tipo: ""};
 let tenOrden = {col: "simbolo", asc: true};
@@ -2998,8 +3026,13 @@ $("#ten-traer").addEventListener("click", async e => {
       r.broker + ".";
     if((r.sin_posiciones || []).length)
       msg += "\nSin posiciones en: " + r.sin_posiciones.join(", ") + ".";
-    msg += "\n\nIOL no informa el efectivo disponible: si tenés pesos o " +
-      "dólares en esa cuenta, agregalos a mano con tipo moneda.";
+    if((r.sin_clasificar || []).length)
+      msg += "\n\nQuedaron sin clasificar: " + r.sin_clasificar.join(", ") +
+        ". Se guardaron como Otros; si alguno es un bono, corregilo pegando " +
+        "el JSON con su tipo.";
+    msg += (r.monedas || []).length
+      ? "\n\nEfectivo: " + r.monedas.join(" · ") + "."
+      : "\n\nSin efectivo disponible en ninguna moneda.";
     alert(msg);
     cargarTenencias();
   }catch(err){ alert("No se pudo consultar."); }

@@ -755,7 +755,7 @@ CREATE TABLE IF NOT EXISTS tenencia (
 
 # Los que puede tener una tenencia. Salen de como agrupa el broker.
 TIPOS_TENENCIA = ("moneda", "bonos", "letras", "bcra", "on", "cedears",
-                  "acciones", "otros")
+                  "acciones", "fci", "otros")
 
 
 def init_alertas():

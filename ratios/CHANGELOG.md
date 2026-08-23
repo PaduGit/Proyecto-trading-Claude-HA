@@ -1,5 +1,33 @@
 # Registro de cambios
 
+## 0.21.3
+
+**Los tipos de IOL no se traducian.** La tabla de traduccion usaba los
+nombres que devuelve el conector MCP, pero la API cruda los escribe
+distinto: "TIT. PUBLICOS", "TitulosPublicos" y "titulos publicos" son el
+mismo tipo. Todo caia en Otros, y un bono en Otros no entra al Rulo.
+Ahora se compara sin puntos, espacios ni acentos, buscando la raiz
+adentro del texto. El boton avisa que simbolos quedaron sin clasificar,
+para no tener que descubrirlo mirando la tabla.
+
+**El boton trae tambien el efectivo.** El portafolio devuelve solo
+titulos; el disponible por moneda sale de estadocuenta. Los pesos de la
+cuenta argentina se cargan como ARS, los dolares de esa misma cuenta como
+MEP, y los de la cuenta de Estados Unidos como cable, que es donde
+liquida cada uno. Se toma el disponible total de la cuenta y no el del
+plazo inmediato: lo que liquida en 24 o 48 horas igual se puede operar.
+Los saldos en cero se omiten.
+
+Con esto ya no queda nada por cargar a mano de IOL.
+
+**FCI pasa a ser un tipo propio**, con su filtro en el tablero, en vez de
+caer en Otros.
+
+**Boton para copiar la respuesta cruda** en Explorar, en la ruta manual y
+en la muestra del panel. Copia el JSON entero y no lo que se ve, porque
+el bloque viene recortado en alto y seleccionarlo a mano en el telefono
+es imposible.
+
 ## 0.21.2
 
 **Traer la tenencia de IOL por API.** Boton en la pestania Tenencias que
