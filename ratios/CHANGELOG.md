@@ -1,5 +1,35 @@
 # Registro de cambios
 
+## 0.21.4
+
+**Orleans reemplaza a los paneles.** Un request por instrumento, con
+puntas, y cubre mas especies que los cinco paneles juntos. Antes eran
+esos cinco mas un pedido suelto por cada especie que no estuviera en
+ninguno: los BONCER, LOMA, HARG, y los CEDEARs pedidos en T0 y T1 por
+separado, cuarenta veces por dia cada uno.
+
+Ahora se bajan seis instrumentos por ciclo: titulos publicos, letras,
+acciones, cedears, opciones y cauciones. La lista es configurable.
+
+Como no queda pedido suelto de respaldo, lo que no aparezca se avisa en
+el encabezado de Ratios, separando dos casos: un instrumento que fallo al
+bajar y un simbolo configurado que no aparecio en ninguno.
+
+**Se descartan las especies que no operan.** La API deja pasar cosas
+muertas aunque se le pida Operables: una letra de Neuquen vencida en
+abril seguia figurando. Se descartan por fecha de ultima operacion, con
+un umbral configurable de dias habiles.
+
+**La cauci0n sale del mercado.** El endpoint la trae en vivo con sus
+puntas, asi que la tasa colocadora ya no es un numero fijo de la
+configuracion: se toma la punta compradora del dia. Si no hay dato en
+vivo se usa la configurada, y la pantalla de Pases dice cual esta usando.
+
+**El boton de copiar no copiaba.** Buscaba el bloque de texto adentro del
+contenedor de los botones, pero es hermano de ese contenedor. Ademas
+ahora prueba primero el portapapeles moderno y cae al metodo viejo, que
+por Ingress no siempre hay contexto seguro.
+
 ## 0.21.3
 
 **Los tipos de IOL no se traducian.** La tabla de traduccion usaba los

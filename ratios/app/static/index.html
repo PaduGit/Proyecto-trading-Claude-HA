@@ -719,6 +719,13 @@ async function cargarPanel(){
   else if(!d.en_rueda)
     cab = '<div class="aviso">Fuera del horario de mercado. ' +
           'Los precios son del último cierre.</div>';
+  if((d.orleans_fallas || []).length)
+    cab += '<div class="msg error">No se pudo bajar: ' +
+           esc(d.orleans_fallas.join(", ")) + '.</div>';
+  if((d.sin_cotizacion || []).length)
+    cab += '<div class="aviso">Sin cotización: <b>' +
+           esc(d.sin_cotizacion.join(", ")) + '</b>. No aparecieron en ningún ' +
+           'instrumento; puede que no coticen o que estén en otro.</div>';
   if(d.error) cab += '<div class="msg error">' + esc(d.error) + '</div>';
 
   if(!d.pares.length){
@@ -1042,6 +1049,10 @@ async function calcularPlazos(){
       (hay ? '<div class="msg ok">Hay al menos una oportunidad.</div>' : "") +
       (d.hay_rueda === false ? '<div class="aviso">Mercado cerrado: es el ' +
         'último cálculo de la rueda, no es ejecutable.</div>' : "") +
+      '<div class="nota">Caución ' + num(d.tasa_caucion_anual, 4) + '% ' +
+      (d.tasa_origen === "mercado"
+        ? 'tomada del mercado, punta compradora.'
+        : 'de la configuración: no hubo dato en vivo.') + '</div>' +
       '<div class="hallazgo"><div class="scroll"><table class="tabla"><thead><tr>' +
       '<th>Ticker</th><th>Compra t0</th><th>Venta t1</th><th>TNA</th>' +
       '<th>TNA caución</th><th>Cant.</th></tr></thead><tbody>' +
@@ -1236,17 +1247,42 @@ $("#e-path-btn").addEventListener("click", async () => {
 /* Copia la respuesta cruda completa, no lo que se ve: el <pre> viene
    recortado en alto y seleccionarlo a mano en el teléfono es imposible. */
 function copiarCrudo(btn){
-  const pre = btn.parentElement.querySelector("pre.crudo")
-    || btn.closest("details, div").querySelector("pre.crudo")
-    || btn.nextElementSibling;
-  if(!pre) return;
-  const ta = document.createElement("textarea");
-  ta.value = pre.textContent;
-  document.body.appendChild(ta); ta.select();
-  let ok = false;
-  try{ ok = document.execCommand("copy"); }catch(e){}
-  document.body.removeChild(ta);
+  /* El <pre> es hermano del contenedor de los botones, no hijo: se sube
+     por los ancestros hasta encontrar uno que lo tenga adentro. */
+  let pre = null, nodo = btn;
+  while(nodo && nodo !== document.body && !pre){
+    pre = nodo.querySelector && nodo.querySelector("pre.crudo");
+    nodo = nodo.parentElement;
+  }
+  if(!pre){
+    btn.textContent = "No se encontró";
+    setTimeout(() => { btn.textContent = "Copiar"; }, 1500);
+    return;
+  }
+  copiarTexto(pre.textContent, btn);
+}
+
+/* El portapapeles moderno pide contexto seguro y por Ingress no siempre
+   lo hay, asi que se prueba y se cae al metodo viejo. */
+async function copiarTexto(txt, btn){
   const previo = btn.textContent;
+  let ok = false;
+  try{
+    if(navigator.clipboard && window.isSecureContext){
+      await navigator.clipboard.writeText(txt);
+      ok = true;
+    }
+  }catch(e){}
+  if(!ok){
+    const ta = document.createElement("textarea");
+    ta.value = txt;
+    ta.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    ta.setSelectionRange(0, txt.length);
+    try{ ok = document.execCommand("copy"); }catch(e){}
+    document.body.removeChild(ta);
+  }
   btn.textContent = ok ? "Copiado" : "No se pudo";
   setTimeout(() => { btn.textContent = previo; }, 1500);
 }
@@ -2693,13 +2729,7 @@ $("#log-copiar").addEventListener("click", async b => {
     alert("Mostrá primero las llamadas o el resumen.");
     return;
   }
-  const txt = logUltimo.join("\n");
-  const ta = document.createElement("textarea");
-  ta.value = txt; document.body.appendChild(ta); ta.select();
-  try{ document.execCommand("copy"); btn.textContent = "Copiado"; }
-  catch(e){ btn.textContent = "No se pudo"; }
-  document.body.removeChild(ta);
-  setTimeout(() => { btn.textContent = "Copiar"; }, 1500);
+  copiarTexto(logUltimo.join("\n"), btn);
 });
 
 $("#log-borrar").addEventListener("click", async b => {

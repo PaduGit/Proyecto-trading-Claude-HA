@@ -43,6 +43,9 @@ class Monitor:
         self._opc_estado = None     # persistencia del cruce, por combinacion
         self._opc_desarme = set()   # posiciones ya avisadas
         self._rulo_avisado = set()   # circuitos ya avisados
+        self.orleans_fallas = []
+        self.orleans_descartados = []
+        self.sin_cotizacion = []
         self._plazos_avisado = set()
         self._precio_avisado = set()
         self.plazos = []
@@ -165,7 +168,11 @@ class Monitor:
         return s
 
     def bajar_paneles(self):
-        """Un request por panel. Devuelve simbolo -> cotizacion."""
+        """Un request por panel de los viejos.
+
+        Ya no se usa en el ciclo: orleans cubre mas y trae puntas. Queda
+        por si hace falta comparar una fuente con la otra.
+        """
         from iol import normalizar
         mapa = {}
         planos = 0
@@ -202,24 +209,108 @@ class Monitor:
         return mapa
 
     def cotizaciones_del_ciclo(self):
-        mapa = self.bajar_paneles()
-        faltan = self.simbolos_necesarios() - set(mapa)
+        """Un request por instrumento, y nada mas.
 
-        # lo que no vino en ningun panel, se pide suelto
-        for p in self.pares:
-            for lado in ("num", "den"):
-                sim = p[lado]
-                if sim in faltan:
-                    try:
-                        mapa[sim] = self.iol.cotizacion(
-                            p["mercado"], sim, p.get("plazo", "t1"))
-                        self.origen[sim] = "individual"
-                        faltan.discard(sim)
-                    except IOLError as e:
-                        log.warning("%s: %s", sim, e)
-        if faltan:
-            log.debug("sin cotizacion: %s", ", ".join(sorted(faltan)))
+        Antes eran cinco paneles mas un pedido suelto por cada especie
+        que no estuviera en ninguno. Orleans cubre mas y trae puntas, asi
+        que lo que falte es porque no cotiza: se avisa en pantalla en vez
+        de pedirlo de a uno sin que se note.
+        """
+        mapa = self.bajar_orleans()
+        for sim in mapa:
+            self.origen[sim] = "orleans"
+        self.sin_cotizacion = sorted(self.simbolos_necesarios() - set(mapa))
+        if self.sin_cotizacion:
+            log.info("sin cotizacion: %s", ", ".join(self.sin_cotizacion))
         return self.rellenar_puntas(mapa)
+
+    # -- panel orleans ------------------------------------------------
+
+    # Un instrumento por request, con puntas. Reemplaza a los paneles
+    # viejos y a los pedidos sueltos.
+    INSTRUMENTOS = ("titulosPublicos", "letras", "acciones", "cedears",
+                    "opciones", "cauciones")
+
+    def instrumentos_orleans(self):
+        txt = self.cfg.get("instrumentos_orleans")
+        if txt is None:
+            return list(self.INSTRUMENTOS)
+        return [i.strip() for i in str(txt).split(",") if i.strip()]
+
+    def _vencido(self, fecha_txt, dias_habiles):
+        """True si la ultima operacion es demasiado vieja.
+
+        La API deja pasar especies muertas aunque se le pida Operables:
+        una letra vencida en abril seguia apareciendo. Se descartan por
+        fecha de ultima operacion, que es lo unico confiable.
+        """
+        if not dias_habiles:
+            return False
+        try:
+            f = date.fromisoformat(str(fecha_txt)[:10])
+        except Exception:
+            return True         # sin fecha no se puede confiar
+        import cer as CER
+        habiles, d = 0, date.today()
+        while d > f and habiles <= dias_habiles:
+            d -= timedelta(days=1)
+            if CER.es_habil(d):
+                habiles += 1
+        return habiles > dias_habiles
+
+    def bajar_orleans(self):
+        """Todos los instrumentos configurados. Devuelve simbolo -> cotizacion."""
+        from iol import normalizar
+        mapa, planos, total, fallas = {}, 0, 0, []
+        dias = self.cfg.get("dias_sin_operar")
+        dias = 7 if dias is None else int(dias)
+        descartados = []
+
+        for inst in self.instrumentos_orleans():
+            try:
+                d = self.iol.panel_orleans(inst)
+            except IOLError as e:
+                log.warning("panel orleans %s: %s", inst, e)
+                fallas.append(inst)
+                continue
+            for t in (d or {}).get("titulos") or []:
+                sim = str((t or {}).get("simbolo") or "").strip().upper()
+                if not sim:
+                    continue
+                if self._vencido(t.get("fecha"), dias):
+                    descartados.append(sim)
+                    continue
+                c = normalizar(t, sim)
+                c["instrumento"] = inst
+                c["descripcion"] = t.get("descripcion") or ""
+                c["plazo_panel"] = t.get("plazo")
+                c["lote"] = t.get("lote")
+                total += 1
+                if not (c.get("compra") or c.get("venta")):
+                    planos += 1
+                mapa[sim] = c
+        if total:
+            self.hay_rueda = planos < total
+        self.orleans_fallas = fallas
+        self.orleans_descartados = sorted(set(descartados))
+        return mapa
+
+    def tasa_caucion(self, mapa=None):
+        """Tasa colocadora del dia, de la punta compradora.
+
+        Reemplaza al numero fijo de la configuracion cuando hay dato en
+        vivo; si no lo hay, se usa el configurado.
+        """
+        mapa = mapa if mapa is not None else self.cotizaciones
+        for sim, c in mapa.items():
+            if c.get("instrumento") != "cauciones":
+                continue
+            # la de pesos: el simbolo es descriptivo, no un ticker
+            texto = ("%s %s" % (sim, c.get("descripcion") or "")).lower()
+            if "peso" in texto and c.get("compra"):
+                return float(c["compra"]), "mercado"
+        return float(self.cfg.get("tasa_caucion_anual") or 0), "configurada"
+
 
     # -- ultima punta conocida ----------------------------------------
 
@@ -610,11 +701,11 @@ class Monitor:
         pedian los dos y era el doble de requests.
         """
         filas = []
-        tasa_anual = float(self.cfg.get("tasa_caucion_anual") or 0)
+        cot = cot if cot is not None else dict(self.cotizaciones)
+        tasa_anual, origen_tasa = self.tasa_caucion(cot)
         dias = self.dias_liquidacion()
         tasa_dia = tasa_anual / 365.0 / 100.0 * dias
         com_caucion = self.comision("cauciones")
-        cot = cot if cot is not None else dict(self.cotizaciones)
 
         for t in self.cfg.get("arbitraje_tickers") or []:
             sim = (t.get("ticker") or "").upper()
@@ -622,7 +713,8 @@ class Monitor:
                 continue
             mercado = t.get("mercado") or "bCBA"
             tipo = t.get("tipo") or "bonos"
-            fila = {"ticker": sim, "tipo": tipo, "dias": dias}
+            fila = {"ticker": sim, "tipo": tipo, "dias": dias,
+                    "tasa_origen": origen_tasa, "tasa_anual": tasa_anual}
             try:
                 c0 = self.iol.cotizacion(mercado, sim, "t0")
                 c1 = cot.get(sim)

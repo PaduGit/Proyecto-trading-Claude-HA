@@ -23,6 +23,8 @@ def _clasificar(path):
     p = path.lower()
     if "/token" in p:
         return "auth"
+    if "cotizaciones-orleans" in p:
+        return "panel"
     if "/cotizaciones/" in p:
         return "panel"
     if "seriehistorica" in p:
@@ -208,6 +210,15 @@ class IOL:
         moneda hay otro endpoint. Las cantidades vienen en nominales.
         """
         return self._get("/api/v2/portafolio/%s" % pais, timeout=45)
+
+    def panel_orleans(self, instrumento, pais="argentina", filtro="Operables"):
+        """Un instrumento entero en un request, con puntas.
+
+        Reemplaza a los paneles: cubre mas especies y evita el pedido
+        suelto de las que no estaban en ninguno.
+        """
+        return self._get("/api/v2/cotizaciones-orleans-panel/%s/%s/%s"
+                         % (instrumento, pais, filtro), timeout=60)
 
     def estado_cuenta(self):
         """Saldos por cuenta y moneda. El portafolio trae solo titulos."""

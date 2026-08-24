@@ -139,8 +139,8 @@ def main():
     iol = IOL(cfg["iol_user"], cfg["iol_pass"])
     monitor = Monitor(cfg, iol, notif)
 
-    log.info("%d pares, %d paneles, refresco cada %ss",
-             len(cfg["pares"]), len(cfg.get("paneles") or []),
+    log.info("%d pares, %d instrumentos, refresco cada %ss",
+             len(cfg["pares"]), len(monitor.instrumentos_orleans()),
              cfg.get("poll_seconds", 600))
 
     def _sincronizar_cer():

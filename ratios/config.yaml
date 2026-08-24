@@ -1,5 +1,5 @@
 name: Ratios IOL
-version: "0.21.3"
+version: "0.21.4"
 slug: ratios_iol
 description: Monitor de ratios entre especies, arbitraje de plazos y screener
 url: https://github.com/PaduGit/Proyecto-trading-Claude-HA
@@ -53,22 +53,8 @@ options:
   opc_ganancia_min_pct: 100
   opc_dias_min_desarme: 10
   opc_mov_contrario_pct: 4
-  paneles:
-    - instrumento: Bonos
-      panel: Soberanos en dólares
-      pais: argentina
-    - instrumento: Bonos
-      panel: Soberanos en pesos más CER
-      pais: argentina
-    - instrumento: Acciones
-      panel: Merval
-      pais: argentina
-    - instrumento: Acciones
-      panel: Panel General
-      pais: argentina
-    - instrumento: Acciones
-      panel: CEDEARs
-      pais: argentina
+  instrumentos_orleans: "titulosPublicos,letras,acciones,cedears,opciones,cauciones"
+  dias_sin_operar: 7
   iva_pct: 21
   broker: iol
   broker_propio: IOL-ALE
@@ -176,10 +162,8 @@ schema:
   opc_ganancia_min_pct: float(0,1000)
   opc_dias_min_desarme: int(0,120)
   opc_mov_contrario_pct: float(0,50)
-  paneles:
-    - instrumento: str
-      panel: str
-      pais: str
+  instrumentos_orleans: str?
+  dias_sin_operar: int(0,90)
   iva_pct: float(0,50)
   broker: list(iol|eco|veta)
   broker_propio: str?

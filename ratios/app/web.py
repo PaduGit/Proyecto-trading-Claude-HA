@@ -63,6 +63,9 @@ def crear_app(monitor):
             "en_rueda": monitor._en_horario(),
             "hay_rueda": monitor.hay_rueda,
             "snapshot_desde": getattr(monitor, "snapshot_desde", None),
+            "sin_cotizacion": getattr(monitor, "sin_cotizacion", []),
+            "orleans_fallas": getattr(monitor, "orleans_fallas", []),
+            "orleans_descartados": getattr(monitor, "orleans_descartados", []),
         })
 
     @app.post("/api/refrescar")
@@ -194,10 +197,12 @@ def crear_app(monitor):
                     filas = monitor.evaluar_arbitraje()
         except Exception as e:
             return jsonify({"error": str(e)}), 502
+        tasa, origen_tasa = monitor.tasa_caucion()
         return jsonify({
             "filas": filas,
             "hay_rueda": monitor._en_horario(),
-            "tasa_caucion_anual": monitor.cfg.get("tasa_caucion_anual"),
+            "tasa_origen": origen_tasa,
+            "tasa_caucion_anual": tasa,
             "ts": datetime.now().isoformat(timespec="seconds"),
         })
 
