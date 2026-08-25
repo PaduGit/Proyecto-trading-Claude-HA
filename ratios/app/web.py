@@ -53,8 +53,37 @@ def crear_app(monitor):
             filas = list(monitor.snapshot.values())
         filas.sort(key=lambda f: (
             0 if f.get("zona") in ("alta", "baja") else 1, f.get("alias", "")))
+
+        # La posicion va en la misma tarjeta que el ratio: son la misma
+        # estrategia mirada de dos maneras, y tenerlas separadas obligaba
+        # a saltar entre dos listas para leer una sola cosa.
+        pos = {}
+        try:
+            for g in db.listar_grupos():
+                precios = _precios_para(g)
+                r = P.resumen(g, precios)
+                pos[g["nombre"]] = {
+                    "id": g["id"], "base": g["base"], "tickers": g["tickers"],
+                    "rendimiento_pct": r["rendimiento_pct"],
+                    "equivalente": r["equivalente"],
+                    "valor_cuota": r["valor_cuota"],
+                    "faltan_precios": r["faltan_precios"],
+                    "tenencia": [
+                        {"ticker": k, "cantidad": v["cantidad"]}
+                        for k, v in sorted(r["tenencia"].items())
+                        if v["cantidad"]],
+                }
+        except Exception as e:
+            log.debug("posicion en el panel: %s", e)
+
+        salida = []
+        for f in filas:
+            d = _limpiar(f)
+            d["posicion"] = pos.get(d.get("alias"))
+            salida.append(d)
+
         return jsonify({
-            "pares": [_limpiar(f) for f in filas],
+            "pares": salida,
             "ciclo": monitor.ultimo_ciclo.isoformat(timespec="seconds")
             if monitor.ultimo_ciclo else None,
             "hace_seg": monitor.segundos_desde_ciclo(),
@@ -272,6 +301,10 @@ def crear_app(monitor):
             salida.append({
                 "id": g["id"], "nombre": g["nombre"], "base": g["base"],
                 "tickers": g["tickers"], "mercado": g["mercado"],
+                "num": g.get("num"), "den": g.get("den"),
+                "plazo": g.get("plazo"), "resistencia": g.get("resistencia"),
+                "soporte": g.get("soporte"), "factor": g.get("factor"),
+                "alertas": bool(g.get("alertas", 1)),
                 "precios": precios,
                 "equivalente": r["equivalente"],
                 "base_ajustada": r["base_ajustada"],
@@ -295,15 +328,60 @@ def crear_app(monitor):
                    if t and t.strip()]
         if not nombre:
             return jsonify({"error": "Poné un nombre al grupo."}), 400
-        if len(tickers) < 2:
-            return jsonify({"error": "Cargá al menos dos tickers."}), 400
+        if len(tickers) != 2:
+            return jsonify({"error": "Un par tiene exactamente dos tickers."}), 400
         if base not in tickers:
             return jsonify({"error": "La base tiene que ser uno de los tickers."}), 400
         if any(g["nombre"].lower() == nombre.lower() for g in db.listar_grupos()):
-            return jsonify({"error": "Ya existe un grupo con ese nombre."}), 400
+            return jsonify({"error": "Ya existe un par con ese nombre."}), 400
         gid = db.crear_grupo(nombre, base, tickers,
                              (d.get("mercado") or "bCBA").strip())
+        db.actualizar_par(gid, _campos_par(d, tickers))
         return jsonify({"ok": True, "id": gid})
+
+    def _campos_par(d, tickers):
+        """Numerador, denominador y zonas. Por defecto el ratio va en el
+        orden en que se cargaron los tickers."""
+        num = (d.get("num") or tickers[0]).strip().upper()
+        den = (d.get("den") or tickers[1]).strip().upper()
+        def _f(k):
+            try:
+                v = float(d.get(k))
+                return v or None
+            except (TypeError, ValueError):
+                return None
+        res, sop = _f("resistencia"), _f("soporte")
+        if res and sop and res <= sop:
+            res = sop = None      # niveles invertidos: no sirven
+        return {"num": num, "den": den,
+                "plazo": (d.get("plazo") or "t1").strip(),
+                "resistencia": res, "soporte": sop,
+                "factor": _f("factor"),
+                "alertas": 1 if d.get("alertas", True) else 0}
+
+    @app.post("/api/grupos/<int:gid>")
+    def editar_grupo(gid):
+        d = request.get_json(silent=True) or {}
+        g = db.grupo_por_id(gid)
+        if not g:
+            return jsonify({"error": "No existe."}), 404
+        tickers = [t.strip().upper() for t in (d.get("tickers") or g["tickers"])
+                   if t and t.strip()]
+        if len(tickers) != 2:
+            return jsonify({"error": "Un par tiene exactamente dos tickers."}), 400
+        campos = _campos_par(d, tickers)
+        if d.get("nombre"):
+            campos["nombre"] = d["nombre"].strip()
+        base = (d.get("base") or g["base"]).strip().upper()
+        if base not in tickers:
+            return jsonify({"error": "La base tiene que ser uno de los tickers."}), 400
+        campos["base"] = base
+        if d.get("mercado"):
+            campos["mercado"] = d["mercado"].strip()
+        db.actualizar_par(gid, campos)
+        if tickers != g["tickers"]:
+            db.actualizar_tickers(gid, tickers)
+        return jsonify({"ok": True})
 
     @app.delete("/api/grupos/<int:gid>")
     def eliminar_grupo(gid):
@@ -983,38 +1061,25 @@ def crear_app(monitor):
     # cada visita a Explorar gastaba dos requests por vez.
     HORAS_CATALOGO = 24 * 7
 
+    # Los que acepta orleans. No coinciden con los nombres de los
+    # instrumentos del endpoint viejo.
+    INSTRUMENTOS_ORLEANS = ["titulosPublicos", "letras", "acciones",
+                            "cedears", "opciones", "obligacionesNegociables",
+                            "cauciones", "aDRs", "cHPD", "futuros"]
+
     @app.get("/api/explorar/instrumentos")
     def ex_instrumentos():
-        pais = request.args.get("pais", "argentina")
-        clave = "instrumentos:%s" % pais
-        if request.args.get("recargar") != "1":
-            v = db.cache_get(clave, HORAS_CATALOGO)
-            if v is not None:
-                return jsonify(v)
-        try:
-            with monitor.iol.como("pestania"):
-                v = monitor.iol.instrumentos(pais)
-        except IOLError as e:
-            return jsonify({"error": str(e)}), 502
-        db.cache_set(clave, v)
-        return jsonify(v)
+        """Los de orleans, que es la fuente que usa el ciclo.
+
+        La lista es fija: no hay endpoint que la devuelva, sale del
+        contrato de la API.
+        """
+        return jsonify(list(INSTRUMENTOS_ORLEANS))
 
     @app.get("/api/explorar/paneles")
     def ex_paneles():
-        inst = request.args.get("instrumento", "Acciones")
-        pais = request.args.get("pais", "argentina")
-        clave = "paneles:%s:%s" % (pais, inst)
-        if request.args.get("recargar") != "1":
-            v = db.cache_get(clave, HORAS_CATALOGO)
-            if v is not None:
-                return jsonify(v)
-        try:
-            with monitor.iol.como("pestania"):
-                v = monitor.iol.paneles(inst, pais)
-        except IOLError as e:
-            return jsonify({"error": str(e)}), 502
-        db.cache_set(clave, v)
-        return jsonify(v)
+        """Orleans no tiene paneles: tiene un filtro."""
+        return jsonify(["Operables", "Todos"])
 
     @app.post("/api/explorar/recargar-catalogo")
     def ex_recargar():
@@ -1025,11 +1090,13 @@ def crear_app(monitor):
         pais = request.args.get("pais", "argentina")
         instrumento = request.args.get("instrumento", "Bonos")
         panel = request.args.get("panel", "")
-        if not panel:
-            return jsonify({"error": "Elegí un panel."}), 400
+        # "panel" ahora es el filtro de orleans: Operables o Todos. Los
+        # paneles viejos quedaron sin uso, asi que el explorador mira la
+        # misma fuente que el ciclo.
+        filtro = panel or "Operables"
         try:
             with monitor.iol.como("pestania"):
-                d = monitor.iol.cotizacion_panel(instrumento, panel, pais)
+                d = monitor.iol.panel_orleans(instrumento, pais, filtro)
         except IOLError as e:
             return jsonify({"error": str(e)}), 502
 
@@ -1052,11 +1119,14 @@ def crear_app(monitor):
                 "cant_venta": p.get("cantidadVenta") or 0,
                 "moneda": t.get("moneda") or "",
                 "plazo": t.get("plazo") or "",
+                "fecha": t.get("fecha") or "",
+                "lote": t.get("lote"),
+                "descripcion": t.get("descripcion") or "",
             })
         filas.sort(key=lambda f: f["simbolo"] or "")
         simbolos = [f["simbolo"] or "" for f in filas]
         return jsonify({
-            "panel": panel, "instrumento": instrumento,
+            "panel": filtro, "instrumento": instrumento,
             "total": len(filas), "con_puntas": con_puntas,
             "especies_d": [s for s in simbolos if s.endswith("D")],
             "especies_c": [s for s in simbolos if s.endswith("C")],

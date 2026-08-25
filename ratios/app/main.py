@@ -71,9 +71,8 @@ def validar(cfg):
             "factor": float(p.get("factor") or 0) or None,
             "alertas": bool(p.get("alertas", True)),
         })
-    if not limpios:
-        log.error("No hay pares válidos configurados.")
-        sys.exit(1)
+    # Sin pares en la configuracion no pasa nada: viven en la base y se
+    # crean desde la app. Esta lista solo alimenta la migracion inicial.
     cfg["pares"] = limpios
 
     # comisiones: de lista de dicts a mapa simple
@@ -131,6 +130,15 @@ def main():
     db.init_opciones()
     db.init_api_log()
     db.init_alertas()
+    # Los pares pasan de la configuracion a la base. Se hace una vez: a
+    # partir de ahi se editan en la app.
+    try:
+        r = db.migrar_pares(cfg.get("pares"))
+        if r.get("migrados"):
+            log.info("pares migrados a la base: %d creados, %d completados",
+                     len(r.get("creados") or []), len(r.get("completados") or []))
+    except Exception as e:
+        log.warning("migracion de pares: %s", e)
     cer.init()
     historico.init()
     curva.init()
@@ -140,7 +148,7 @@ def main():
     monitor = Monitor(cfg, iol, notif)
 
     log.info("%d pares, %d instrumentos, refresco cada %ss",
-             len(cfg["pares"]), len(monitor.instrumentos_orleans()),
+             len(monitor.pares), len(monitor.instrumentos_orleans()),
              cfg.get("poll_seconds", 600))
 
     def _sincronizar_cer():

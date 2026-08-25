@@ -322,7 +322,16 @@ CREATE TABLE IF NOT EXISTS grupos (
     base      TEXT NOT NULL,          -- ticker en el que se mide todo
     tickers   TEXT NOT NULL,          -- JSON: lista de tickers del grupo
     mercado   TEXT DEFAULT 'bCBA',
-    creado    TEXT NOT NULL
+    creado    TEXT NOT NULL,
+    -- Lo que antes vivia en la configuracion como "par". Un grupo de dos
+    -- tickers ES un par: tenerlo en dos lados los desincronizaba.
+    num       TEXT,                   -- numerador del ratio
+    den       TEXT,                   -- denominador
+    plazo     TEXT DEFAULT 't1',
+    resistencia REAL,
+    soporte     REAL,
+    alertas   INTEGER NOT NULL DEFAULT 1,
+    factor    REAL
 );
 
 CREATE TABLE IF NOT EXISTS movimientos (
@@ -342,13 +351,74 @@ CREATE INDEX IF NOT EXISTS ix_mov_grupo ON movimientos(grupo_id, ts);
 """
 
 
+COLS_GRUPO_NUEVAS = (("num", "TEXT"), ("den", "TEXT"),
+                     ("plazo", "TEXT DEFAULT 't1'"),
+                     ("resistencia", "REAL"), ("soporte", "REAL"),
+                     ("alertas", "INTEGER NOT NULL DEFAULT 1"),
+                     ("factor", "REAL"))
+
+
 def init_posicion():
     c = conn()
     c.executescript(ESQUEMA_POSICION)
     cols = {r["name"] for r in c.execute("PRAGMA table_info(movimientos)")}
     if "equiv_antes" not in cols:
         c.execute("ALTER TABLE movimientos ADD COLUMN equiv_antes REAL")
+    # bases de versiones anteriores no tienen los campos del par
+    cols = {r["name"] for r in c.execute("PRAGMA table_info(grupos)")}
+    for nombre, tipo in COLS_GRUPO_NUEVAS:
+        if nombre not in cols:
+            c.execute("ALTER TABLE grupos ADD COLUMN %s %s" % (nombre, tipo))
     c.commit()
+
+
+def actualizar_tickers(gid, tickers):
+    import json as _json
+    c = conn()
+    c.execute("UPDATE grupos SET tickers=? WHERE id=?",
+              (_json.dumps([t.upper() for t in tickers]), gid))
+    c.commit()
+
+
+def actualizar_par(gid, campos):
+    """Los datos del ratio: numerador, denominador y zonas."""
+    permitidos = ("num", "den", "plazo", "resistencia", "soporte",
+                  "alertas", "factor", "nombre", "base", "mercado")
+    sets, args = [], []
+    for k, v in (campos or {}).items():
+        if k in permitidos:
+            sets.append("%s=?" % k)
+            args.append(int(v) if k == "alertas" else v)
+    if not sets:
+        return 0
+    args.append(gid)
+    c = conn()
+    cur = c.execute("UPDATE grupos SET %s WHERE id=?" % ",".join(sets), args)
+    c.commit()
+    return cur.rowcount
+
+
+def pares_guardados(solo_completos=True):
+    """Los grupos, en la forma que espera el monitor.
+
+    Un grupo con numerador y denominador es un par: se le calcula ratio,
+    zona y alertas. Los que no los tienen se saltean.
+    """
+    out = []
+    for g in listar_grupos():
+        tickers = g.get("tickers") or []
+        num = g["num"] or (tickers[0] if tickers else "")
+        den = g["den"] or (tickers[1] if len(tickers) > 1 else "")
+        if solo_completos and not (num and den):
+            continue
+        out.append({
+            "id": g["id"], "alias": g["nombre"], "num": num, "den": den,
+            "mercado": g["mercado"] or "bCBA", "plazo": g["plazo"] or "t1",
+            "resistencia": g["resistencia"], "soporte": g["soporte"],
+            "alertas": bool(g["alertas"]) if g["alertas"] is not None else True,
+            "factor": g["factor"], "base": g["base"], "tickers": tickers,
+        })
+    return out
 
 
 def crear_grupo(nombre, base, tickers, mercado="bCBA"):
@@ -372,9 +442,14 @@ def listar_grupos():
             tickers = _json.loads(f["tickers"])
         except ValueError:
             tickers = []
-        out.append({"id": f["id"], "nombre": f["nombre"], "base": f["base"],
-                    "tickers": tickers, "mercado": f["mercado"],
-                    "creado": f["creado"]})
+        g = {"id": f["id"], "nombre": f["nombre"], "base": f["base"],
+             "tickers": tickers, "mercado": f["mercado"],
+             "creado": f["creado"]}
+        # los campos del par, si la base ya los tiene
+        for k in ("num", "den", "plazo", "resistencia", "soporte",
+                  "alertas", "factor"):
+            g[k] = f[k] if k in f.keys() else None
+        out.append(g)
     return out
 
 
@@ -872,3 +947,55 @@ def guardar_tenencias(filas, reemplazar="todo"):
         n += 1
     c.commit()
     return n
+
+
+def migrar_pares(pares_cfg):
+    """Pasa los pares de la configuracion a la base, una sola vez.
+
+    Si ya existe un grupo con los mismos dos tickers, se completa con los
+    datos del par en vez de duplicarlo: el grupo trae los movimientos y
+    seria una lastima perderlos.
+    """
+    import json as _json
+    if get_estado("pares_migrados"):
+        return {"migrados": 0, "ya_estaba": True}
+
+    existentes = []
+    for g in listar_grupos():
+        tk = [str(t).upper() for t in (g.get("tickers") or [])]
+        existentes.append((set(tk), g))
+
+    creados, completados = [], []
+    for p in pares_cfg or []:
+        num = (p.get("num") or "").upper()
+        den = (p.get("den") or "").upper()
+        if not (num and den):
+            continue
+        campos = {"num": num, "den": den,
+                  "plazo": p.get("plazo") or "t1",
+                  "resistencia": p.get("resistencia"),
+                  "soporte": p.get("soporte"),
+                  "alertas": 1 if p.get("alertas", True) else 0,
+                  "factor": p.get("factor"),
+                  "mercado": p.get("mercado") or "bCBA"}
+        par = {num, den}
+        g = next((g for tk, g in existentes if tk == par), None)
+        if g:
+            actualizar_par(g["id"], campos)
+            completados.append(g["nombre"])
+            continue
+        nombre = (p.get("alias") or "%s/%s" % (num, den)).strip()
+        base = nombre
+        n = 2
+        while any(x["nombre"] == base for _, x in existentes):
+            base = "%s (%d)" % (nombre, n)
+            n += 1
+        gid = crear_grupo(base, num, [num, den], campos["mercado"])
+        actualizar_par(gid, campos)
+        creados.append(base)
+        existentes.append(({num, den}, {"id": gid, "nombre": base,
+                                        "tickers": [num, den]}))
+
+    set_estado("pares_migrados", datetime.now().isoformat(timespec="seconds"))
+    return {"creados": creados, "completados": completados,
+            "migrados": len(creados) + len(completados)}

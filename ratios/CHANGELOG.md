@@ -1,5 +1,37 @@
 # Registro de cambios
 
+## 0.21.5
+
+**El par y el grupo son la misma cosa.** Un par se configuraba en el
+add-on y un grupo se creaba en la app, pero sobre los mismos dos tickers
+eran dos vistas de la misma estrategia: el ratio por un lado y la
+posicion por el otro, en dos tarjetas separadas. Ahora es una sola, con
+el ratio, la banda de zona, en que ticker se esta parado y el rendimiento
+de la rotacion.
+
+Los pares pasan a vivir en la base y se crean y editan desde la app, con
+numerador, denominador, soporte, resistencia y alertas. La lista `pares`
+de la configuracion queda solo para la migracion inicial y la app ya
+arranca sin ella.
+
+**La migracion corre una sola vez y no duplica.** Si ya existia un grupo
+con los mismos dos tickers, se le completan los datos del par en vez de
+crear uno nuevo: el grupo trae los movimientos y perderlos seria caro.
+Los pares que no tenian grupo se crean.
+
+El respaldo incluye ahora los datos del par, asi que sobreviven a una
+reinstalacion. Paso a version 2 y sigue leyendo los de version 1.
+
+**Explorar mira la misma fuente que el ciclo.** El selector ofrece los
+diez instrumentos de orleans, el panel pasa a ser un filtro de Operables
+o Todos, y el resumen suma fecha, lote y descripcion, que es lo que
+permite ver por que una especie se descarta por antiguedad. De paso
+desaparecen dos llamadas: las listas de instrumentos y paneles ya no se
+piden, son fijas.
+
+**Los botones del registro pliegan.** Tocar el mismo de nuevo cierra el
+listado, que tapaba el resto de la pestania y no habia forma de sacarlo.
+
 ## 0.21.4
 
 **Orleans reemplaza a los paneles.** Un request por instrumento, con

@@ -25,7 +25,11 @@ class Monitor:
         self.cfg = cfg
         self.iol = iol
         self.notif = notif
-        self.pares = cfg["pares"]
+        # Los pares viven en la base, no en la configuracion: se crean y
+        # editan desde la app y sobreviven a una reinstalacion via el
+        # respaldo. La lista de cfg solo sirvio para migrarlos.
+        self._pares_cache = []
+        self._pares_ts = None
 
         self.snapshot = {}
         self.plazos = {}
@@ -136,6 +140,19 @@ class Monitor:
         return int((datetime.now() - self.ultimo_ciclo).total_seconds())
 
     # -- obtencion de precios ----------------------------------------
+
+    @property
+    def pares(self):
+        """Se relee de la base cada pocos segundos: se editan en vivo."""
+        ahora = datetime.now()
+        if (self._pares_ts is None
+                or (ahora - self._pares_ts).total_seconds() > 5):
+            try:
+                self._pares_cache = db.pares_guardados()
+                self._pares_ts = ahora
+            except Exception as e:
+                log.debug("pares: %s", e)
+        return self._pares_cache
 
     def simbolos_necesarios(self):
         """Todo lo que el ciclo tiene que traer.

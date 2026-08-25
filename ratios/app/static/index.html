@@ -361,15 +361,14 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       <div id="c-out"></div>
     </details>
     <div id="panel-out" style="margin-top:18px"></div>
-    <h3 style="margin:22px 0 6px">Posición</h3>
-    <div id="pos-out"></div>
+    <div id="pos-out" hidden></div>
     <button class="secundario" id="pos-nuevo" style="margin-top:14px">
-      + Nuevo grupo</button>
+      + Nuevo par</button>
     <details class="avanzado">
       <summary>Respaldo</summary>
       <p class="nota" style="margin-top:10px">Copiá este texto y guardalo
-        afuera. Si algún día hay que reconstruir, lo pegás acá y volvés
-        a tener los grupos y movimientos.</p>
+        afuera. Trae los pares con sus niveles y todos los movimientos:
+        es lo que te permite recuperarlos después de una reinstalación.</p>
       <button class="secundario" id="pos-exportar">Exportar</button>
       <textarea id="pos-texto" style="width:100%;min-height:110px;
         background:var(--panel);border:1px solid var(--rule);color:var(--bone);
@@ -471,7 +470,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
     <div class="form">
       <div>
         <label for="e-inst">Instrumento</label>
-        <select id="e-inst"><option>Bonos</option></select>
+        <select id="e-inst"><option value="titulosPublicos">Títulos públicos</option></select>
       </div>
       <div>
         <label for="e-pais">País</label>
@@ -481,10 +480,10 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
         </select>
       </div>
       <div class="ancho">
-        <label for="e-panel">Panel</label>
-        <select id="e-panel"><option value="">Elegí un instrumento</option></select>
+        <label for="e-panel">Filtro</label>
+        <select id="e-panel"><option>Operables</option><option>Todos</option></select>
       </div>
-      <div class="ancho"><button class="primario" id="e-btn">Bajar panel</button></div>
+      <div class="ancho"><button class="primario" id="e-btn">Bajar instrumento</button></div>
     </div>
     <div id="e-out"></div>
     <details class="avanzado">
@@ -509,23 +508,42 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
 </dialog>
 
 <dialog id="dlg-grupo">
-  <h2>Nuevo grupo</h2>
+  <h2 id="g-titulo">Nuevo par</h2>
   <div class="form">
     <div class="ancho">
       <label for="g-nombre">Nombre</label>
       <input id="g-nombre" style="text-transform:none" placeholder="Aluar / Ternium">
     </div>
-    <div class="ancho">
-      <label for="g-tickers">Tickers (separados por coma)</label>
-      <input id="g-tickers" placeholder="ALUA, TXAR">
+    <div>
+      <label for="g-num">Numerador</label>
+      <input id="g-num" list="tickers" placeholder="ALUA">
+    </div>
+    <div>
+      <label for="g-den">Denominador</label>
+      <input id="g-den" list="tickers" placeholder="TXAR">
     </div>
     <div class="ancho">
       <label for="g-base">Unidad de medida</label>
       <select id="g-base"><option value="">Escribí los tickers primero</option></select>
     </div>
+    <div>
+      <label for="g-soporte">Soporte</label>
+      <input id="g-soporte" inputmode="decimal" placeholder="1.36">
+    </div>
+    <div>
+      <label for="g-resistencia">Resistencia</label>
+      <input id="g-resistencia" inputmode="decimal" placeholder="1.54">
+    </div>
+    <div class="ancho">
+      <label for="g-alertas">Alertas</label>
+      <select id="g-alertas">
+        <option value="1">Avisar al entrar en zona</option>
+        <option value="0">Sin alertas</option>
+      </select>
+    </div>
     <div class="ancho" style="font-size:11px;color:var(--muted)">
-      Todo el resultado se mide en nominales de la unidad elegida,
-      estés parado donde estés.
+      El ratio es numerador sobre denominador. El resultado de la rotación
+      se mide en nominales de la unidad elegida, estés parado donde estés.
     </div>
     <div class="ancho"><button class="primario" id="g-guardar">Crear</button></div>
     <div class="ancho"><button class="secundario" id="g-cerrar">Cancelar</button></div>
@@ -762,11 +780,40 @@ function tarjeta(p){
       (p.z != null ? '<span>z <b>' + (p.z>=0?"+":"") + p.z.toFixed(2) + '</b></span>'
                    : '<span>n <b>' + (est.n||0) + '</b></span>') +
     '</div>' +
+    posicionDe(p) +
     '<div class="acciones">' +
       '<button onclick="alternar(\'' + esc(p.alias) + '\')">Gráfico</button>' +
       '<button class="op" onclick="abrirOp(\'' + esc(p.alias) + '\')">Operé</button>' +
+      (p.posicion
+        ? '<button onclick="verMovimientos(' + p.posicion.id + ')">Movimientos</button>'
+        : "") +
+      '<button onclick="editarPar(' + (p.posicion ? p.posicion.id : 0) +
+        ')">Editar</button>' +
     '</div>' +
     '<div class="graf" id="g-' + css(p.alias) + '" hidden></div></div>';
+}
+
+
+/* La posicion vive en la misma tarjeta que el ratio: es la misma
+   estrategia mirada de dos maneras. */
+function posicionDe(p){
+  const s = p.posicion;
+  if(!s) return "";
+  if(s.faltan_precios && s.faltan_precios.length)
+    return '<div class="nota">Sin precio de ' +
+      esc(s.faltan_precios.join(", ")) + ': no se puede medir la rotación.</div>';
+  const tenencia = (s.tenencia || []).map(t =>
+    esc(t.ticker) + " " + ent(t.cantidad)).join(" · ");
+  if(!tenencia) return '<div class="nota">Sin posición cargada.</div>';
+  const r = s.rendimiento_pct;
+  const col = r == null ? "var(--muted)"
+    : r > 0 ? "var(--sage)" : r < 0 ? "var(--coral)" : "var(--bone)";
+  return '<div class="datos" style="border-top:1px solid var(--rule);' +
+    'padding-top:6px;margin-top:2px">' +
+    '<span>en <b>' + tenencia + '</b></span>' +
+    (r != null ? '<span>rotación <b style="color:' + col + '">' +
+      (r >= 0 ? "+" : "") + r.toFixed(2) + '%</b></span>' : "") +
+    '</div>';
 }
 
 function banda(p){
@@ -1152,39 +1199,50 @@ async function cargarConsumo(){
         esc(x.fecha) + ": " + x.n + '"></i>').join("") + '</div></div>';
   }catch(e){ /* silencioso */ }
 }
+/* El valor tiene que ser el nombre exacto que espera la API; el texto
+   visible es solo para leerlo. */
+const NOMBRE_INSTR = {
+  titulosPublicos: "Títulos públicos", letras: "Letras",
+  acciones: "Acciones", cedears: "CEDEARs", opciones: "Opciones",
+  obligacionesNegociables: "Obligaciones negociables",
+  cauciones: "Cauciones", aDRs: "ADRs", cHPD: "CHPD", futuros: "Futuros",
+};
+
 async function cargarInstrumentos(){
   const sel = $("#e-inst");
   try{
     const d = await (await fetch(base + "api/explorar/instrumentos?pais=" +
       $("#e-pais").value)).json();
-    const lista = (Array.isArray(d)?d:[]).map(nombreDe).filter(Boolean);
+    const lista = Array.isArray(d) ? d : [];
     if(lista.length){
-      sel.innerHTML = lista.map(n => '<option>' + esc(n) + '</option>').join("");
-      sel.value = lista.includes("Bonos") ? "Bonos" : lista[0];
+      sel.innerHTML = lista.map(k => '<option value="' + esc(k) + '">' +
+        esc(NOMBRE_INSTR[k] || k) + '</option>').join("");
+      sel.value = lista.includes("titulosPublicos")
+        ? "titulosPublicos" : lista[0];
     }
   }catch(e){}
   await cargarPaneles();
 }
+
 async function cargarPaneles(){
+  /* Orleans no tiene paneles: filtra por Operables o Todos. */
   const sel = $("#e-panel");
-  sel.innerHTML = '<option value="">Cargando…</option>';
   try{
-    const q = new URLSearchParams({instrumento:$("#e-inst").value, pais:$("#e-pais").value});
-    const d = await (await fetch(base + "api/explorar/paneles?" + q)).json();
-    const lista = (Array.isArray(d)?d:[]).map(nombreDe).filter(Boolean);
-    sel.innerHTML = lista.length
-      ? lista.map(n => '<option>' + esc(n) + '</option>').join("")
-      : '<option value="">Sin paneles</option>';
-  }catch(e){ sel.innerHTML = '<option value="">No se pudieron cargar</option>'; }
+    const d = await (await fetch(base + "api/explorar/paneles")).json();
+    const lista = Array.isArray(d) ? d : ["Operables", "Todos"];
+    sel.innerHTML = lista.map(n => '<option>' + esc(n) + '</option>').join("");
+  }catch(e){
+    sel.innerHTML = '<option>Operables</option><option>Todos</option>';
+  }
 }
 $("#e-inst").addEventListener("change", cargarPaneles);
 $("#e-pais").addEventListener("change", cargarInstrumentos);
 
 $("#e-btn").addEventListener("click", async () => {
   const out = $("#e-out"), panel = $("#e-panel").value;
-  if(!panel){ out.innerHTML = '<div class="msg">Elegí un panel.</div>'; return; }
+  if(!panel){ out.innerHTML = '<div class="msg">Elegí un filtro.</div>'; return; }
   $("#e-btn").disabled = true;
-  out.innerHTML = '<div class="vacio">Bajando panel…</div>';
+  out.innerHTML = '<div class="vacio">Bajando…</div>';
   const q = new URLSearchParams({instrumento:$("#e-inst").value, panel,
     pais:$("#e-pais").value});
   try{
@@ -1198,7 +1256,7 @@ $("#e-btn").addEventListener("click", async () => {
 
 function resumenPanel(d){
   const si = v => v ? "si" : "no";
-  return '<div class="hallazgo"><h3>Lo que trae este panel</h3><dl class="kv">' +
+  return '<div class="hallazgo"><h3>Lo que trae</h3><dl class="kv">' +
     '<dt>Títulos</dt><dd>' + d.total + '</dd>' +
     '<dt>Con puntas</dt><dd class="' + si(d.con_puntas) + '">' +
       d.con_puntas + ' de ' + d.total + '</dd>' +
@@ -1476,39 +1534,82 @@ $("#pos-importar").addEventListener("click", async () => {
 });
 
 /* --- crear grupo --- */
-$("#pos-nuevo").addEventListener("click", () => {
-  $("#g-nombre").value = ""; $("#g-tickers").value = "";
-  $("#g-base").innerHTML = '<option value="">Escribí los tickers primero</option>';
+/* Un par y un grupo son lo mismo: el ratio y la posicion sobre los
+   mismos dos tickers. Se editan juntos. */
+let parEditando = null;
+
+function abrirDialogoPar(g){
+  parEditando = g ? g.id : null;
+  $("#g-titulo").textContent = g ? "Editar par" : "Nuevo par";
+  $("#g-guardar").textContent = g ? "Guardar" : "Crear";
+  $("#g-nombre").value = g ? g.nombre : "";
+  $("#g-num").value = g ? (g.num || (g.tickers || [])[0] || "") : "";
+  $("#g-den").value = g ? (g.den || (g.tickers || [])[1] || "") : "";
+  $("#g-soporte").value = g && g.soporte != null ? g.soporte : "";
+  $("#g-resistencia").value = g && g.resistencia != null ? g.resistencia : "";
+  $("#g-alertas").value = g && g.alertas === false ? "0" : "1";
+  refrescarBase(g ? g.base : "");
   $("#g-msg").innerHTML = "";
   $("#dlg-grupo").showModal();
-});
-$("#g-tickers").addEventListener("input", () => {
-  const tks = $("#g-tickers").value.split(",").map(t => t.trim().toUpperCase())
-    .filter(Boolean);
+}
+
+function refrescarBase(elegida){
+  const tks = [$("#g-num").value.trim().toUpperCase(),
+               $("#g-den").value.trim().toUpperCase()].filter(Boolean);
   $("#g-base").innerHTML = tks.length
-    ? tks.map(t => '<option>' + esc(t) + '</option>').join("")
+    ? tks.map(t => '<option' + (t === elegida ? " selected" : "") + '>' +
+        esc(t) + '</option>').join("")
     : '<option value="">Escribí los tickers primero</option>';
-});
+}
+
+async function editarPar(gid){
+  if(!gid){
+    alert("Este par todavía no tiene posición asociada. Se creó desde la " +
+          "configuración vieja; volvé a crearlo desde acá.");
+    return;
+  }
+  try{
+    const d = await (await fetch(base + "api/grupos")).json();
+    const g = (d || []).find(x => x.id === gid);
+    if(g) abrirDialogoPar(g);
+  }catch(e){ alert("No se pudo abrir."); }
+}
+
+$("#pos-nuevo").addEventListener("click", () => abrirDialogoPar(null));
+$("#g-num").addEventListener("input", () => refrescarBase($("#g-base").value));
+$("#g-den").addEventListener("input", () => refrescarBase($("#g-base").value));
 $("#g-cerrar").addEventListener("click", () => $("#dlg-grupo").close());
 $("#g-guardar").addEventListener("click", async () => {
+  const num = $("#g-num").value.trim().toUpperCase();
+  const den = $("#g-den").value.trim().toUpperCase();
+  if(!num || !den || num === den){
+    $("#g-msg").innerHTML = '<div class="msg error">Cargá dos tickers ' +
+      'distintos.</div>';
+    return;
+  }
   const cuerpo = {
-    nombre: $("#g-nombre").value.trim(),
-    tickers: $("#g-tickers").value.split(",").map(t => t.trim().toUpperCase())
-      .filter(Boolean),
-    base: $("#g-base").value,
+    nombre: $("#g-nombre").value.trim() || (num + "/" + den),
+    tickers: [num, den], num, den,
+    base: $("#g-base").value || num,
+    soporte: $("#g-soporte").value.replace(",", "."),
+    resistencia: $("#g-resistencia").value.replace(",", "."),
+    alertas: $("#g-alertas").value === "1",
   };
   try{
-    const r = await fetch(base + "api/grupos", {method:"POST",
+    const url = parEditando ? "api/grupos/" + parEditando : "api/grupos";
+    const r = await fetch(base + url, {method:"POST",
       headers:{"Content-Type":"application/json"}, body: JSON.stringify(cuerpo)});
     const d = await r.json();
     if(!r.ok){ $("#g-msg").innerHTML = '<div class="msg error">' +
       esc(d.error) + '</div>'; return; }
     $("#dlg-grupo").close();
-    cargarPosicion();
+    parEditando = null;
+    cargarPanel();
   }catch(e){
-    $("#g-msg").innerHTML = '<div class="msg error">No se pudo crear.</div>';
+    $("#g-msg").innerHTML = '<div class="msg error">No se pudo guardar.</div>';
   }
 });
+
 
 /* --- movimiento --- */
 let movGrupo = null;
@@ -2741,6 +2842,7 @@ $("#log-borrar").addEventListener("click", async b => {
     const d = await (await fetch(base + "api/requests/log/borrar",
       {method:"POST"})).json();
     logUltimo = [];
+    logVista = "";
     $("#log-out").innerHTML = '<div class="vacio">Registro vacío. Se ' +
       'borraron ' + ent(d.borradas || 0) + ' llamadas.</div>';
   }catch(e){ alert("No se pudo borrar."); }
@@ -2772,8 +2874,24 @@ $("#log-out").addEventListener("click", ev => {
     aviso.remove();
   }, 1200);
 });
-$("#log-ver").addEventListener("click", logCrudo);
-$("#log-todo").addEventListener("click", logResumen);
+/* Los botones alternan: si ya se está mostrando esa vista, se pliega.
+   El listado es largo y tapa el resto de la pestaña. */
+let logVista = "";
+
+function logAlternar(cual, fn){
+  if(logVista === cual){
+    logVista = "";
+    logUltimo = [];
+    $("#log-out").innerHTML = "";
+    return;
+  }
+  logVista = cual;
+  fn();
+}
+
+$("#log-ver").addEventListener("click", () => logAlternar("crudo", logCrudo));
+$("#log-todo").addEventListener("click",
+  () => logAlternar("resumen", logResumen));
 
 /* ---------- alertas de precio ---------- */
 /* Comprar mira la punta vendedora y vender la compradora: es contra la

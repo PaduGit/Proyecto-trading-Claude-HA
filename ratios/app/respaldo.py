@@ -86,11 +86,18 @@ def exportar_posicion():
                                 if "equiv_antes" in m.keys() else None),
                 "nota": m["nota"],
             })
+        # los datos del par van en el export: es lo que permite
+        # recuperarlos despues de una reinstalacion
         salida["grupos"].append({
             "nombre": g["nombre"], "base": g["base"],
             "tickers": g["tickers"], "mercado": g["mercado"],
+            "num": g.get("num"), "den": g.get("den"),
+            "plazo": g.get("plazo"), "resistencia": g.get("resistencia"),
+            "soporte": g.get("soporte"),
+            "alertas": g.get("alertas", 1), "factor": g.get("factor"),
             "movimientos": movs,
         })
+    salida["version"] = 2
     return salida
 
 
@@ -124,6 +131,13 @@ def importar_posicion(datos, reemplazar=False):
 
         gid = db.crear_grupo(nombre, base, tickers,
                              (g.get("mercado") or "bCBA"))
+        # los export version 1 no traen los datos del par; si estan, se
+        # restauran para no tener que volver a cargarlos a mano
+        campos = {k: g[k] for k in ("num", "den", "plazo", "resistencia",
+                                    "soporte", "alertas", "factor")
+                  if g.get(k) is not None}
+        if campos:
+            db.actualizar_par(gid, campos)
         creados += 1
         for m in g.get("movimientos") or []:
             db.registrar_movimiento(
