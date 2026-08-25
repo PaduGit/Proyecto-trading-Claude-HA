@@ -1,5 +1,15 @@
 # Registro de cambios
 
+## 0.21.6
+
+**DIP0 y PAP0 estaban escritos con la letra O.** Son las especies en
+dolares del Discount y del Par en pesos, y terminan en cero. Con la O no
+las encontraba ningun instrumento y aparecian en "Sin cotizacion", que es
+justamente el aviso que se habia agregado en la version anterior.
+
+Su serie historica quedo guardada bajo el nombre viejo, asi que arrancan
+sin historia hasta que se recalcule por especie.
+
 ## 0.21.5
 
 **El par y el grupo son la misma cosa.** Un par se configuraba en el

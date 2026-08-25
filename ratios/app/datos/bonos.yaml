@@ -753,8 +753,10 @@ bonos:
         - {desde: 2026-04-30, tasa: 9.00}
 
 equivalencias:
-  DIPO: DICP
-  PAPO: PARP
+  # Terminan en cero, no en la letra O: escritos con O no los
+  # encuentra ningun instrumento y quedan sin cotizacion.
+  DIP0: DICP
+  PAP0: PARP
   AL29D: AL29
   AL29C: AL29
   AL30D: AL30
