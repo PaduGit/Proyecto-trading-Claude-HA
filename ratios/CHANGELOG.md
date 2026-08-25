@@ -1,5 +1,29 @@
 # Registro de cambios
 
+## 0.21.7
+
+**El Rulo no calculaba nada.** Al sacar el editor de "que tengo" se borro
+la lista de nombres de monedas, pero quedo una funcion usandola para
+armar cada circuito. Reventaba al dibujar la primera tarjeta, y por eso
+el encabezado aparecia y el listado no. La verificacion de sintaxis no lo
+detecta: un identificador borrado pasa el chequeo y falla recien al
+ejecutarse.
+
+**Tarjetas fantasma en Ratios.** El panel se indexa por alias y ahora se
+guarda entre reinicios, asi que al renombrar los pares en la migracion
+los alias viejos quedaron adentro para siempre y seguian dibujando una
+tarjeta sin posicion. Se poda el snapshot al guardarlo y al cargarlo,
+dejando solo los alias vigentes.
+
+**El backfill de cierres llega hasta ayer.** Pedia hasta hoy, asi que en
+cada arranque gastaba una llamada por ticker preguntando por el dia en
+curso: un dato que el cierre diario guarda igual al terminar la rueda, o
+que todavia no existe. Con diez tickers eran diez llamadas por reinicio.
+
+**El respaldo deja de reponer pares y paneles.** Los pares viven en la
+base desde la version anterior y los paneles ya no se usan, asi que
+reponerlos solo dejaba un aviso en el log en cada arranque.
+
 ## 0.21.6
 
 **DIP0 y PAP0 estaban escritos con la letra O.** Son las especies en

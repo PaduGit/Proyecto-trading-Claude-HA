@@ -2347,8 +2347,13 @@ function simboloMon(m){
 
 let cSerie = 0;
 
+/* Los nombres de las monedas del circuito. Estaban en el editor de
+   "qué tengo", que se quitó al pasar los bonos a Tenencias. */
+const MONEDAS_C = [["ARS", "Pesos"], ["MEP", "Dólar MEP"],
+                   ["CABLE", "Dólar cable"]];
+
 function nombreMon(m){
-  return (MONEDAS_C.find(x => x[0] === m) || [,m])[1];
+  return (MONEDAS_C.find(x => x[0] === m) || [, m])[1];
 }
 
 async function cargarCircuitos(){

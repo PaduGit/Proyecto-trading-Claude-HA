@@ -47,7 +47,7 @@ def leer_config():
 
 
 def restaurar_si_vacio(cfg):
-    """Si pares o paneles vienen vacíos, los toma del respaldo.
+    """Si una lista viene vacía, la toma del respaldo.
 
     Solo actúa cuando la lista está vacía: si borraste un par a
     propósito, no lo resucita.
@@ -57,7 +57,9 @@ def restaurar_si_vacio(cfg):
         return cfg, []
 
     repuestos = []
-    for clave in ("pares", "paneles", "arbitraje_tickers", "comisiones"):
+    # "pares" y "paneles" ya no se usan: los pares viven en la base y la
+    # bajada la hace orleans. Reponerlos solo generaba ruido en el log.
+    for clave in ("arbitraje_tickers", "comisiones"):
         if not cfg.get(clave) and prev.get(clave):
             cfg[clave] = prev[clave]
             repuestos.append(clave)

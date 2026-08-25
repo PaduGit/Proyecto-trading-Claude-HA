@@ -1303,9 +1303,17 @@ class Monitor:
     def _guardar_snapshot(self):
         """El Panel se alimenta de memoria y quedaba vacio tras cada
         reinicio fuera de rueda. Guardarlo permite mostrar el ultimo
-        estado conocido sin pedir nada."""
+        estado conocido sin pedir nada.
+
+        Se poda antes de guardar: el snapshot se indexa por alias y, al
+        renombrar o borrar un par, el alias viejo quedaba adentro para
+        siempre y seguia dibujando una tarjeta fantasma.
+        """
         import json
+        vigentes = {p["alias"] for p in self.pares}
         with self.lock:
+            for alias in [a for a in self.snapshot if a not in vigentes]:
+                del self.snapshot[alias]
             datos = dict(self.snapshot)
         if datos:
             db.set_estado("snapshot_pares", json.dumps(
@@ -1319,6 +1327,10 @@ class Monitor:
         except Exception:
             return
         pares = d.get("pares") or {}
+        if not pares:
+            return
+        vigentes = {p["alias"] for p in self.pares}
+        pares = {k: v for k, v in pares.items() if k in vigentes}
         if not pares:
             return
         for v in pares.values():
@@ -1425,11 +1437,18 @@ class Monitor:
     # -- historico ----------------------------------------------------
 
     def backfill(self):
+        """Cierres historicos de los tickers de cada par.
+
+        Llega hasta ayer y no hasta hoy: el cierre del dia en curso lo
+        guarda el cierre diario cuando termina la rueda. Pidiendolo aca
+        se gastaba una llamada por ticker en cada arranque para traer un
+        dato que iba a llegar igual, o que todavia no existe.
+        """
         simbolos = set()
         for p in self.pares:
             simbolos.add((p["mercado"], p["num"]))
             simbolos.add((p["mercado"], p["den"]))
-        hasta = datetime.now().date()
+        hasta = datetime.now().date() - timedelta(days=1)
 
         for mercado, sim in sorted(simbolos):
             ultimo = db.ultimo_cierre_guardado(sim)
