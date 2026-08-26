@@ -23,8 +23,13 @@ log = logging.getLogger("dolar")
 # La serie del BCRA. No la pude confirmar contra la documentacion, asi
 # que es configurable: si el numero no fuera este, la opcion "Probar
 # A3500" del menu lo dice en un toque.
-SERIE = 4
+# El BCRA publica varias series de tipo de cambio: minorista, mayorista
+# A3500 y los limites de la banda. La que corresponde a un dolar linked
+# es la A3500 de referencia. El numero se descubre listando el catalogo,
+# no adivinando.
+SERIE = 5
 REZAGO_HABILES = 1
+CATALOGO = "https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias"
 
 CABECERAS = CER.CABECERAS
 ESPERA_TRAS_FALLO = 300
@@ -45,6 +50,54 @@ def init():
     c = db.conn()
     c.executescript(ESQUEMA)
     c.commit()
+
+
+CLAVE_SERIE = "a3500_serie"
+
+
+def serie_efectiva(verificar_ssl=True):
+    """La serie a usar: la guardada, o la que encuentre en el catalogo."""
+    guardada = db.get_estado(CLAVE_SERIE)
+    if guardada:
+        try:
+            return int(guardada)
+        except ValueError:
+            pass
+    f = buscar_a3500(verificar_ssl)
+    if f:
+        try:
+            n = int(f["id"])
+        except (TypeError, ValueError):
+            return SERIE
+        # primera deteccion: lo que hubiera bajado antes se hizo con una
+        # serie sin confirmar, asi que no es confiable
+        c = db.conn()
+        hay = c.execute("SELECT COUNT(*) n FROM a3500").fetchone()["n"]
+        if hay:
+            c.execute("DELETE FROM a3500")
+            c.commit()
+            log.info("A3500: se descarto lo bajado antes de fijar la serie")
+        db.set_estado(CLAVE_SERIE, n)
+        log.info("A3500: serie %s (%s)", n, f["descripcion"][:80])
+        return n
+    return SERIE
+
+
+def fijar_serie(n):
+    """Cambiar de serie invalida lo guardado.
+
+    Si se bajo con la serie equivocada, los valores viejos siguen ahi y
+    conviven con los nuevos: al ser la misma tabla indexada por fecha, se
+    mezclarian dos series distintas.
+    """
+    n = int(n)
+    previa = db.get_estado(CLAVE_SERIE)
+    if previa and str(previa) != str(n):
+        c = db.conn()
+        c.execute("DELETE FROM a3500")
+        c.commit()
+        log.info("A3500: serie %s -> %s, se borro lo guardado", previa, n)
+    db.set_estado(CLAVE_SERIE, n)
 
 
 def _urls(serie=None):
@@ -73,7 +126,7 @@ def descargar(desde, hasta, verificar_ssl=True, serie=None):
             < ESPERA_TRAS_FALLO:
         return 0
 
-    v4, v3 = _urls(serie)
+    v4, v3 = _urls(serie or serie_efectiva(verificar_ssl))
     params = {"desde": desde, "hasta": hasta, "limit": 3000}
     intentos = [(v4, True), (v3, True), (v4, False), (v3, False)]
     if not verificar_ssl:
@@ -113,6 +166,62 @@ def descargar(desde, hasta, verificar_ssl=True, serie=None):
         log.warning("A3500: %s", ultimo_error)
         _ultimo_fallo = datetime.now()
     return len(filas)
+
+
+def catalogo(verificar_ssl=True):
+    """Las series que publica el BCRA, con su numero y descripcion."""
+    global ultimo_error
+    for url, verify in ((CATALOGO, verificar_ssl), (CATALOGO, False)):
+        try:
+            r = requests.get(url, headers=CABECERAS, timeout=30, verify=verify)
+            if r.status_code != 200:
+                ultimo_error = "%s -> HTTP %s" % (url, r.status_code)
+                continue
+            d = r.json() or {}
+        except Exception as e:
+            ultimo_error = "%s: %s" % (type(e).__name__, str(e)[:160])
+            continue
+
+        filas = []
+
+        def _mirar(x):
+            if isinstance(x, list):
+                for y in x:
+                    _mirar(y)
+                return
+            if not isinstance(x, dict):
+                return
+            idv = x.get("idVariable") or x.get("id")
+            desc = x.get("descripcion") or x.get("descripcionSerie")
+            if idv is not None and desc:
+                filas.append({"id": idv, "descripcion": str(desc),
+                              "valor": x.get("valor"),
+                              "fecha": x.get("fecha")})
+            for k in ("results", "detalle", "datos", "data"):
+                if k in x:
+                    _mirar(x[k])
+
+        _mirar(d)
+        if filas:
+            ultimo_error = None
+            return filas
+    return []
+
+
+def buscar_a3500(verificar_ssl=True):
+    """El numero de serie del mayorista A3500, buscado por descripcion.
+
+    Evita depender de un numero fijo: si el BCRA reordena el catalogo, se
+    vuelve a encontrar solo.
+    """
+    for f in catalogo(verificar_ssl):
+        t = f["descripcion"].lower()
+        if "3500" in t and "mayorista" in t:
+            return f
+    for f in catalogo(verificar_ssl):
+        if "3500" in f["descripcion"]:
+            return f
+    return None
 
 
 def valor(f, verificar_ssl=True):
@@ -178,5 +287,6 @@ def estado():
         "SELECT COUNT(*) n, MIN(fecha) desde, MAX(fecha) hasta "
         "FROM a3500").fetchone()
     return {"dias": r["n"], "desde": r["desde"], "hasta": r["hasta"],
-            "serie": SERIE, "ultimo_error": ultimo_error,
+            "serie": db.get_estado(CLAVE_SERIE) or SERIE,
+            "ultimo_error": ultimo_error,
             "vigente": vigente() if r["n"] else None}

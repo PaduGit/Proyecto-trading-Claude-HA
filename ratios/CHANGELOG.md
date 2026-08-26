@@ -1,5 +1,65 @@
 # Registro de cambios
 
+## 0.22.1
+
+**La serie del A3500 se busca por nombre.** El numero de variable del
+BCRA estaba puesto a mano y era el equivocado: devolvia el limite
+superior de la banda cambiaria en vez del mayorista de referencia, y con
+eso la TIR de un dolar linked salia cuatro veces mas alta. Ahora se pide
+el catalogo y se busca la serie cuya descripcion dice mayorista y 3500,
+asi que si el BCRA reordena las variables se vuelve a encontrar sola. El
+menu muestra las series de tipo de cambio con su valor actual para poder
+confirmarla o elegir otra.
+
+Al fijar la serie por primera vez, o al cambiarla, se descarta lo bajado
+antes: la tabla se indexa por fecha, asi que valores de dos series
+distintas quedarian mezclados sin que se note.
+
+**Las obligaciones negociables entran a la tabla.** DNC3O de Edenor,
+DEC2O de Edesa, CLSIO de CLISA y MR43O de Generacion Mediterranea, con
+sus cupones y amortizaciones. Van en emisor corporativo, que es una
+categoria nueva: cinco ON rindiendo 30% dentro de la curva soberana la
+deformarian entera, igual que pasaba con PBA28.
+
+CLI1O queda fuera a proposito. Es un titulo contingente cuyos pagos
+dependen del EBITDA de CLISA y de una decision del directorio, asi que no
+tiene cronograma: figura en tenencias pero sin calendario ni TIR, porque
+cualquier flujo que se le cargara seria inventado.
+
+MR43O y CLSIO quedan marcadas para verificar. A la primera le falta el
+anio de cada salto del step-up: cargada con 7% para todo el plazo, los
+cobros del proximo anio salen bien y la TIR queda mal desde 2028.
+
+## 0.22.1
+
+**La serie del A3500 se busca por nombre.** Estaba fija en un numero que
+no pude confirmar, y era el equivocado: devolvia el limite superior de la
+banda cambiaria en vez del mayorista de referencia, con lo que la TIR de
+un dolar linked salia muy alta. Ahora se pide el catalogo del BCRA y se
+busca la serie que dice "mayorista" y "3500" en la descripcion, asi que
+si el BCRA reordena las series se vuelve a encontrar sola.
+
+El menu muestra el catalogo con el valor actual de cada serie y deja
+confirmar o elegir otra. Al fijarla, o al detectarla por primera vez, se
+descarta lo que se hubiera bajado antes: la tabla se indexa por fecha, y
+valores de dos series distintas conviviendo dan un resultado que no es
+ninguna de las dos.
+
+**Cuatro obligaciones negociables cargadas**: Edenor Clase 3, Edesa Clase
+2, CLISA garantizada y Generacion Mediterranea Clase 43, esta ultima
+dolar linked. Van en emisor corporativo, que es una categoria nueva con
+su filtro: cinco ON rindiendo 30% deformarian la curva soberana.
+
+CLI1O queda deliberadamente afuera. Es un titulo contingente cuyos pagos
+dependen del EBITDA de CLISA y de una decision del directorio: no tiene
+cronograma, y cualquier flujo que se le cargara seria inventado. Sigue en
+tenencias, sin calendario ni TIR.
+
+MR43O quedo con el cupon del primer tramo para todo el plazo, porque el
+escalonamiento posterior a 2027 no esta confirmado. Los cobros del
+proximo anio son correctos; la TIR queda mal desde 2028. Esta marcado en
+el archivo.
+
 ## 0.22.0
 
 **Calendario de cobros.** En Tenencias, agrupado por mes y con el total

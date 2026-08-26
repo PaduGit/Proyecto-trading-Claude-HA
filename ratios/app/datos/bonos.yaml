@@ -658,6 +658,125 @@ bonos:
       La fecha de emision es la de la primera licitacion en la que
       aparece; hubo reaperturas posteriores. Al ser cero cupon y bullet
       no afecta el flujo, solo el dato informativo.
+  DNC3O:
+    nombre: ON Edenor Clase 3 9,75% 2026
+    ley: argentina
+    moneda: USD
+    emisor: Empresa Distribuidora y Comercializadora Norte (Edenor)
+    emisor_tipo: corporativo
+    tipo: hard_dollar
+    emision: 2024-03-07
+    vencimiento: 2026-11-22
+    base: 30/360
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2024-11-22
+      tramos:
+        - {desde: 2024-03-07, tasa: 9.75}
+    nota: >-
+      Denominada y pagadera en dolares; la especie que termina en O
+      cotiza en pesos, igual que un AL30. Riesgo corporativo: va en su
+      propia familia y no entra a la curva soberana.
+  DNC3O:
+    nombre: ON Edenor Clase 3 9,75% 2026
+    ley: argentina
+    moneda: USD
+    emisor: EDENOR S.A.
+    emisor_tipo: corporativo
+    tipo: hard_dollar
+    emision: 2024-03-07
+    vencimiento: 2026-11-22
+    base: 30/360
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2024-11-22
+      tramos:
+        - {desde: 2024-03-07, tasa: 9.75}
+    nota: >-
+      Denominada y pagadera en dolares; el ticker terminado en O cotiza
+      en pesos. Amortiza integra al vencimiento y paga cupon los 22 de
+      mayo y 22 de noviembre.
+  DEC2O:
+    nombre: ON Edesa Clase 2 8,50% 2027
+    ley: argentina
+    moneda: USD
+    emisor: Empresa Distribuidora de Electricidad de Salta S.A.
+    emisor_tipo: corporativo
+    tipo: hard_dollar
+    emision: 2024-02-24
+    vencimiento: 2027-02-24
+    base: 30/360
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2024-08-24
+      tramos:
+        - {desde: 2024-02-24, tasa: 8.5}
+    nota: >-
+      Denominada en dolares y bullet. Paga cupon los 24 de febrero y 24
+      de agosto; el ticker terminado en O cotiza en pesos.
+    verificar: >-
+      La fecha de emision se dedujo restando tres anios al vencimiento,
+      que es el plazo habitual de la clase. No afecta el flujo futuro
+      porque es bullet y la tasa es unica, solo el interes corrido.
+  CLSIO:
+    nombre: ON CLISA garantizada step-up 2027
+    ley: extranjera
+    moneda: USD
+    emisor: CLISA - Compañía Latinoamericana de Infraestructura y Servicios S.A.
+    emisor_tipo: corporativo
+    tipo: hard_dollar
+    emision: 2021-08-13
+    vencimiento: 2027-07-26
+    base: 30/360
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2021-12-31
+      tramos:
+        # el cupon se devenga desde el pago anterior: para que el de
+        # junio de 2027 pague 1,75 el tramo arranca en diciembre de 2026
+        - {desde: 2021-08-13, tasa: 2.0}
+        - {desde: 2026-12-30, tasa: 3.5}
+    nota: >-
+      Garantizada, ley extranjera, step-up. Paga cupon semestral en
+      junio y diciembre y amortiza integra al vencimiento.
+    verificar: >-
+      Hay dos datos en conflicto: una fuente da el escalonamiento hasta
+      diciembre de 2031 y el vencimiento confirmado es 26/07/2027, con
+      lo cual los tramos posteriores no llegan a aplicarse. Se cargo
+      2% hasta fin de 2026 y 3,5% desde 2027. La fecha de emision es la
+      del canje de 2021 y solo afecta el interes corrido.
+
+  MR43O:
+    nombre: ON Generación Mediterránea Clase 43 dólar linked 2036
+    ley: argentina
+    moneda: ARS
+    ajuste: dolar_linked
+    tipo: dolar_linked
+    emisor: Generación Mediterránea / Central Térmica Roca S.A.
+    emisor_tipo: corporativo
+    emision: 2026-06-30
+    vencimiento: 2036-06-30
+    base: 30/360
+    amortizacion:
+      tipo: cuotas
+      fechas_desde: 2026-12-31
+      frecuencia_meses: 6
+      cuotas_iguales: 20
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2026-12-31
+      tramos:
+        - {desde: 2026-06-30, tasa: 7.0}
+    verificar: >-
+      El escalonamiento posterior a 2027 no esta confirmado: la fuente
+      dice entre 8,5% y 9,5% segun las clausulas del canje, sin el anio
+      de cada salto. Cargada con 7% para todo el plazo: los cobros del
+      proximo anio quedan bien, la TIR queda mal desde 2028. Tampoco
+      esta confirmada la fecha de emision.
   DICP:
     nombre: Discount en pesos CER 5,83% 2033
     ley: argentina

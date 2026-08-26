@@ -1809,24 +1809,38 @@ $("#rehacer-todo").addEventListener("click", async e => {
 $("#probar-a3500").addEventListener("click", async e => {
   e.preventDefault(); e.stopPropagation();
   $("#menu").hidden = true;
-  /* El número de serie del BCRA no está confirmado: si no fuera el que
-     está por defecto, se puede probar otro acá mismo. */
-  const serie = prompt("¿Qué serie del BCRA probar?\nDejalo como está si " +
-    "no sabés: 4 debería ser el mayorista A3500.", "4");
-  if(serie === null) return;
+  /* Se lista el catálogo del BCRA y se busca la A3500 por nombre: el
+     número de serie no hace falta saberlo de memoria, y si el BCRA
+     reordena las series se vuelve a encontrar sola. */
   try{
-    const d = await (await fetch(base + "api/a3500?probar=1&serie=" +
-      encodeURIComponent(serie.trim()))).json();
-    const e2 = d.estado || {};
+    const l = await (await fetch(base + "api/a3500?listar=1")).json();
+    if(l.error && !(l.series || []).length){
+      alert("No se pudo leer el catálogo del BCRA: " + l.error);
+      return;
+    }
+    const det = l.detectada;
+    const lista = (l.series || []).map(x =>
+      x.id + " · " + x.descripcion.slice(0, 70) +
+      (x.valor != null ? "  = " + x.valor : "")).join("\n");
+    const sugerida = det ? det.id : "";
+    const elegida = prompt(
+      (det ? "Detectada: serie " + det.id + "\n" + det.descripcion + "\n\n"
+           : "No se detectó automáticamente.\n\n") +
+      "Series de tipo de cambio:\n" + lista +
+      "\n\n¿Cuál uso?", String(sugerida));
+    if(elegida === null) return;
+    const d = await (await fetch(base + "api/a3500?probar=1&fijar=1&serie=" +
+      encodeURIComponent(elegida.trim()))).json();
+    const es = d.estado || {};
     alert(d.error
       ? "Falló: " + d.error
       : "Serie " + d.serie_probada + ": " + ent(d.bajados) + " días bajados.\n" +
-        "Guardados: " + ent(e2.dias) + " entre " + (e2.desde || "?") +
-        " y " + (e2.hasta || "?") + ".\n" +
-        "Valor vigente: " + (e2.vigente != null ? num(e2.vigente, 6) : "—") +
-        "\n\nSi ese número no se parece al dólar oficial, la serie es otra.");
+        "Guardados: " + ent(es.dias) + " entre " + (es.desde || "?") +
+        " y " + (es.hasta || "?") + ".\n" +
+        "Valor vigente: " + (es.vigente != null ? num(es.vigente, 6) : "—"));
   }catch(err){ alert("No se pudo consultar."); }
 });
+
 $("#probar-cer").addEventListener("click", async e => {
   e.preventDefault(); e.stopPropagation();
   $("#menu").hidden = true;
@@ -2089,7 +2103,8 @@ const MONEDAS = [["todas","Todas"],["ARS","Pesos"],["MEP","D · MEP"],
    nacional por su propio riesgo de crédito. El filtro es solo para mirar;
    por defecto se ven todos. */
 const EMISORES = [["todos","Todos"],["nacion","Nación"],
-                  ["provincia","Provincia"],["bcra","BCRA"]];
+                  ["provincia","Provincia"],["bcra","BCRA"],
+                  ["corporativo","Corporativo"]];
 
 /* color por moneda de cotización, para el gráfico con varias series */
 const COLOR_MONEDA = {ARS:"#E9E5DC", MEP:"#6FA88C", CABLE:"#7FA6B8"};

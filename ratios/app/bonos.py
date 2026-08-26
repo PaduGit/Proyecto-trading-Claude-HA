@@ -105,7 +105,8 @@ def _moneda_cotiza(info, simbolo):
     return "ARS"
 
 
-EMISORES = {"nacion": "Nación", "provincia": "Provincia", "bcra": "BCRA"}
+EMISORES = {"nacion": "Nación", "provincia": "Provincia",
+            "bcra": "BCRA", "corporativo": "Corporativo"}
 
 
 def emisor_de(cfg):

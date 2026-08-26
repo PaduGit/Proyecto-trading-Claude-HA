@@ -952,6 +952,18 @@ def crear_app(monitor):
         """
         import dolar as DL
         serie = request.args.get("serie")
+        if request.args.get("listar") == "1":
+            # el catalogo completo: asi se ve cual es la A3500 sin adivinar
+            filas = DL.catalogo()
+            cambio = [f for f in filas
+                      if "cambio" in f["descripcion"].lower()
+                      or "3500" in f["descripcion"]]
+            return jsonify({"series": cambio or filas[:40],
+                            "total": len(filas),
+                            "detectada": DL.buscar_a3500(),
+                            "error": DL.ultimo_error})
+        if serie and request.args.get("fijar") == "1":
+            DL.fijar_serie(int(serie))
         if request.args.get("probar") == "1":
             DL.reintentar_ya()
             from datetime import date as _d, timedelta as _td
