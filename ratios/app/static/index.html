@@ -301,6 +301,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       <div class="menu" id="menu" hidden role="menu">
         <a href="#" id="probar-notif" role="menuitem">Probar notificación</a>
         <a href="#" id="probar-cer" role="menuitem">Probar CER (BCRA)</a>
+        <a href="#" id="probar-a3500" role="menuitem">Probar A3500 (BCRA)</a>
         <a href="#" id="rehacer-hist" role="menuitem">Reconstruir histórico</a>
         <a href="#" id="rehacer-todo" role="menuitem">Recalcular histórico entero</a>
         <a href="#" id="reintentar-precio" role="menuitem">Reintentar especies sin precio</a>
@@ -414,6 +415,14 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
     <button class="primario" id="ten-traer" style="margin-bottom:12px">
       Traer tenencia de IOL</button>
     <div id="ten-out"></div>
+    <h3 style="margin:22px 0 6px">Próximos cobros</h3>
+    <div class="periodos" id="cob-rango" style="margin-bottom:8px">
+      <button class="activo" data-dias="90">90 días</button>
+      <button data-dias="180">6 meses</button>
+      <button data-dias="365">1 año</button>
+      <button data-dias="3650">Todo</button>
+    </div>
+    <div id="cob-out"></div>
     <p class="nota">Título y cantidad por broker. Los bonos de brokers
       locales son los que el Rulo usa como punto de partida; los del
       exterior se guardan pero no participan, porque no liquidan contra el
@@ -447,6 +456,12 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       del cierre.</p>
     <button class="primario" id="al-nueva">Nueva alerta</button>
     <div id="al-out" style="margin-top:12px"></div>
+
+    <h3 style="margin:22px 0 6px">Por fecha</h3>
+    <p class="nota">Recordatorios sueltos: revisar una posición, una fecha
+      límite. Se avisan una vez; cambiar la fecha los rehabilita.</p>
+    <button class="secundario" id="fe-nueva">Nuevo recordatorio</button>
+    <div id="fe-out" style="margin-top:12px"></div>
   </section>
 
   <section id="v-reg" hidden>
@@ -688,8 +703,8 @@ document.querySelectorAll("nav button").forEach(b => {
     if(vista === "rulo") cargarCircuitos();
     if(vista === "opc") cargarOpciones();
     if(vista === "plazos") cargarPlazos();
-    if(vista === "alertas") cargarAlertas();
-    if(vista === "pos") cargarTenencias();
+    if(vista === "alertas"){ cargarAlertas(); cargarAlertasFecha(); }
+    if(vista === "pos"){ cargarTenencias(); cargarCobros(); }
     if(vista === "reg") cargarRegistro();
     if(vista === "expl") iniciarExplorar();
   });
@@ -790,6 +805,10 @@ function tarjeta(p){
       '<button onclick="editarPar(' + (p.posicion ? p.posicion.id : 0) +
         ')">Editar</button>' +
     '</div>' +
+    /* el detalle de movimientos se dibuja acá: antes vivía en la tarjeta
+       de grupo, que dejó de existir al unificar */
+    (p.posicion ? '<div class="movs" id="mv-' + p.posicion.id +
+      '" hidden></div>' : "") +
     '<div class="graf" id="g-' + css(p.alias) + '" hidden></div></div>';
 }
 
@@ -1009,8 +1028,8 @@ $("#o-guardar").addEventListener("click", async () => {
     if(vista === "rulo") cargarCircuitos();
     if(vista === "opc") cargarOpciones();
     if(vista === "plazos") cargarPlazos();
-    if(vista === "alertas") cargarAlertas();
-    if(vista === "pos") cargarTenencias();
+    if(vista === "alertas"){ cargarAlertas(); cargarAlertasFecha(); }
+    if(vista === "pos"){ cargarTenencias(); cargarCobros(); }
     if(vista === "reg") cargarRegistro();
   }catch(e){
     $("#o-msg").innerHTML = '<div class="msg error">No se pudo guardar.</div>';
@@ -1410,10 +1429,11 @@ function tarjetaGrupo(g){
 
     '<div class="acciones">' +
       '<button onclick="abrirMov(' + g.id + ')">Movimiento</button>' +
-      '<button onclick="verMovimientos(' + g.id + ')">Historial</button>' +
       '<button onclick="borrarGrupo(' + g.id + ')">Borrar</button>' +
     '</div>' +
-    '<div class="graf" id="mv-' + g.id + '" hidden></div></div>';
+    /* el id de movimientos lo pone ahora la tarjeta del par: si lo
+       repitiera acá, getElementById podría agarrar el equivocado */
+    '</div>';
 }
 
 async function verMovimientos(gid, forzar){
@@ -1785,6 +1805,28 @@ $("#rehacer-todo").addEventListener("click", async e => {
         "Total: " + (d.estado ? d.estado.filas : "?") + " puntos.");
   }catch(err){ alert("No se pudo recalcular."); }
 });
+
+$("#probar-a3500").addEventListener("click", async e => {
+  e.preventDefault(); e.stopPropagation();
+  $("#menu").hidden = true;
+  /* El número de serie del BCRA no está confirmado: si no fuera el que
+     está por defecto, se puede probar otro acá mismo. */
+  const serie = prompt("¿Qué serie del BCRA probar?\nDejalo como está si " +
+    "no sabés: 4 debería ser el mayorista A3500.", "4");
+  if(serie === null) return;
+  try{
+    const d = await (await fetch(base + "api/a3500?probar=1&serie=" +
+      encodeURIComponent(serie.trim()))).json();
+    const e2 = d.estado || {};
+    alert(d.error
+      ? "Falló: " + d.error
+      : "Serie " + d.serie_probada + ": " + ent(d.bajados) + " días bajados.\n" +
+        "Guardados: " + ent(e2.dias) + " entre " + (e2.desde || "?") +
+        " y " + (e2.hasta || "?") + ".\n" +
+        "Valor vigente: " + (e2.vigente != null ? num(e2.vigente, 6) : "—") +
+        "\n\nSi ese número no se parece al dólar oficial, la serie es otra.");
+  }catch(err){ alert("No se pudo consultar."); }
+});
 $("#probar-cer").addEventListener("click", async e => {
   e.preventDefault(); e.stopPropagation();
   $("#menu").hidden = true;
@@ -1855,7 +1897,14 @@ async function cargarBonos(){
 
     window._filasBonos = d.filas;
     const sinCer = d.filas.filter(f => f.falta_cer).map(f => f.simbolo);
+    const sinTc = d.filas.filter(f => f.falta_tc).map(f => f.simbolo);
     out.innerHTML =
+      (sinTc.length
+        ? '<div class="aviso">Sin TIR para ' + sinTc.map(esc).join(", ") +
+          ': falta el tipo de cambio A3500 del BCRA. Probalo desde el menú ' +
+          'con <b>Probar A3500</b>: si la serie no es la correcta, ahí se ' +
+          've y se puede cambiar.</div>'
+        : "") +
       (sinCer.length
         ? '<div class="aviso">Sin TIR para ' + sinCer.map(esc).join(", ") +
           ': no se pudo obtener el CER del BCRA. Mirá el registro de la app; ' +
@@ -1879,7 +1928,8 @@ async function cargarBonos(){
         const t = v => v == null ? "—" : v.toFixed(2) + "%";
         const clase = f.moneda === "USD" ? "usd"
                     : f.moneda === "CER" ? "cer" : "";
-        return '<tr class="' + clase + (f.falta_cer ? " sindato" : "") + '">' +
+        return '<tr class="' + clase +
+          (f.falta_cer || f.falta_tc ? " sindato" : "") + '">' +
           '<td class="tk" onclick="verBono(\'' + esc(f.simbolo) + '\')">' +
           esc(f.simbolo) + '</td>' +
           '<td class="md">' + (f.md != null ? f.md.toFixed(1) : "—") + '</td>' +
@@ -2031,6 +2081,7 @@ const filtro = {ley: "todas", tipo: "todos", moneda: "todas",
 
 const LEYES = [["todas","Todas"],["AR","Argentina"],["NY","Nueva York"]];
 const TIPOS = [["todos","Todos"],["hard_dollar","Hard dollar"],["cer","CER"],
+               ["dolar_linked","Dólar linked"],
                ["tasa_fija","Tasa fija $"],["dual","Duales"]];
 const MONEDAS = [["todas","Todas"],["ARS","Pesos"],["MEP","D · MEP"],
                  ["CABLE","C · Cable"]];
@@ -2898,6 +2949,120 @@ $("#log-ver").addEventListener("click", () => logAlternar("crudo", logCrudo));
 $("#log-todo").addEventListener("click",
   () => logAlternar("resumen", logResumen));
 
+
+/* ---------- alertas por fecha ---------- */
+let feEditando = null;
+
+function feFila(a){
+  const d = a.dias;
+  const cuando = d == null ? "" :
+    d === 0 ? "hoy" : d === 1 ? "mañana" :
+    d > 0 ? "en " + d + " días" : "hace " + (-d) + " días";
+  const vencida = d != null && d < 0;
+  return '<div class="circuito' + (a.avisada ? "" : d != null && d <= (a.dias_antes || 0) ? " gana" : "") +
+    (a.activa ? "" : " flojo") + '">' +
+    '<div><span class="r">' + esc(a.titulo) + '</span> ' +
+      '<span style="color:var(--muted);font-size:11px">' + esc(a.fecha) +
+      (cuando ? " · " + cuando : "") +
+      (a.dias_antes ? " · avisa " + a.dias_antes + " días antes" : "") +
+      (a.activa ? "" : " · pausado") + '</span></div>' +
+    (a.nota ? '<div class="ej">' + esc(a.nota) + '</div>' : "") +
+    '<div class="ej">' + (a.avisada
+      ? "Ya avisado el " + esc(a.avisada.replace("T", " "))
+      : vencida ? "Pasó sin avisar" : "Pendiente") + '</div>' +
+    '<div class="op-acc">' +
+      '<button class="secundario" data-fe-activar="' + a.id + '" ' +
+        'data-val="' + (a.activa ? "0" : "1") + '">' +
+        (a.activa ? "Pausar" : "Activar") + '</button>' +
+      '<button class="secundario" data-fe-editar="' + a.id + '">Modificar</button>' +
+      '<button class="secundario" data-fe-borrar="' + a.id + '">Eliminar</button>' +
+    '</div></div>';
+}
+
+async function cargarAlertasFecha(){
+  const out = $("#fe-out");
+  if(!out) return;
+  try{
+    const d = await (await fetch(base + "api/alertas-fecha")).json();
+    feEditando = null;
+    out.innerHTML = (d.alertas || []).length
+      ? d.alertas.map(feFila).join("")
+      : '<div class="vacio">Sin recordatorios.</div>';
+  }catch(e){
+    out.innerHTML = '<div class="msg error">No se pudieron leer.</div>';
+  }
+}
+
+function feFormulario(a){
+  return '<div class="hallazgo"><h3>' + (a ? "Modificar" : "Nuevo") +
+    ' recordatorio</h3><div class="form">' +
+    '<div class="ancho"><label for="fe-tit">Título</label>' +
+    '<input id="fe-tit" style="text-transform:none" value="' +
+      esc((a && a.titulo) || "") + '" placeholder="Revisar D30S6"></div>' +
+    '<div><label for="fe-fecha">Fecha</label>' +
+    '<input id="fe-fecha" type="date" value="' + esc((a && a.fecha) || "") +
+      '"></div>' +
+    '<div><label for="fe-antes">Días antes</label>' +
+    '<input id="fe-antes" inputmode="numeric" value="' +
+      ((a && a.dias_antes) || 0) + '"></div>' +
+    '<div class="ancho"><label for="fe-nota">Nota</label>' +
+    '<input id="fe-nota" style="text-transform:none" value="' +
+      esc((a && a.nota) || "") + '"></div>' +
+    '</div><div class="op-acc">' +
+      '<button class="primario" id="fe-guardar" style="width:auto;padding:0 16px">' +
+        'Guardar</button>' +
+      '<button class="secundario" id="fe-cancelar">Cancelar</button>' +
+    '</div></div>';
+}
+
+$("#fe-nueva").addEventListener("click", () => {
+  $("#fe-out").innerHTML = feFormulario(null);
+});
+
+$("#fe-out").addEventListener("click", async ev => {
+  const t = ev.target;
+  if(t.id === "fe-cancelar"){ cargarAlertasFecha(); return; }
+  if(t.id === "fe-guardar"){
+    const fecha = $("#fe-fecha").value;
+    if(!fecha){ alert("Cargá una fecha."); return; }
+    const cuerpo = {titulo: $("#fe-tit").value.trim(), fecha,
+      dias_antes: parseInt($("#fe-antes").value, 10) || 0,
+      nota: $("#fe-nota").value.trim()};
+    if(feEditando) cuerpo.id = feEditando;
+    t.disabled = true;
+    try{
+      const r = await (await fetch(base + "api/alertas-fecha", {method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify(cuerpo)})).json();
+      if(r.error){ alert(r.error); return; }
+      cargarAlertasFecha();
+    }catch(e){ alert("No se pudo guardar."); }
+    finally{ t.disabled = false; }
+    return;
+  }
+  const b = t.closest("[data-fe-activar],[data-fe-editar],[data-fe-borrar]");
+  if(!b) return;
+  try{
+    if(b.dataset.feActivar){
+      await fetch(base + "api/alertas-fecha/" + b.dataset.feActivar + "/activar",
+        {method:"POST", headers:{"Content-Type":"application/json"},
+         body: JSON.stringify({activa: b.dataset.val === "1"})});
+      cargarAlertasFecha();
+    }else if(b.dataset.feBorrar){
+      if(!confirm("¿Eliminar el recordatorio?")) return;
+      await fetch(base + "api/alertas-fecha/" + b.dataset.feBorrar + "/borrar",
+        {method:"POST"});
+      cargarAlertasFecha();
+    }else{
+      const d = await (await fetch(base + "api/alertas-fecha")).json();
+      const a = (d.alertas || []).find(x => x.id == b.dataset.feEditar);
+      if(!a) return;
+      feEditando = a.id;
+      $("#fe-out").innerHTML = feFormulario(a);
+    }
+  }catch(e){ alert("No se pudo."); }
+});
+
 /* ---------- alertas de precio ---------- */
 /* Comprar mira la punta vendedora y vender la compradora: es contra la
    que se ejecuta. */
@@ -3056,6 +3221,95 @@ $("#al-out").addEventListener("click", async ev => {
       $("#al-out").innerHTML = alFormulario(a);
     }
   }catch(e){ alert("No se pudo."); }
+});
+
+
+/* ---------- próximos cobros ---------- */
+/* Sale de cruzar la tenencia con el cronograma: no necesita puntas ni
+   que haya rueda. */
+let cobDias = 90;
+
+async function cargarCobros(){
+  const out = $("#cob-out");
+  if(!out) return;
+  out.innerHTML = '<div class="vacio">Calculando…</div>';
+  try{
+    const d = await (await fetch(base + "api/cobros?dias=" + cobDias)).json();
+    if(d.error){
+      out.innerHTML = '<div class="msg error">' + esc(d.error) + '</div>';
+      return;
+    }
+    const c = d.cobros || [];
+    if(!c.length){
+      out.innerHTML = '<div class="vacio">Nada a cobrar en ese plazo.</div>' +
+        avisoSinCronograma(d);
+      return;
+    }
+    /* agrupadas por mes: lo que importa es cuándo entra la plata */
+    const meses = {};
+    c.forEach(p => {
+      const m = p.fecha.slice(0, 7);
+      (meses[m] = meses[m] || []).push(p);
+    });
+    out.innerHTML = Object.keys(meses).sort().map(m => {
+      const filas = meses[m];
+      const totales = {};
+      filas.forEach(p => {
+        if(p.importe != null)
+          totales[p.moneda] = (totales[p.moneda] || 0) + p.importe;
+      });
+      const resumen = Object.entries(totales)
+        .map(([mon, v]) => mon + " " + ent(v)).join(" · ");
+      return '<div class="hallazgo"><h3>' + esc(nombreMes(m)) +
+        (resumen ? ' <span style="color:var(--muted);font-size:11px">' +
+          esc(resumen) + '</span>' : "") + '</h3>' +
+        '<table class="tabla"><tbody>' + filas.map(p =>
+          '<tr><td>' + esc(p.simbolo) +
+            '<div style="font-size:10px;color:var(--muted)">' +
+              esc(p.fecha) + ' · ' + (p.dias === 0 ? "hoy"
+                : p.dias === 1 ? "mañana" : "en " + p.dias + " días") +
+            '</div></td>' +
+          '<td class="num">' + (p.importe != null
+            ? esc(p.moneda) + " " + ent(p.importe) +
+              (p.estimado ? ' <span class="tocar">est.</span>' : "")
+            : "—") +
+            '<div style="font-size:10px;color:var(--muted)">' +
+              (p.renta ? "renta " + num(p.renta, 3) : "") +
+              (p.renta && p.amortizacion ? " + " : "") +
+              (p.amortizacion ? "amort " + num(p.amortizacion, 3) : "") +
+            '</div></td></tr>').join("") +
+        '</tbody></table></div>';
+    }).join("") +
+    '<div class="nota">Se avisa ' + (d.dias_aviso || 2) + ' días antes de ' +
+    'cada pago. Los importes ajustables son estimados: se liquidan con el ' +
+    'coeficiente del día de pago, que todavía no existe.</div>' +
+    avisoSinCronograma(d);
+  }catch(e){
+    out.innerHTML = '<div class="msg error">No se pudo calcular.</div>';
+  }
+}
+
+function avisoSinCronograma(d){
+  return (d.sin_cronograma || []).length
+    ? '<div class="aviso">Sin cronograma cargado: <b>' +
+      esc(d.sin_cronograma.join(", ")) + '</b>. No se sabe cuándo pagan.</div>'
+    : "";
+}
+
+function nombreMes(m){
+  const [a, mm] = m.split("-");
+  const n = ["enero","febrero","marzo","abril","mayo","junio","julio",
+             "agosto","septiembre","octubre","noviembre","diciembre"];
+  return n[parseInt(mm, 10) - 1] + " de " + a;
+}
+
+$("#cob-rango").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-dias]");
+  if(!b) return;
+  cobDias = parseInt(b.dataset.dias, 10);
+  [...$("#cob-rango").children].forEach(x =>
+    x.classList.toggle("activo", x === b));
+  cargarCobros();
 });
 
 /* ---------- tenencias ---------- */

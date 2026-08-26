@@ -746,6 +746,37 @@ def crear_app(monitor):
         monitor._precio_avisado.discard(aid)
         return jsonify({"borradas": db.borrar_alerta_precio(aid)})
 
+    @app.get("/api/alertas-fecha")
+    def alertas_fecha_listar():
+        from datetime import date as _d
+        hoy = _d.today()
+        out = []
+        for a in db.alertas_fecha():
+            try:
+                f = _d.fromisoformat(str(a["fecha"])[:10])
+                a["dias"] = (f - hoy).days
+            except ValueError:
+                a["dias"] = None
+            out.append(a)
+        return jsonify({"alertas": out})
+
+    @app.post("/api/alertas-fecha")
+    def alertas_fecha_crear():
+        d = request.get_json(silent=True) or {}
+        if not str(d.get("fecha") or "").strip():
+            return jsonify({"error": "falta la fecha"}), 400
+        return jsonify({"id": db.guardar_alerta_fecha(d, d.get("id"))})
+
+    @app.post("/api/alertas-fecha/<int:aid>/activar")
+    def alertas_fecha_activar(aid):
+        d = request.get_json(silent=True) or {}
+        db.activar_alerta_fecha(aid, bool(d.get("activa", True)))
+        return jsonify({"id": aid})
+
+    @app.post("/api/alertas-fecha/<int:aid>/borrar")
+    def alertas_fecha_borrar(aid):
+        return jsonify({"borradas": db.borrar_alerta_fecha(aid)})
+
     @app.get("/api/tenencias")
     def tenencias_listar():
         fuera = monitor.brokers_extranjeros()
@@ -880,6 +911,59 @@ def crear_app(monitor):
                         "sin_clasificar": sin_clasificar,
                         "monedas": monedas,
                         "en_rulo": monitor.tengo_actual()})
+
+    @app.get("/api/cobros")
+    def cobros_listar():
+        import cobros as CO
+        try:
+            dias = int(request.args.get("dias", 365))
+        except ValueError:
+            dias = 365
+        try:
+            filas = CO.proximos(
+                dias=dias,
+                cer_actual=float(monitor.cfg.get("cer_actual") or 0),
+                incluir_extranjeros=request.args.get("todos") == "1",
+                brokers_fuera=monitor.brokers_extranjeros())
+        except Exception as e:
+            log.exception("cobros")
+            return jsonify({"error": str(e)}), 500
+        # No tener pagos en la ventana no es no tener cronograma: un bono
+        # que vence en 2029 no paga nada en 90 dias y esta perfectamente
+        # cargado. Se mira contra el universo de especies.
+        esps = set(BO.especies())
+        sin_cronograma = sorted(
+            {t["simbolo"] for t in db.tenencias()
+             if t["cantidad"] and t["simbolo"] not in esps
+             and (t.get("tipo") or "") in ("bonos", "letras", "on", "bcra")})
+        return jsonify({
+            "cobros": filas,
+            "sin_cronograma": sin_cronograma,
+            "dias_aviso": int(monitor.cfg.get("dias_aviso_cobro") or 2),
+        })
+
+    @app.get("/api/a3500")
+    def a3500_estado():
+        """Estado del tipo de cambio oficial, y prueba de la serie.
+
+        El numero de serie del BCRA no esta confirmado contra la
+        documentacion: con ?serie=N se puede probar otro sin tocar el
+        codigo.
+        """
+        import dolar as DL
+        serie = request.args.get("serie")
+        if request.args.get("probar") == "1":
+            DL.reintentar_ya()
+            from datetime import date as _d, timedelta as _td
+            hasta = _d.today()
+            n = DL.descargar((hasta - _td(days=30)).isoformat(),
+                             hasta.isoformat(),
+                             serie=int(serie) if serie else None)
+            return jsonify({"bajados": n, "estado": DL.estado(),
+                            "serie_probada": int(serie) if serie else DL.SERIE,
+                            "muestra": DL.ultima_respuesta,
+                            "error": DL.ultimo_error})
+        return jsonify(DL.estado())
 
     @app.get("/api/cer")
     def cer_estado():

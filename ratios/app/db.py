@@ -817,6 +817,16 @@ CREATE TABLE IF NOT EXISTS alerta_cond (
   orden     INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS ix_cond_alerta ON alerta_cond(alerta_id);
+CREATE TABLE IF NOT EXISTS alerta_fecha (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  titulo     TEXT NOT NULL,
+  fecha      TEXT NOT NULL,
+  dias_antes INTEGER NOT NULL DEFAULT 0,
+  nota       TEXT,
+  activa     INTEGER NOT NULL DEFAULT 1,
+  avisada    TEXT,
+  creada     TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS tenencia (
   broker   TEXT NOT NULL,
   simbolo  TEXT NOT NULL,
@@ -841,6 +851,60 @@ def init_alertas():
     if "tipo" not in cols:
         c.execute("ALTER TABLE tenencia ADD COLUMN tipo TEXT")
     c.commit()
+
+
+def alertas_fecha(solo_activas=False):
+    q = "SELECT * FROM alerta_fecha"
+    if solo_activas:
+        q += " WHERE activa = 1"
+    q += " ORDER BY fecha"
+    return [dict(r) for r in conn().execute(q)]
+
+
+def guardar_alerta_fecha(d, aid=None):
+    c = conn()
+    titulo = (d.get("titulo") or "").strip() or "Sin titulo"
+    fecha = str(d.get("fecha") or "")[:10]
+    try:
+        dias = max(0, int(d.get("dias_antes") or 0))
+    except (TypeError, ValueError):
+        dias = 0
+    nota = (d.get("nota") or "").strip() or None
+    if aid:
+        # al cambiar la fecha se vuelve a habilitar el aviso
+        c.execute("UPDATE alerta_fecha SET titulo=?, fecha=?, dias_antes=?, "
+                  "nota=?, avisada=NULL WHERE id=?",
+                  (titulo, fecha, dias, nota, aid))
+    else:
+        cur = c.execute(
+            "INSERT INTO alerta_fecha (titulo, fecha, dias_antes, nota, creada)"
+            " VALUES (?,?,?,?,?)",
+            (titulo, fecha, dias, nota,
+             datetime.now().isoformat(timespec="seconds")))
+        aid = cur.lastrowid
+    c.commit()
+    return aid
+
+
+def marcar_alerta_fecha(aid):
+    c = conn()
+    c.execute("UPDATE alerta_fecha SET avisada=? WHERE id=?",
+              (datetime.now().isoformat(timespec="seconds"), aid))
+    c.commit()
+
+
+def activar_alerta_fecha(aid, activa):
+    c = conn()
+    c.execute("UPDATE alerta_fecha SET activa=? WHERE id=?",
+              (1 if activa else 0, aid))
+    c.commit()
+
+
+def borrar_alerta_fecha(aid):
+    c = conn()
+    cur = c.execute("DELETE FROM alerta_fecha WHERE id=?", (aid,))
+    c.commit()
+    return cur.rowcount
 
 
 def alertas_precio(solo_activas=False):

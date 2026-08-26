@@ -86,8 +86,11 @@ def _tipo(cfg):
     t = (cfg.get("tipo") or "").strip().lower()
     if t:
         return t
-    if (cfg.get("ajuste") or "").lower() == "cer":
+    a = (cfg.get("ajuste") or "").lower()
+    if a == "cer":
         return "cer"
+    if a in ("dolar_linked", "dolarlinked", "dl"):
+        return "dolar_linked"
     if (cfg.get("moneda") or "").upper() == "USD":
         return "hard_dollar"
     return "tasa_fija"
@@ -131,8 +134,13 @@ def _familia(cfg, info, simbolo=""):
     """
     emisor = emisor_de(cfg)
     sufijo = "" if emisor == "nacion" else "-" + emisor.upper()
-    if (cfg.get("ajuste") or "").lower() == "cer":
+    ajuste = (cfg.get("ajuste") or "").lower()
+    if ajuste == "cer":
         return "CER" + sufijo
+    if ajuste in ("dolar_linked", "dolarlinked", "dl"):
+        # paga al oficial, no al MEP: su TIR no se compara con la de un
+        # hard dollar aunque las dos esten en dolares
+        return "DL" + sufijo
     ley = "AR" if (cfg.get("ley") or "").startswith("arg") else "NY"
     moneda = info["moneda"]
     if moneda == "USD" and simbolo.endswith("C"):
@@ -188,9 +196,38 @@ def fila(simbolo, info, cot, mep, liq=None, cer_actual=0):
     ask = cot.get("venta") or 0
     last = cot.get("ultimo") or 0
 
-    es_cer = (cfg.get("ajuste") or "").lower() == "cer"
+    ajuste = (cfg.get("ajuste") or "").lower()
+    es_cer = ajuste == "cer"
+    es_dl = ajuste in ("dolar_linked", "dolarlinked", "dl")
 
-    if es_cer:
+    if es_dl:
+        # Denominado en dolares, cotiza y paga en pesos al A3500. El
+        # precio se lleva a dolares con ese tipo de cambio y de ahi en
+        # mas se trata como cualquier bono en dolares.
+        import dolar as DL
+        tc = DL.vigente() or 0
+        if not tc:
+            return {
+                "simbolo": simbolo, "moneda": "DL",
+                "cronograma": info["cronograma"],
+                "bid": bid, "ask": ask, "last": last,
+                "bid_usd": 0, "ask_usd": 0,
+                "q_bid": cot.get("vol_compra") or 0,
+                "q_ask": cot.get("vol_venta") or 0,
+                "tir_bid": None, "tir_ask": None, "tir_last": None,
+                "md": None, "last_viejo": False,
+                "ley": cfg.get("ley"),
+                "familia": _familia(cfg, info, simbolo),
+                "emisor": emisor_de(cfg),
+                "tipo": _tipo(cfg),
+                "moneda_cotiza": "ARS",
+                "ley_cod": "AR" if (cfg.get("ley") or "").startswith("arg") else "NY",
+                "falta_tc": True,
+                "vencimiento": str(cfg["vencimiento"])[:10],
+            }
+        tc_bid = tc_ask = tc_med = tc
+        bid_usd, ask_usd, last_usd = bid / tc, ask / tc, last / tc
+    elif es_cer:
         f = factor_cer(cfg, cer_actual) * float(cfg.get("nominal_base") or 100) / 100
         if not f:
             return {
@@ -239,12 +276,12 @@ def fila(simbolo, info, cot, mep, liq=None, cer_actual=0):
 
     return {
         "simbolo": simbolo,
-        "moneda": "CER" if es_cer else info["moneda"],
+        "moneda": "CER" if es_cer else "DL" if es_dl else info["moneda"],
         "ley": cfg.get("ley"),
         "familia": _familia(cfg, info, simbolo),
         "emisor": emisor_de(cfg),
         "tipo": _tipo(cfg),
-        "moneda_cotiza": _moneda_cotiza(info, simbolo),
+        "moneda_cotiza": "ARS" if es_dl else _moneda_cotiza(info, simbolo),
         "ley_cod": "AR" if (cfg.get("ley") or "").startswith("arg") else "NY",
         "falta_cer": False,
         "cronograma": info["cronograma"],

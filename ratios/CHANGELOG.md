@@ -1,5 +1,39 @@
 # Registro de cambios
 
+## 0.22.0
+
+**Calendario de cobros.** En Tenencias, agrupado por mes y con el total
+de cada moneda. Los cronogramas ya estaban cargados para calcular TIR;
+solo faltaba multiplicarlos por lo que hay en cada cuenta. Los importes
+ajustables van marcados como estimados, porque se liquidan con el
+coeficiente del dia de pago, que todavia no existe.
+
+**Aviso antes de cada pago**, dos dias por defecto y configurable. No
+depende de puntas ni de que haya rueda: sale del cronograma y de la
+tenencia. El aviso queda guardado en la base, asi que reiniciar no lo
+repite.
+
+**Bonos dolar linked.** Estan denominados en dolares pero cotizan y pagan
+en pesos al tipo de cambio mayorista A3500, asi que sin esa serie no se
+podia calcular ni el valor tecnico ni la TIR. Se baja del BCRA con la
+misma mecanica que el CER: por tramos, con reintentos y enfriamiento tras
+un fallo.
+
+Van en familia propia: un dolar linked paga al oficial y un hard dollar
+al MEP, asi que aunque las dos TIR esten en dolares no se comparan y no
+comparten curva.
+
+**D30S6 cargado**: LELINK cero cupon, un solo pago del 100% del nominal
+el 30 de septiembre de 2026.
+
+El numero de serie del A3500 en la API del BCRA no lo pude confirmar
+contra la documentacion, asi que quedo en 4 y hay una opcion en el menu
+para probar ese numero u otro y ver que valor devuelve.
+
+**Alarma por fecha.** Recordatorios sueltos con titulo, fecha, dias de
+anticipacion y una nota. Avisan una vez; cambiar la fecha los rehabilita,
+que es lo que se quiere al patear una revision.
+
 ## 0.21.7
 
 **El Rulo no calculaba nada.** Al sacar el editor de "que tengo" se borro

@@ -1,5 +1,5 @@
 name: Ratios IOL
-version: "0.21.7"
+version: "0.22.0"
 slug: ratios_iol
 description: Monitor de ratios entre especies, arbitraje de plazos y screener
 url: https://github.com/PaduGit/Proyecto-trading-Claude-HA
@@ -55,6 +55,7 @@ options:
   opc_mov_contrario_pct: 4
   instrumentos_orleans: "titulosPublicos,letras,acciones,cedears,opciones,cauciones"
   dias_sin_operar: 7
+  dias_aviso_cobro: 2
   iva_pct: 21
   broker: iol
   broker_propio: IOL-ALE
@@ -164,6 +165,7 @@ schema:
   opc_mov_contrario_pct: float(0,50)
   instrumentos_orleans: str?
   dias_sin_operar: int(0,90)
+  dias_aviso_cobro: int(0,30)
   iva_pct: float(0,50)
   broker: list(iol|eco|veta)
   broker_propio: str?

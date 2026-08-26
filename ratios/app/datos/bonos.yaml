@@ -635,6 +635,29 @@ bonos:
       tramos:
         - {desde: 2022-05-25, tasa: 2.25}
 
+  D30S6:
+    nombre: Letra Tesoro Nacional dólar linked 30/09/2026
+    ley: argentina
+    moneda: ARS
+    ajuste: dolar_linked
+    tipo: dolar_linked
+    emision: 2026-03-16
+    vencimiento: 2026-09-30
+    base: 30/360
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 6
+      primer_pago: 2026-09-30
+      tramos:
+        - {desde: 2026-03-16, tasa: 0.0}
+    nota: >-
+      LELINK cero cupon: paga el 100% del nominal al vencimiento,
+      convertido al tipo de cambio A3500 del dia. Esta denominada en
+      dolares pero cotiza y liquida en pesos.
+    verificar: >-
+      La fecha de emision es la de la primera licitacion en la que
+      aparece; hubo reaperturas posteriores. Al ser cero cupon y bullet
+      no afecta el flujo, solo el dato informativo.
   DICP:
     nombre: Discount en pesos CER 5,83% 2033
     ley: argentina

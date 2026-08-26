@@ -820,6 +820,14 @@ class Monitor:
             except Exception as e:
                 log.debug("revisar alertas de precio: %s", e)
             try:
+                self.revisar_cobros()
+            except Exception as e:
+                log.debug("revisar cobros: %s", e)
+            try:
+                self.revisar_alertas_fecha()
+            except Exception as e:
+                log.debug("revisar alertas de fecha: %s", e)
+            try:
                 self._guardar_snapshot()
             except Exception as e:
                 log.debug("guardar snapshot: %s", e)
@@ -1079,6 +1087,102 @@ class Monitor:
                         and (not con_cronograma
                              or t["simbolo"] in con_cronograma)})
         return {"monedas": monedas, "bonos": bonos}
+
+
+    # -- alertas por fecha --------------------------------------------
+
+    def revisar_alertas_fecha(self):
+        """Recordatorios sueltos: revisar algo, una fecha limite.
+
+        Se avisan una vez y queda registrado en la base: reiniciar no
+        vuelve a dispararlos. Cambiar la fecha los rehabilita.
+        """
+        hoy = date.today()
+        avisos = []
+        for a in db.alertas_fecha(solo_activas=True):
+            if a["avisada"]:
+                continue
+            try:
+                f = date.fromisoformat(str(a["fecha"])[:10])
+            except ValueError:
+                continue
+            if (f - hoy).days > int(a["dias_antes"] or 0):
+                continue
+            db.marcar_alerta_fecha(a["id"])
+            a["dias"] = (f - hoy).days
+            avisos.append(a)
+        if avisos:
+            self._avisar_fecha(avisos)
+        return len(avisos)
+
+    def _avisar_fecha(self, avisos):
+        if len(avisos) == 1:
+            titulo = avisos[0]["titulo"]
+        else:
+            titulo = "%d recordatorios" % len(avisos)
+        lineas = []
+        for a in avisos:
+            d = a["dias"]
+            cuando = ("hoy" if d == 0 else "manana" if d == 1
+                      else "en %d dias" % d if d > 0
+                      else "hace %d dias" % -d)
+            lineas.append("<b>%s</b> · %s (%s)%s" % (
+                a["titulo"], a["fecha"], cuando,
+                "<br>&nbsp;&nbsp;%s" % a["nota"] if a["nota"] else ""))
+        self.notif.enviar(titulo, "<br>".join(lineas))
+        for a in avisos:
+            db.registrar_alerta(str(a["id"]), "fecha", None, None, a["titulo"])
+
+
+    # -- cobros -------------------------------------------------------
+
+    def revisar_cobros(self):
+        """Avisa unos dias antes de cada pago de lo que hay en cartera.
+
+        No depende de puntas ni de que haya rueda: sale del cronograma y
+        de la tenencia, asi que corre igual con el mercado cerrado.
+        """
+        import cobros as CO
+        dias = int(self.cfg.get("dias_aviso_cobro") or 2)
+        if not dias:
+            return 0
+        nuevos = CO.por_avisar(
+            dias_aviso=dias,
+            cer_actual=float(self.cfg.get("cer_actual") or 0),
+            brokers_fuera=self.brokers_extranjeros())
+        if nuevos:
+            self._avisar_cobros(nuevos)
+        return len(nuevos)
+
+    def _avisar_cobros(self, pagos):
+        pagos.sort(key=lambda p: (p["fecha"], p["simbolo"]))
+        if len(pagos) == 1:
+            p = pagos[0]
+            cuando = ("hoy" if p["dias"] == 0 else
+                      "manana" if p["dias"] == 1 else
+                      "en %d dias" % p["dias"])
+            titulo = "Cobras %s %s" % (p["simbolo"], cuando)
+        else:
+            titulo = "%d cobros proximos" % len(pagos)
+        lineas = []
+        for p in pagos:
+            monto = ("%s %s" % (p["moneda"], _n(p["importe"]))
+                     if p["importe"] is not None else "importe no calculable")
+            detalle = []
+            if p["renta"]:
+                detalle.append("renta %s" % _n(p["renta"]))
+            if p["amortizacion"]:
+                detalle.append("amort %s" % _n(p["amortizacion"]))
+            lineas.append("<b>%s</b> el %s · %s%s · %s nominales en %s" % (
+                p["simbolo"], p["fecha"], monto,
+                " (estimado)" if p["estimado"] else "",
+                _n(p["nominales"]), ", ".join(p["brokers"])))
+            if detalle:
+                lineas.append("&nbsp;&nbsp;%s por cada 100" % " + ".join(detalle))
+        self.notif.enviar(titulo, "<br>".join(lineas))
+        for p in pagos:
+            db.registrar_alerta(p["simbolo"], "cobro", p["importe"], None,
+                                titulo)
 
 
     # -- alertas de precio --------------------------------------------
