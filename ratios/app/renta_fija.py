@@ -238,10 +238,6 @@ def duration(precio, esp, liq=None, r=None, filas=None):
     return mac, mac / (1 + r)
 
 
-def proximo_pago(esp, desde=None):
-    filas = flujo(esp, desde or date.today())
-    return filas[0] if filas else None
-
 
 def metricas(esp, precio, liq=None):
     """Todo junto, para una fila de la tabla."""

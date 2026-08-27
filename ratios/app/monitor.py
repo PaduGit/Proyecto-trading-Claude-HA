@@ -50,6 +50,7 @@ class Monitor:
         self.orleans_fallas = []
         self.orleans_descartados = []
         self.sin_cotizacion = []
+        self._orleans_opciones = None
         self._plazos_avisado = set()
         self._precio_avisado = set()
         self.plazos = []
@@ -184,46 +185,6 @@ class Monitor:
         s.discard("")
         return s
 
-    def bajar_paneles(self):
-        """Un request por panel de los viejos.
-
-        Ya no se usa en el ciclo: orleans cubre mas y trae puntas. Queda
-        por si hace falta comparar una fuente con la otra.
-        """
-        from iol import normalizar
-        mapa = {}
-        planos = 0
-        total = 0
-
-        for pan in self.cfg.get("paneles") or []:
-            inst = pan.get("instrumento") or "Bonos"
-            nombre = pan.get("panel") or ""
-            pais = pan.get("pais") or "argentina"
-            if not nombre:
-                continue
-            try:
-                d = self.iol.cotizacion_panel(inst, nombre, pais)
-            except IOLError as e:
-                log.warning("panel %s/%s: %s", inst, nombre, e)
-                continue
-
-            for t in (d or {}).get("titulos") or []:
-                sim = (t.get("simbolo") or "").upper()
-                if not sim:
-                    continue
-                c = normalizar(t, sim)
-                if not c["ref"]:
-                    continue
-                mapa[sim] = c
-                self.origen[sim] = "panel"
-                total += 1
-                if not c["variacion"] and not c.get("volumen"):
-                    planos += 1
-
-        # deteccion de dia sin rueda: nada se movio en todo el panel
-        if total >= 10:
-            self.hay_rueda = planos < total
-        return mapa
 
     def cotizaciones_del_ciclo(self):
         """Un request por instrumento, y nada mas.
@@ -245,8 +206,8 @@ class Monitor:
 
     # Un instrumento por request, con puntas. Reemplaza a los paneles
     # viejos y a los pedidos sueltos.
-    INSTRUMENTOS = ("titulosPublicos", "letras", "acciones", "cedears",
-                    "opciones", "cauciones")
+    INSTRUMENTOS = ("titulosPublicos", "letras", "obligacionesNegociables",
+                    "acciones", "cedears", "opciones", "cauciones")
 
     def instrumentos_orleans(self):
         txt = self.cfg.get("instrumentos_orleans")
@@ -290,7 +251,12 @@ class Monitor:
                 log.warning("panel orleans %s: %s", inst, e)
                 fallas.append(inst)
                 continue
-            for t in (d or {}).get("titulos") or []:
+            titulos = (d or {}).get("titulos") or []
+            if inst == "opciones":
+                # se guardan crudos: el modulo de opciones los necesita
+                # con la descripcion y el strike, que normalizar descarta
+                self._orleans_opciones = titulos
+            for t in titulos:
                 sim = str((t or {}).get("simbolo") or "").strip().upper()
                 if not sim:
                     continue
@@ -432,15 +398,6 @@ class Monitor:
         return self.mapa_guardado()
 
 
-    def puntas_frescas(self, mapa=None):
-        """True si al menos un simbolo trajo punta propia este ciclo."""
-        mapa = mapa if mapa is not None else self.cotizaciones
-        return any(not c.get("punta_vieja")
-                   and c.get("compra") and c.get("venta")
-                   for c in mapa.values())
-
-
-    # -- estadistica --------------------------------------------------
 
     def estadistica(self, par):
         """Prefiere nuestras propias lecturas; el historico de IOL es respaldo."""
@@ -899,8 +856,10 @@ class Monitor:
                             "con_puntas": 0, "vencimientos": [],
                             "campos": [], "sin_pedir": True}, False, None
 
-        series, diag = OP.cadena(
-            self.iol, subs, panel=self.cfg.get("opc_panel") or "De Acciones")
+        # el ciclo ya bajo el instrumento de opciones: se reusa en vez
+        # de pedirlo de nuevo
+        crudos = getattr(self, "_orleans_opciones", None)
+        series, diag = OP.cadena(self.iol, subs, crudos=crudos)
 
         cot = cot if cot is not None else dict(self.cotizaciones)
         spots = {}

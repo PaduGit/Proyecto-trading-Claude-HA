@@ -181,18 +181,8 @@ class IOL:
             path = "/" + path
         return self._get(path, timeout=timeout)
 
-    def instrumentos(self, pais="argentina"):
-        return self._get("/api/v2/%s/Titulos/Cotizacion/Instrumentos" % pais)
 
-    def paneles(self, instrumento="Acciones", pais="argentina"):
-        return self._get(
-            "/api/v2/%s/Titulos/Cotizacion/Paneles/%s" % (pais, instrumento))
 
-    def cotizacion_panel(self, instrumento, panel, pais="argentina"):
-        """Todos los titulos de un panel en un solo request."""
-        path = "/api/v2/Cotizaciones/%s/%s/%s" % (
-            quote(instrumento), quote(panel), quote(pais))
-        return self._get(path, timeout=45)
 
     def cotizacion(self, mercado, simbolo, plazo="t1"):
         path = ("/api/v2/%s/Titulos/%s/CotizacionDetalleMobile/%s"

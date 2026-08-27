@@ -1,5 +1,31 @@
 # Registro de cambios
 
+## 0.22.2
+
+**Las opciones se bajaban dos veces por ciclo.** El instrumento
+"opciones" ya venia en la bajada de orleans y el modulo pedia ademas el
+panel viejo "De Acciones": dos requests para lo mismo. Ahora reusa lo que
+el ciclo ya trajo, y el parametro opc_panel deja de existir.
+
+**Las obligaciones negociables entran a la bajada.** Estaban cargadas en
+el cronograma pero el instrumento no se pedia, asi que quedaban sin
+precio y no aparecian en la tabla. Van en la lista por defecto, aunque
+en una instalacion existente hay que agregarlas a mano porque Home
+Assistant conserva la configuracion guardada.
+
+**Step-up completo de MR43O**: 7% hasta los cupones de 2026, 8,5% para
+los de 2027 a 2029 y 9,5% desde 2030 hasta el vencimiento. La tasa es la
+del cupon que se paga y no la del periodo en que se devenga, asi que cada
+tramo arranca en el pago anterior.
+
+**Titulos de deuda del Banco Nacion**: NZC2O al 5,50% con vencimiento
+11/05/2029 y NZC5O al 6,00% al 14/07/2029, ambos bullet y semestrales.
+
+**Limpieza.** Trece funciones sin uso: los metodos de instrumentos y
+paneles del cliente de IOL, la bajada de paneles vieja del monitor, tres
+de costos que quedaron al elegir otro enfoque para la bonificacion,
+cuatro de la base y el proximo pago de renta fija.
+
 ## 0.22.1
 
 **La serie del A3500 se busca por nombre.** El numero de variable del

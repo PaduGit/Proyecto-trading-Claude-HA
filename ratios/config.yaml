@@ -1,5 +1,5 @@
 name: Ratios IOL
-version: "0.22.1"
+version: "0.22.2"
 slug: ratios_iol
 description: Monitor de ratios entre especies, arbitraje de plazos y screener
 url: https://github.com/PaduGit/Proyecto-trading-Claude-HA
@@ -40,7 +40,6 @@ options:
   cer_actual: 0
   tasa_caucion_anual: 0
   opc_subyacentes: GGAL
-  opc_panel: De Acciones
   opc_dias_min: 15
   opc_dias_max: 80
   opc_saltos: 3
@@ -53,7 +52,7 @@ options:
   opc_ganancia_min_pct: 100
   opc_dias_min_desarme: 10
   opc_mov_contrario_pct: 4
-  instrumentos_orleans: "titulosPublicos,letras,acciones,cedears,opciones,cauciones"
+  instrumentos_orleans: "titulosPublicos,letras,obligacionesNegociables,acciones,cedears,opciones,cauciones"
   dias_sin_operar: 7
   dias_aviso_cobro: 2
   iva_pct: 21
@@ -150,7 +149,6 @@ schema:
   cer_actual: float(0,100000)
   tasa_caucion_anual: float(0,500)
   opc_subyacentes: str?
-  opc_panel: str?
   opc_dias_min: int(0,400)
   opc_dias_max: int(0,400)
   opc_saltos: int(1,10)

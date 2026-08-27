@@ -198,23 +198,6 @@ def get_estado(clave, default=None):
 
 # -- lectura ----------------------------------------------------------
 
-def ultima_lectura(alias):
-    return conn().execute(
-        "SELECT * FROM lecturas WHERE alias=? ORDER BY ts DESC LIMIT 1",
-        (alias,)).fetchone()
-
-
-def serie_intradiaria(alias, limite=600, solo_hoy=True):
-    q = "SELECT ts, ratio FROM lecturas WHERE alias=?"
-    args = [alias]
-    if solo_hoy:
-        q += " AND ts >= ?"
-        args.append(datetime.now().date().isoformat())
-    q += " ORDER BY ts DESC LIMIT ?"
-    args.append(limite)
-    filas = conn().execute(q, args).fetchall()
-    return [(f["ts"], f["ratio"]) for f in reversed(filas)]
-
 
 def serie_propia_diaria(alias, desde=None):
     """Cierre diario del ratio segun nuestras propias lecturas.
@@ -261,9 +244,6 @@ def alertas_recientes(n=40):
     return conn().execute(
         "SELECT * FROM alertas ORDER BY ts DESC LIMIT ?", (n,)).fetchall()
 
-
-def alerta_por_id(aid):
-    return conn().execute("SELECT * FROM alertas WHERE id=?", (aid,)).fetchone()
 
 
 def operaciones_recientes(n=60):
@@ -459,19 +439,6 @@ def grupo_por_id(gid):
             return g
     return None
 
-
-def actualizar_grupo(gid, nombre=None, base=None, tickers=None):
-    import json as _json
-    g = grupo_por_id(gid)
-    if not g:
-        return False
-    c = conn()
-    c.execute("UPDATE grupos SET nombre=?, base=?, tickers=? WHERE id=?",
-              (nombre or g["nombre"], base or g["base"],
-               _json.dumps(tickers if tickers is not None else g["tickers"]),
-               gid))
-    c.commit()
-    return True
 
 
 def borrar_grupo(gid):

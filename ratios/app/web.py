@@ -709,9 +709,7 @@ def crear_app(monitor):
             subs = [s.strip().upper()
                     for s in (monitor.cfg.get("opc_subyacentes")
                               or "GGAL").split(",") if s.strip()]
-            _, diag = OP.cadena(
-                monitor.iol, subs,
-                panel=monitor.cfg.get("opc_panel") or "De Acciones")
+            _, diag = OP.cadena(monitor.iol, subs)
             return jsonify(diag)
         except Exception as e:
             return jsonify({"error": str(e)}), 500

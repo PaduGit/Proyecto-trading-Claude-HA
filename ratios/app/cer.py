@@ -51,11 +51,6 @@ def _guardar(filas):
     c.commit()
 
 
-def _de_la_base(desde, hasta):
-    return {r["fecha"]: r["valor"] for r in db.conn().execute(
-        "SELECT fecha, valor FROM cer WHERE fecha BETWEEN ? AND ?",
-        (desde, hasta))}
-
 
 def _extraer(d):
     """Saca (fecha, valor) del JSON del BCRA.

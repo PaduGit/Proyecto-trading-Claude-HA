@@ -184,16 +184,18 @@ def mapa_subyacentes(iol, subyacentes, mercado="bCBA", horas_cache=12):
     return de_quien
 
 
-def cadena(iol, subyacentes, panel="De Acciones",
-           instrumento="Opciones", pais="argentina", mercado="bCBA",
-           horas_cache=12):
-    """La cadena con puntas. Un request de panel más uno por subyacente.
+def cadena(iol, subyacentes, pais="argentina", mercado="bCBA",
+           horas_cache=12, crudos=None):
+    """La cadena con puntas. Devuelve (series, diagnostico).
 
-    Devuelve (series, diagnostico).
+    Si el ciclo ya bajo el instrumento de opciones, se le pasan los
+    titulos en `crudos` y no se pide nada: pedirlo aparte era bajar dos
+    veces lo mismo en el mismo ciclo.
     """
     de_quien = mapa_subyacentes(iol, subyacentes, mercado, horas_cache)
-    d = iol.cotizacion_panel(instrumento, panel, pais)
-    crudos = (d or {}).get("titulos") or []
+    if crudos is None:
+        d = iol.panel_orleans("opciones", pais)
+        crudos = (d or {}).get("titulos") or []
 
     series = []
     for t in crudos:
