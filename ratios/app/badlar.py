@@ -84,10 +84,14 @@ def descargar(desde, hasta, verificar_ssl=True):
                 ultima_respuesta = str(r.text)[:400]
                 ultimo_error = None
                 break
-            ultimo_error = "%s -> HTTP %s: %s" % (url, r.status_code, r.text[:120])
+            # el rango pedido va en el mensaje: sin eso un 500 no se
+            # puede reproducir desde afuera
+            ultimo_error = "%s?desde=%s&hasta=%s -> HTTP %s: %s" % (
+                url, desde, hasta, r.status_code, (r.text or "")[:200] or "(cuerpo vacio)")
             log.warning("BCRA %s", ultimo_error)
         except Exception as e:
-            ultimo_error = "%s -> %s: %s" % (url, type(e).__name__, str(e)[:160])
+            ultimo_error = "%s?desde=%s&hasta=%s -> %s: %s" % (
+                url, desde, hasta, type(e).__name__, str(e)[:160])
             log.warning("BCRA %s", ultimo_error)
 
     if d is None:

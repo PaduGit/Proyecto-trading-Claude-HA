@@ -1024,6 +1024,34 @@ def crear_app(monitor):
                             rango["a"], rango["b"], rango["n"]),
                         "bonos": det})
 
+    @app.post("/api/badlar/probar")
+    def badlar_probar():
+        """Fuerza una consulta al BCRA y devuelve el error si falla."""
+        from datetime import date as _d, timedelta as _t
+        import badlar as BA
+        BA.reintentar_ya()
+        hoy = _d.today()
+        n = BA.descargar((hoy - _t(days=30)).isoformat(), hoy.isoformat())
+        est = BA.resumen()
+        bonos_cfg, _ = BO.cargar()
+        det = []
+        for tk, cfg in bonos_cfg.items():
+            var = (cfg.get("interes") or {}).get("variable")
+            if not var:
+                continue
+            v = BA.vigente()
+            det.append("%s %s spread %s -> %s" % (
+                tk, var.get("fuente"), var.get("spread") or 0,
+                round(v + float(var.get("spread") or 0), 4) if v is not None else "sin dato"))
+        return jsonify({"dias_traidos": n, "vigente": BA.vigente(),
+                        "serie": 7,
+                        "error": BA.ultimo_error,
+                        "respuesta": BA.ultima_respuesta,
+                        "rango": "%s a %s (%s días)" % (
+                            est["desde"], est["hasta"], est["dias"])
+                        if est["dias"] else None,
+                        "bonos": det})
+
     @app.get("/api/bonos/<simbolo>/historico")
     def bono_historico(simbolo):
         periodo = request.args.get("periodo", "1a")

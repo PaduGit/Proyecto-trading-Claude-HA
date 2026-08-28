@@ -301,8 +301,6 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
               aria-label="Más opciones" aria-haspopup="true">⋮</button>
       <div class="menu" id="menu" hidden role="menu">
         <a href="#" id="probar-notif" role="menuitem">Probar notificación</a>
-        <a href="#" id="probar-cer" role="menuitem">Probar CER (BCRA)</a>
-        <a href="#" id="probar-a3500" role="menuitem">Probar A3500 (BCRA)</a>
         <a href="#" id="rehacer-hist" role="menuitem">Reconstruir histórico</a>
         <a href="#" id="rehacer-todo" role="menuitem">Recalcular histórico entero</a>
         <a href="#" id="reintentar-precio" role="menuitem">Reintentar especies sin precio</a>
@@ -474,6 +472,17 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
 
   <section id="v-expl" hidden>
     <div id="e-consumo"></div>
+    <h3 style="margin:16px 0 6px">API del BCRA</h3>
+    <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+      <button class="secundario" id="probar-cer" style="width:auto;padding:0 14px">
+        Probar CER</button>
+      <button class="secundario" id="probar-a3500" style="width:auto;padding:0 14px">
+        Probar A3500</button>
+      <button class="secundario" id="probar-badlar" style="width:auto;padding:0 14px">
+        Probar BADLAR</button>
+    </div>
+    <p class="nota">Cada botón fuerza una descarga, saltea la espera de cinco
+      minutos que sigue a un fallo y muestra el error crudo del BCRA.</p>
     <div style="display:flex;gap:6px;margin:10px 0">
       <button class="secundario" id="log-ver" style="width:auto;padding:0 14px">
         Ver llamadas</button>
@@ -1812,7 +1821,6 @@ $("#rehacer-todo").addEventListener("click", async e => {
 
 $("#probar-a3500").addEventListener("click", async e => {
   e.preventDefault(); e.stopPropagation();
-  $("#menu").hidden = true;
   /* Se lista el catálogo del BCRA y se busca la A3500 por nombre: el
      número de serie no hace falta saberlo de memoria, y si el BCRA
      reordena las series se vuelve a encontrar sola. */
@@ -1847,7 +1855,6 @@ $("#probar-a3500").addEventListener("click", async e => {
 
 $("#probar-cer").addEventListener("click", async e => {
   e.preventDefault(); e.stopPropagation();
-  $("#menu").hidden = true;
   try{
     const d = await (await fetch(base + "api/cer/probar",
       {method:"POST"})).json();
@@ -1858,6 +1865,24 @@ $("#probar-cer").addEventListener("click", async e => {
             (d.bonos || []).join("\n"));
     } else {
       alert("No se pudo obtener el CER.\n\n" + (d.error || "sin detalle") +
+            (d.respuesta ? "\n\nRespuesta del BCRA:\n" +
+             d.respuesta.slice(0,300) : ""));
+    }
+  }catch(err){ alert("No se pudo probar."); }
+});
+
+$("#probar-badlar").addEventListener("click", async e => {
+  e.preventDefault(); e.stopPropagation();
+  try{
+    const d = await (await fetch(base + "api/badlar/probar",
+      {method:"POST"})).json();
+    if(d.dias_traidos){
+      alert("El BCRA respondió: " + d.dias_traidos + " días guardados.\n" +
+            "BADLAR vigente (rezagada 10 hábiles): " + (d.vigente ?? "—") + "\n" +
+            "En la base: " + (d.rango || "—") + "\n\n" +
+            (d.bonos || []).join("\n"));
+    } else {
+      alert("No se pudo obtener la BADLAR.\n\n" + (d.error || "sin detalle") +
             (d.respuesta ? "\n\nRespuesta del BCRA:\n" +
              d.respuesta.slice(0,300) : ""));
     }

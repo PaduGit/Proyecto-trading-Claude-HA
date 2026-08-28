@@ -1,5 +1,17 @@
 # Registro de cambios
 
+## 0.23.4
+
+**Las pruebas del BCRA se mudan a Explorar.** Estaban escondidas en el
+menu de tres puntos, que es donde uno no las busca cuando algo falla.
+Ahora hay tres botones juntos -CER, A3500 y BADLAR- arriba del registro
+de llamadas, que es lo que se mira para diagnosticar.
+
+**El error de BADLAR no decia que rango se pidio.** Guardaba la URL base
+pero no el desde/hasta, asi que un HTTP 500 no se podia reproducir con
+curl. Ahora el mensaje trae el rango completo y hasta 200 caracteres del
+cuerpo, o la marca de que vino vacio.
+
 ## 0.23.3
 
 **El Rulo estaba caido.** `pct_circuito` usaba una constante
