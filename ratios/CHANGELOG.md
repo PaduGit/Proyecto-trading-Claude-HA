@@ -1,5 +1,19 @@
 # Registro de cambios
 
+## 0.23.5
+
+**Filtro por tipo "Tasa $"**, para los bonos en pesos a tasa variable.
+Es lo que correspondia: en 0.23.3 se habia agregado un simbolo `$` al
+lado de la TIR en vez del filtro.
+
+**PR17 mostraba un desvio de curva absurdo.** `_familia` agrupaba por la
+moneda de cotizacion, no por la moneda en que rinde el bono, asi que un
+bono en pesos caia junto a los hard dollar que cotizan en pesos: se
+comparaba una TIR en pesos contra una curva en dolares y el residuo daba
+miles de puntos basicos. Los bonos en pesos van ahora a su propia
+familia, y mientras sean menos de cinco no se les calcula desvio, que es
+lo correcto cuando no hay curva contra la cual medirlos.
+
 ## 0.23.4
 
 **Las pruebas del BCRA se mudan a Explorar.** Estaban escondidas en el

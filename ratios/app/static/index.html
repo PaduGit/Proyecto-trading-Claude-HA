@@ -257,7 +257,6 @@ table.bonos th:first-child,table.bonos td:first-child{text-align:left}
 table.bonos th{cursor:pointer;-webkit-user-select:none;user-select:none}
 table.bonos th:active{opacity:.6}
 table.bonos th.orden-activo{color:var(--bone)}
-.tir-ars{color:var(--muted);font-size:9px;margin-left:2px;vertical-align:super}
 table.bonos td{padding:8px 3px;text-align:right;border-bottom:1px solid var(--rule)}
 table.bonos td.tk{color:var(--bone);font-weight:600;cursor:pointer}
 table.bonos td.tk:hover{color:var(--amber)}
@@ -1971,11 +1970,6 @@ async function cargarBonos(){
         const t = v => v == null ? "—" : v.toFixed(2) + "%";
         const clase = f.moneda === "USD" ? "usd"
                     : f.moneda === "CER" ? "cer" : "";
-        // la TIR de los bonos en pesos no es comparable con el resto de
-        // la tabla, que rinde en dolares: se marca en cada celda
-        const enArs = f.tir_moneda === "ARS";
-        const mt = v => v == null ? "—" : v.toFixed(2) + "%" +
-          (enArs ? '<span class="tir-ars">$</span>' : "");
         return '<tr class="' + clase +
           (f.falta_cer || f.falta_tc ? " sindato" : "") + '">' +
           '<td class="tk" onclick="verBono(\'' + esc(f.simbolo) + '\')">' +
@@ -1983,10 +1977,10 @@ async function cargarBonos(){
           '<td class="md">' + (f.md != null ? f.md.toFixed(1) : "—") + '</td>' +
           '<td' + (f.last_viejo ? ' class="viejo"' : "") + '>' + p(f.last) + '</td>' +
           '<td class="tir' + (f.last_viejo ? " viejo" : "") + '">' +
-            mt(f.tir_last) + '</td>' +
+            t(f.tir_last) + '</td>' +
           '<td class="bid">' + p(f.bid) + '</td>' +
-          '<td class="tir tbid">' + mt(f.tir_bid) + '</td>' +
-          '<td class="tir task">' + mt(f.tir_ask) + '</td>' +
+          '<td class="tir tbid">' + t(f.tir_bid) + '</td>' +
+          '<td class="tir task">' + t(f.tir_ask) + '</td>' +
           '<td class="ask">' + p(f.ask) + '</td>' +
           '<td class="' + claseDesvio(f) + '">' + textoDesvio(f) + '</td>' +
           '<td class="' + claseDesvio(f) + '">' + textoZ(f) + '</td></tr>';
@@ -2130,7 +2124,8 @@ const filtro = {ley: "todas", tipo: "todos", moneda: "todas",
 const LEYES = [["todas","Todas"],["AR","Argentina"],["NY","Nueva York"]];
 const TIPOS = [["todos","Todos"],["hard_dollar","Hard dollar"],["cer","CER"],
                ["dolar_linked","Dólar linked"],
-               ["tasa_fija","Tasa fija $"],["dual","Duales"]];
+               ["tasa_fija","Tasa fija $"],["tasa_variable","Tasa $"],
+               ["dual","Duales"]];
 const MONEDAS = [["todas","Todas"],["ARS","Pesos"],["MEP","D · MEP"],
                  ["CABLE","C · Cable"]];
 /* La curva se ajusta por emisor: un provincial rinde por encima de la

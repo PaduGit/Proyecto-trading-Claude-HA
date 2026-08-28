@@ -142,6 +142,12 @@ def _familia(cfg, info, simbolo=""):
         # paga al oficial, no al MEP: su TIR no se compara con la de un
         # hard dollar aunque las dos esten en dolares
         return "DL" + sufijo
+    # Un bono en pesos sin ajuste rinde en pesos. La moneda que se usa
+    # abajo es la de cotizacion, y por ella terminaria agrupado con los
+    # hard dollar que cotizan en pesos: su TIR en dolares contra una en
+    # pesos no se compara ni de casualidad.
+    if (cfg.get("moneda") or "").upper() == "ARS":
+        return "TASA$" + sufijo
     ley = "AR" if (cfg.get("ley") or "").startswith("arg") else "NY"
     moneda = info["moneda"]
     if moneda == "USD" and simbolo.endswith("C"):
