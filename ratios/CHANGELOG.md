@@ -1,5 +1,69 @@
 # Registro de cambios
 
+## 0.23.3
+
+**El Rulo estaba caido.** `pct_circuito` usaba una constante
+`FACTOR_ARANCEL` que nunca se habia definido: cualquier evaluacion de
+circuito moria con NameError. Queda cargada con la fraccion de arancel
+que sobrevive a la bonificacion en cada esquema: IOL paga entero porque
+en un rulo las cuatro patas son simbolos distintos, Eco bonifica el lado
+menor de cada par y Veta no tiene arancel marginal. Sobre cuatro patas da
+2,04%, 1,04% y 0,04%.
+
+**Los pagos del 31 se corrian al 30 y no volvian.** `fechas_interes`
+encadenaba las fechas sumando meses sobre la anterior, y como sumar seis
+meses a un 31 de diciembre da 30 de junio, el dia 31 se perdia para
+siempre. Ahora se cuenta desde el primer pago, como ya hacia la
+amortizacion. Afectaba a MR43O, CLSIO y PARP, y adelantaba un dia la
+alarma de cobro.
+
+**Step-up de MR43O, otra vez.** Los tramos arrancaban en el pago anterior
+para compensar el bug de fechas, con lo cual el cupon de diciembre de
+2026 cobraba 8,5% cuando le corresponde 7%. Ahora las fechas de corte son
+las del calendario: 7% hasta el cupon del 31/12/2026, 8,5% para los
+abonados entre 2027 y 2029, y 9,5% desde 2030.
+
+**Cupon variable.** El motor solo sabia de tasas fijas. Se agrega
+`badlar.py`, que cachea la serie 7 del BCRA igual que el CER y reusa su
+calendario de feriados para el rezago de diez habiles. Un bono con
+`interes.variable` toma la BADLAR de la fecha de valuacion, ya rezagada,
+y la proyecta constante hasta el vencimiento: asi un punto historico no
+cambia cuando el BCRA publica tasas nuevas. La tasa usada se guarda en
+`bono_hist` para que el numero sea reproducible.
+
+**Base actual/365**, que faltaba junto a 30/360 y actual/360.
+
+**`nominal_base` fuera de los CER.** Estaba confinado a la rama del
+coeficiente, asi que una lamina que no arranca de 100 solo funcionaba si
+ademas ajustaba por CER.
+
+**TIR en pesos.** Todos los bonos en pesos cargados hasta ahora ajustaban
+por CER o por A3500, y los que no, pasaban por el MEP: correcto para un
+hard dollar que cotiza en pesos, sin sentido para un bono que paga en
+pesos. Ahora hay una rama propia y el campo `tir_moneda` para
+distinguirlas; en la tabla las TIR en pesos llevan un `$`.
+
+**PR17.** Bocon de la decima serie, trece cuotas trimestrales de capital
+-doce del 7,69% y la ultima del 7,72%- los 2 de febrero, mayo, agosto y
+noviembre, que devenga BADLAR de bancos privados sin spread sobre base
+actual/365. El capital de origen es 833,20 por cada 100 nominales: sale
+de 705,05, que es lo que quedaba vivo tras las cuotas de mayo y agosto de
+2026, dividido por el 84,62% que restaba amortizar.
+
+**Un bono sin tasa ya no devenga cero.** Si el BCRA no responde, la tasa
+variable quedaba en None, el flujo caia a la lista vacia de tramos y la
+TIR salia calculada sobre cupones de 0%: un numero creible y falso. Ahora
+se marca `falta_tasa` y no se publica TIR, igual que con `falta_cer`.
+Ademas el detalle de un bono resolvia la tasa por separado del flujo, asi
+que podia mostrar el corrido con una BADLAR y el flujo con otra si la
+descarga caia entre medio.
+
+**El filtro activo no se veia en Tenencias.** Los chips se pintaban con
+`class="activo"`, que no tiene ninguna regla CSS: el filtro se aplicaba
+bien pero nada indicaba cual estaba puesto. Pasan a `aria-pressed`, que
+es lo que usa Bonos, y quedan rotulados "Broker" y "Tipo". El mismo bug
+estaba en el rango de Proximos cobros.
+
 ## 0.22.2
 
 **Las opciones se bajaban dos veces por ciclo.** El instrumento
