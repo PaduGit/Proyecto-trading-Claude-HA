@@ -120,6 +120,19 @@ def calcular_punto(simbolo, f, precio, cfg, info, mep=None):
             RF.residual(cfg, f), coef, tv)
 
 
+def arranque_badlar(cfg, desde):
+    """Desde cuando hace falta la BADLAR para reconstruir un bono.
+
+    No sirve pedir desde 1999: alcanza con la emision del bono, o con el
+    arranque de la serie historica si es posterior.
+    """
+    try:
+        emi = RF._fecha(cfg["emision"])
+    except Exception:
+        return desde
+    return max(emi, desde) if isinstance(desde, date) else emi
+
+
 def reconstruir(iol, simbolo=None, desde=None, hasta=None, mercado="bCBA",
                 forzar=False):
     """Baja los cierres de IOL y calcula la serie.
@@ -149,9 +162,21 @@ def reconstruir(iol, simbolo=None, desde=None, hasta=None, mercado="bCBA",
 
         # los hard dollar que cotizan en pesos necesitan el MEP de cada
         # día, que no tenemos hacia atrás: se reconstruyen las especies
-        # dolarizadas (D y C) y las ajustables por CER
-        if info["moneda"] not in ("USD", "CER"):
+        # dolarizadas (D y C) y las ajustables por CER. Los bonos que
+        # rinden en pesos tampoco necesitan MEP, asi que entran igual.
+        en_pesos = (not (cfg.get("ajuste") or "")
+                    and (cfg.get("moneda") or "").upper() == "ARS")
+        if info["moneda"] not in ("USD", "CER") and not en_pesos:
             continue
+
+        # con cupon variable el punto de cada dia necesita la tasa de ese
+        # dia: sin la serie entera solo saldrian los ultimos dias
+        if (cfg.get("interes") or {}).get("variable"):
+            try:
+                import badlar as BA
+                BA.asegurar_rango(arranque_badlar(cfg, desde), date.today())
+            except Exception as e:
+                log.warning("BADLAR para %s: %s", sim, e)
 
         arranque = desde
         if not forzar:

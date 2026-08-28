@@ -1,5 +1,21 @@
 # Registro de cambios
 
+## 0.23.6
+
+**El grafico historico de un bono en pesos salia vacio.** `reconstruir`
+solo dejaba pasar las especies en dolares y las CER, porque un hard
+dollar que cotiza en pesos necesita el MEP de cada dia y no lo tenemos
+hacia atras. Un bono que rinde en pesos no necesita MEP, asi que ahora
+entra igual y se le calcula la serie.
+
+**La BADLAR historica se baja antes de reconstruir.** Sin eso solo habia
+tasa de los ultimos dias y la serie salia igual de corta. Se pide desde
+la emision del bono, no desde 1999, para no traer veinte años al pedo.
+
+**`asegurar_rango` pedia rangos que terminaban en el futuro**, porque
+cortaba los tramos al 31 de diciembre del año en curso. El BCRA responde
+500 con cuerpo vacio ante eso. Ahora el tope es la fecha de hoy.
+
 ## 0.23.5
 
 **Filtro por tipo "Tasa $"**, para los bonos en pesos a tasa variable.

@@ -173,9 +173,13 @@ def asegurar_rango(desde, hasta, verificar_ssl=True):
         hasta = hasta.isoformat()
     d0 = date.fromisoformat(desde)
     d1 = date.fromisoformat(hasta)
+    # el BCRA responde 500 si el rango termina en el futuro
+    hoy = date.today()
+    if d1 > hoy:
+        d1 = hoy
     total = 0
     while d0 <= d1:
-        corte = min(date(d0.year, 12, 31), d1)
+        corte = min(date(d0.year, 12, 31), d1, hoy)
         hay = db.conn().execute(
             "SELECT COUNT(*) AS n FROM badlar WHERE fecha BETWEEN ? AND ?",
             (d0.isoformat(), corte.isoformat())).fetchone()
