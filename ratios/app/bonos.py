@@ -197,9 +197,37 @@ def fila(simbolo, info, cot, mep, liq=None, cer_actual=0):
     ask = cot.get("venta") or 0
     last = cot.get("ultimo") or 0
 
+    tasa_var = None
+    if (cfg.get("interes") or {}).get("variable"):
+        tasa_var = RF.tasa_variable(cfg, liq)
+        if tasa_var is None:
+            return {
+                "simbolo": simbolo, "moneda": (cfg.get("moneda") or "ARS"),
+                "cronograma": info["cronograma"],
+                "bid": bid, "ask": ask, "last": last,
+                "bid_usd": 0, "ask_usd": 0,
+                "q_bid": cot.get("vol_compra") or 0,
+                "q_ask": cot.get("vol_venta") or 0,
+                "tir_bid": None, "tir_ask": None, "tir_last": None,
+                "md": None, "last_viejo": False,
+                "ley": cfg.get("ley"),
+                "familia": _familia(cfg, info, simbolo),
+                "emisor": emisor_de(cfg),
+                "tipo": _tipo(cfg),
+                "moneda_cotiza": _moneda_cotiza(info, simbolo),
+                "ley_cod": "AR" if (cfg.get("ley") or "").startswith("arg") else "NY",
+                "falta_tasa": True,
+                "vencimiento": str(cfg["vencimiento"])[:10],
+            }
+
     ajuste = (cfg.get("ajuste") or "").lower()
     es_cer = ajuste == "cer"
     es_dl = ajuste in ("dolar_linked", "dolarlinked", "dl")
+    # Bono en pesos sin ajuste: la TIR que importa es en pesos. Pasarlo
+    # por el MEP daria un rendimiento en dolares sobre flujos en pesos,
+    # que no significa nada. Es el caso de los Bocon a BADLAR.
+    es_ars = (not es_cer and not es_dl
+              and (cfg.get("moneda") or "").upper() == "ARS")
 
     if es_dl:
         # Denominado en dolares, cotiza y paga en pesos al A3500. El
@@ -249,6 +277,10 @@ def fila(simbolo, info, cot, mep, liq=None, cer_actual=0):
                 "vencimiento": str(cfg["vencimiento"])[:10],
             }
         bid_usd, ask_usd, last_usd = bid / f, ask / f, last / f
+    elif es_ars:
+        # sin conversion: precio y flujo viven en la misma moneda
+        bid_usd, ask_usd, last_usd = bid, ask, last
+        tc_bid = tc_ask = tc_med = 1.0
     elif info["moneda"] == "USD":
         bid_usd, ask_usd, last_usd = bid, ask, last
         tc_bid = tc_ask = 1.0
@@ -262,7 +294,16 @@ def fila(simbolo, info, cot, mep, liq=None, cer_actual=0):
         ask_usd = ask / tc_ask if tc_ask else 0
         last_usd = last / tc_med if tc_med else 0
 
-    filas_flujo = RF.flujo(cfg, liq)
+    # El flujo va siempre por 100 de nominal. Cuando la lamina arranca de
+    # un capital distinto -los del canje 2005, los Bocon que
+    # capitalizaron- hay que llevar el precio a esa base antes de sacar
+    # la TIR. En CER ya viene incluido en el factor.
+    if not es_cer:
+        nb = float(cfg.get("nominal_base") or 100) / 100.0
+        if nb and nb != 1.0:
+            bid_usd, ask_usd, last_usd = bid_usd / nb, ask_usd / nb, last_usd / nb
+
+    filas_flujo = RF.flujo(cfg, liq, tasa_var=tasa_var)
     tir_bid = _tir(cfg, bid_usd, liq, filas_flujo)
     tir_ask = _tir(cfg, ask_usd, liq, filas_flujo)
     tir_last = _tir(cfg, last_usd, liq, filas_flujo)
@@ -277,14 +318,17 @@ def fila(simbolo, info, cot, mep, liq=None, cer_actual=0):
 
     return {
         "simbolo": simbolo,
-        "moneda": "CER" if es_cer else "DL" if es_dl else info["moneda"],
+        "moneda": ("CER" if es_cer else "DL" if es_dl
+                   else "ARS" if es_ars else info["moneda"]),
+        "tir_moneda": "ARS" if es_ars else "USD",
         "ley": cfg.get("ley"),
         "familia": _familia(cfg, info, simbolo),
         "emisor": emisor_de(cfg),
         "tipo": _tipo(cfg),
-        "moneda_cotiza": "ARS" if es_dl else _moneda_cotiza(info, simbolo),
+        "moneda_cotiza": "ARS" if (es_dl or es_ars) else _moneda_cotiza(info, simbolo),
         "ley_cod": "AR" if (cfg.get("ley") or "").startswith("arg") else "NY",
         "falta_cer": False,
+        "falta_tasa": False,
         "cronograma": info["cronograma"],
         "bid": bid, "ask": ask, "last": last,
         "bid_usd": bid_usd, "ask_usd": ask_usd,
@@ -381,10 +425,11 @@ def detalle(simbolo, cot, liq=None, par_mep=("AL30", "AL30D"), cer_actual=0):
 
     precio_usd = f["ask_usd"] or f["bid_usd"] or 0
     m = RF.metricas(cfg, precio_usd, liq) if precio_usd else {}
-    flujo = RF.flujo(cfg, liq)
+    tv = RF.tasa_variable(cfg, liq)
+    flujo = RF.flujo(cfg, liq, tasa_var=tv)
 
     residual = m.get("residual") or RF.residual(cfg, liq)
-    corrido = m.get("interes_corrido") or RF.interes_corrido(cfg, liq)
+    corrido = m.get("interes_corrido") or RF.interes_corrido(cfg, liq, tasa_var=tv)
     tecnico = residual + corrido
     # en un bono CER el valor tecnico va ajustado por el coeficiente
     fcer = factor_cer(cfg, cer_actual)

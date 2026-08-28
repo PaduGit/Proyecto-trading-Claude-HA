@@ -42,12 +42,58 @@ def _dias_30_360(d1, d2):
     return (d2.year - d1.year) * 360 + (d2.month - d1.month) * 30 + (dd2 - dd1)
 
 
+def _frac(base, d1, d2):
+    """Fraccion de año devengada entre dos fechas, segun la convencion."""
+    b = (base or "30/360").replace(" ", "").lower()
+    if b.startswith("30"):
+        return _dias_30_360(d1, d2) / 360.0
+    if b.endswith("365"):
+        return (d2 - d1).days / 365.0
+    return (d2 - d1).days / 360.0
+
+
 def _tasa_vigente(tramos, f):
     tasa = 0.0
-    for t in tramos:
+    for t in tramos or []:
         if f >= _fecha(t["desde"]):
             tasa = float(t["tasa"])
     return tasa
+
+
+def tasa_variable(esp, al=None):
+    """Tasa a proyectar en un bono de cupon variable, en % nominal anual.
+
+    La convencion acordada es tomar un solo valor -el de la fecha de
+    valuacion, ya rezagado- y proyectarlo constante hasta el
+    vencimiento. Asi un punto historico no cambia cuando el BCRA
+    publica tasas nuevas.
+
+    Devuelve None si no hay dato: el llamador decide si cae a los
+    tramos fijos o si directamente no puede valuar el bono.
+    """
+    var = (esp.get("interes") or {}).get("variable")
+    if not var:
+        return None
+    fuente = (var.get("fuente") or "").strip().lower()
+    spread = float(var.get("spread") or 0)
+    if fuente == "badlar":
+        import badlar as BA
+        v = BA.vigente(al)
+        return None if v is None else v + spread
+    log.warning("fuente de tasa variable desconocida: %r", fuente)
+    return None
+
+
+def _tasa_para(esp, f, tasa_var=None):
+    """Tasa que rige un devengamiento, fija o variable."""
+    it = esp.get("interes") or {}
+    if it.get("variable"):
+        if tasa_var is not None:
+            return float(tasa_var)
+        v = tasa_variable(esp)
+        if v is not None:
+            return v
+    return _tasa_vigente(it.get("tramos"), f)
 
 
 # -- construccion del flujo ------------------------------------------
@@ -84,11 +130,18 @@ def fechas_interes(esp, hasta):
             out.append(hasta)
         return out
 
-    cur = _fecha(it["primer_pago"])
+    # Se cuenta desde el ancla, no encadenando: sumar 6 meses a un 31 de
+    # diciembre da 30 de junio, y si de ahi se sigue encadenando el dia
+    # 31 se pierde para siempre. Amortizacion ya lo hacia asi.
+    ancla = _fecha(it["primer_pago"])
     out = []
-    while cur <= hasta:
+    i = 0
+    while True:
+        cur = _sumar_meses(ancla, paso * i)
+        if cur > hasta:
+            break
         out.append(cur)
-        cur = _sumar_meses(cur, paso)
+        i += 1
     # el vencimiento siempre paga cupón, aunque el día no caiga justo
     # en la serie (pasa cuando el prospecto corre la última fecha)
     if out and out[-1] != hasta:
@@ -121,17 +174,20 @@ def _pegar_a_cupon(amorts, pagos_int, tolerancia=3, venc=None):
     return out
 
 
-def flujo(esp, desde=None):
+def flujo(esp, desde=None, tasa_var=None):
     """Flujo futuro por cada 100 de valor nominal original.
 
     Devuelve lista de dicts con fecha, renta, amortizacion y residual.
+    En bonos de cupon variable, `tasa_var` fija la tasa a proyectar; si
+    no viene, se resuelve contra la fuente configurada.
     """
     desde = desde or date.today()
     venc = _fecha(esp["vencimiento"])
     amorts = dict(fechas_amortizacion(esp))
     pagos_int = fechas_interes(esp, venc)
     base = esp.get("base", "30/360")
-    tramos = esp["interes"]["tramos"]
+    if (esp.get("interes") or {}).get("variable") and tasa_var is None:
+        tasa_var = tasa_variable(esp, desde)
 
     # si una amortización cae a uno o dos días de un cupón, es el mismo
     # servicio: los prospectos redondean distinto la fecha de cada pata
@@ -142,12 +198,8 @@ def flujo(esp, desde=None):
     filas = []
 
     for f in todas:
-        tasa = _tasa_vigente(tramos, anterior)
-        if base.startswith("30"):
-            dias = _dias_30_360(anterior, f)
-            frac = dias / 360.0
-        else:
-            frac = (f - anterior).days / 360.0
+        tasa = _tasa_para(esp, anterior, tasa_var)
+        frac = _frac(base, anterior, f)
         renta = residual * tasa / 100.0 * frac if f in pagos_int else 0.0
         amort = amorts.get(f, 0.0)
 
@@ -173,19 +225,18 @@ def residual(esp, al=None):
     return round(r, 6)
 
 
-def interes_corrido(esp, al=None):
+def interes_corrido(esp, al=None, tasa_var=None):
     """Cupon devengado desde el ultimo pago."""
     al = al or date.today()
     venc = _fecha(esp["vencimiento"])
     pagos = fechas_interes(esp, venc)
     previos = [f for f in pagos if f <= al] or [_fecha(esp["emision"])]
     ultimo = max(previos)
-    tasa = _tasa_vigente(esp["interes"]["tramos"], ultimo)
+    if (esp.get("interes") or {}).get("variable") and tasa_var is None:
+        tasa_var = tasa_variable(esp, al)
+    tasa = _tasa_para(esp, ultimo, tasa_var)
     res = residual(esp, ultimo)
-    if esp.get("base", "30/360").startswith("30"):
-        frac = _dias_30_360(ultimo, al) / 360.0
-    else:
-        frac = (al - ultimo).days / 360.0
+    frac = _frac(esp.get("base", "30/360"), ultimo, al)
     return round(res * tasa / 100.0 * frac, 6)
 
 
@@ -242,7 +293,10 @@ def duration(precio, esp, liq=None, r=None, filas=None):
 def metricas(esp, precio, liq=None):
     """Todo junto, para una fila de la tabla."""
     liq = liq or date.today()
-    filas = flujo(esp, liq)
+    # se resuelve una sola vez: si cada llamada la buscara por su
+    # cuenta, el flujo y el corrido podrian quedar con tasas distintas
+    tv = tasa_variable(esp, liq)
+    filas = flujo(esp, liq, tasa_var=tv)
     r = tir(precio, esp, liq, filas)
     mac, mod = duration(precio, esp, liq, r, filas)
     prox = filas[0] if filas else None
@@ -251,7 +305,7 @@ def metricas(esp, precio, liq=None):
         "duration": mac,
         "md": mod,
         "residual": residual(esp, liq),
-        "interes_corrido": interes_corrido(esp, liq),
+        "interes_corrido": interes_corrido(esp, liq, tasa_var=tv),
         "vencimiento": _fecha(esp["vencimiento"]).isoformat(),
         "años_al_vto": (_fecha(esp["vencimiento"]) - liq).days / 365.0,
         "proximo_pago": {
@@ -260,5 +314,6 @@ def metricas(esp, precio, liq=None):
             "amortizacion": prox["amortizacion"],
             "total": prox["total"],
         } if prox else None,
-        "cupon_vigente": _tasa_vigente(esp["interes"]["tramos"], liq),
+        "cupon_vigente": _tasa_para(esp, liq, tv),
+        "tasa_variable": tv,
     }

@@ -88,6 +88,20 @@ ESQUEMAS = {
     "veta": {"nombre": "Veta Flat", "regla": "sin_arancel", "pct": 100},
 }
 
+# Fraccion del arancel que QUEDA en pie tras la bonificacion, por pata
+# del circuito. 0 = el arancel se anula, 1 = se paga entero.
+#
+# En un rulo de cuatro patas:
+#   simbolo      IOL no bonifica ninguna, porque las cuatro patas son
+#                simbolos distintos. Paga el arancel completo.
+#   moneda_plazo Eco bonifica el lado menor de cada par: dos de cuatro.
+#   sin_arancel  Veta no tiene arancel marginal.
+FACTOR_ARANCEL = {
+    "simbolo": 1.0,
+    "moneda_plazo": 0.5,
+    "sin_arancel": 0.0,
+}
+
 
 def esquema(cfg):
     b = (cfg.get("broker") or "iol").strip().lower()

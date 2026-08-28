@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS bono_hist (
     duration  REAL,
     residual  REAL,
     cer       REAL,
+    badlar    REAL,
     PRIMARY KEY (simbolo, fecha)
 );
 CREATE INDEX IF NOT EXISTS ix_bh_simbolo ON bono_hist(simbolo, fecha);
@@ -36,6 +37,10 @@ CREATE INDEX IF NOT EXISTS ix_bh_simbolo ON bono_hist(simbolo, fecha);
 def init():
     c = db.conn()
     c.executescript(ESQUEMA)
+    # la columna se agrego despues: en bases ya creadas no viene sola
+    cols = [r[1] for r in c.execute("PRAGMA table_info(bono_hist)")]
+    if "badlar" not in cols:
+        c.execute("ALTER TABLE bono_hist ADD COLUMN badlar REAL")
     c.commit()
 
 
@@ -45,8 +50,8 @@ def _guardar(filas):
     c = db.conn()
     c.executemany(
         "INSERT OR REPLACE INTO bono_hist "
-        "(simbolo, fecha, precio, tir, md, duration, residual, cer) "
-        "VALUES (?,?,?,?,?,?,?,?)", filas)
+        "(simbolo, fecha, precio, tir, md, duration, residual, cer, badlar) "
+        "VALUES (?,?,?,?,?,?,?,?,?)", filas)
     c.commit()
     return len(filas)
 
@@ -59,6 +64,15 @@ def _cer_de(f):
         return None
 
 
+def _badlar_de(f):
+    """BADLAR que regia esa fecha, ya rezagada diez hábiles."""
+    try:
+        import badlar as BA
+        return BA.vigente(f)
+    except Exception:
+        return None
+
+
 def calcular_punto(simbolo, f, precio, cfg, info, mep=None):
     """TIR y duration de un bono en una fecha, con los datos de ese día."""
     if not precio or precio <= 0:
@@ -66,6 +80,7 @@ def calcular_punto(simbolo, f, precio, cfg, info, mep=None):
 
     es_cer = (cfg.get("ajuste") or "").lower() == "cer"
     coef = None
+    tv = None
 
     if es_cer:
         base = cfg.get("cer_base") or CER.base_de(cfg.get("emision"))
@@ -73,16 +88,28 @@ def calcular_punto(simbolo, f, precio, cfg, info, mep=None):
         if not base or not coef:
             return None
         p = precio / (coef / base * float(cfg.get("nominal_base") or 100) / 100)
+    elif (not (cfg.get("ajuste") or "")
+          and (cfg.get("moneda") or "").upper() == "ARS"):
+        # bono en pesos: la TIR se calcula en pesos, sin pasar por MEP
+        p = precio / (float(cfg.get("nominal_base") or 100) / 100)
     elif info["moneda"] == "USD":
-        p = precio
+        p = precio / (float(cfg.get("nominal_base") or 100) / 100)
     else:
         # bono hard dollar cotizando en pesos: sin MEP de esa fecha no
         # se puede convertir, así que ese punto se omite
         if not mep:
             return None
-        p = precio / mep
+        p = precio / mep / (float(cfg.get("nominal_base") or 100) / 100)
 
-    filas = RF.flujo(cfg, f)
+    # cupon variable: se congela la tasa de esa fecha y se proyecta
+    # constante, asi el punto no cambia cuando el BCRA publica mas datos
+    if (cfg.get("interes") or {}).get("variable"):
+        tv = _badlar_de(f)
+        if tv is None:
+            return None
+        tv += float(cfg["interes"]["variable"].get("spread") or 0)
+
+    filas = RF.flujo(cfg, f, tasa_var=tv)
     if not filas:
         return None
     r = RF.tir(p, cfg, f, filas)
@@ -90,7 +117,7 @@ def calcular_punto(simbolo, f, precio, cfg, info, mep=None):
         return None
     mac, md = RF.duration(p, cfg, f, r, filas)
     return (simbolo, f.isoformat(), precio, r * 100, md, mac,
-            RF.residual(cfg, f), coef)
+            RF.residual(cfg, f), coef, tv)
 
 
 def reconstruir(iol, simbolo=None, desde=None, hasta=None, mercado="bCBA",

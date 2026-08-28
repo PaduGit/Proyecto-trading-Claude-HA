@@ -47,9 +47,13 @@ def _factor(cfg, cer_actual=0):
             return None, "ARS", True
         return tc, "ARS", True
 
+    # una lamina que no arranca de 100 escala todos sus pagos
+    nb = float(cfg.get("nominal_base") or 100) / 100.0
+    # con cupon variable la renta futura es proyeccion, no dato cerrado
+    var = bool((cfg.get("interes") or {}).get("variable"))
     if (cfg.get("moneda") or "").upper() == "USD":
-        return 1.0, "USD", False
-    return 1.0, "ARS", False
+        return nb, "USD", var
+    return nb, "ARS", var
 
 
 def proximos(dias=365, cer_actual=0, incluir_extranjeros=False,

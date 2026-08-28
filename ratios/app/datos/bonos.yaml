@@ -750,6 +750,45 @@ bonos:
       2% hasta fin de 2026 y 3,5% desde 2027. La fecha de emision es la
       del canje de 2021 y solo afecta el interes corrido.
 
+  PR17:
+    nombre: Bono de Consolidación en Pesos 10ma Serie
+    ley: argentina
+    moneda: ARS
+    emisor: Tesoro Nacional
+    tipo: tasa_variable
+    emision: 2026-02-02
+    vencimiento: 2029-05-02
+    base: actual/365
+    nominal_base: 833.20
+    amortizacion:
+      tipo: cuotas
+      fechas_desde: 2026-05-02
+      frecuencia_meses: 3
+      cuotas: [7.69, 7.69, 7.69, 7.69, 7.69, 7.69, 7.69,
+               7.69, 7.69, 7.69, 7.69, 7.69, 7.72]
+    interes:
+      frecuencia_meses: 3
+      primer_pago: 2026-05-02
+      variable: {fuente: badlar, spread: 0.0}
+      tramos: []
+    nota: >-
+      Bocon que capitalizo intereses durante la gracia. El capital de
+      origen sobre el que se calculan las trece cuotas es 833,20 por
+      cada 100 nominales: sale de 705,05, que es el capital que quedaba
+      vivo tras las cuotas de mayo y agosto de 2026, dividido por el
+      84,62% que restaba amortizar. Doce cuotas del 7,69% y la ultima
+      del 7,72%, los 2 de febrero, mayo, agosto y noviembre. Devenga
+      BADLAR de bancos privados sin spread, base actual/365.
+    verificar: >-
+      La emision 2026-02-02 es la fecha del cupon anterior a la primera
+      amortizacion, no la emision real del titulo: solo se usa para
+      arrancar el devengamiento y no afecta el flujo futuro. La
+      proyeccion toma la BADLAR de la fecha de valuacion, rezagada diez
+      habiles, y la mantiene constante hasta el vencimiento; el
+      prospecto define un promedio del periodo, que solo cambiaria el
+      cupon corriente. Sin prospecto a la vista, el rezago se asume
+      aplicable tambien a la proyeccion.
+
   MR43O:
     nombre: ON Generación Mediterránea Clase 43 dólar linked 2036
     ley: argentina
@@ -770,13 +809,13 @@ bonos:
       frecuencia_meses: 6
       primer_pago: 2024-12-31
       tramos:
-        # La tasa es la del cupon que se paga, no la del periodo en que
-        # se devenga: por eso cada tramo arranca en el pago anterior. El
-        # cupon de junio de 2027 ya paga 8,5% aunque devengue desde
-        # diciembre de 2026.
+        # El escalonamiento va por cupon abonado: 7% hasta el que se
+        # paga el 31/12/2026, 8,5% para los abonados entre el 1/1/2027 y
+        # el 31/12/2029, y 9,5% desde 2030. Las fechas de corte son las
+        # del calendario, no las del pago anterior.
         - {desde: 2024-06-30, tasa: 7.0}
-        - {desde: 2026-12-30, tasa: 8.5}
-        - {desde: 2029-12-30, tasa: 9.5}
+        - {desde: 2027-01-01, tasa: 8.5}
+        - {desde: 2030-01-01, tasa: 9.5}
     nota: >-
       Step-up: 7% hasta los cupones de 2026, 8,5% para los de 2027 a 2029
       y 9,5% desde 2030 hasta el vencimiento. Amortiza en veinte cuotas

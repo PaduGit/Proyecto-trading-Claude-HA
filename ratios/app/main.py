@@ -8,6 +8,7 @@ import threading
 import time
 
 import cer
+import badlar
 import dolar
 import curva
 import db
@@ -141,6 +142,7 @@ def main():
     except Exception as e:
         log.warning("migracion de pares: %s", e)
     cer.init()
+    badlar.init()
     dolar.init()
     historico.init()
     curva.init()
