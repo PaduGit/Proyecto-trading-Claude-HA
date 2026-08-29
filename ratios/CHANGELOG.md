@@ -1,5 +1,38 @@
 # Registro de cambios
 
+## 0.24.0
+
+**Costo de entrada en la tenencia.** La tabla suma `ppc`, `fecha_alta` y
+`precision`. Ningun broker devuelve el PPC por API: se carga pegando el
+JSON, con los mismos campos que ya se usaban para la cantidad. La fecha
+admite tres grados de certeza —`exacta`, `mes` o `antes`— para no dar
+por firme algo que se recuerda a medias.
+
+El PPC y la fecha se conservan cuando la carga nueva no los trae. El
+boton que baja de IOL devuelve solo cantidades, y sin esto borraba el
+costo cargado a mano en cada actualizacion.
+
+**Historial de cantidades.** Cada actualizacion guarda una foto en
+`tenencia_hist`, y solo si algo cambio: actualizar tres veces en un dia
+sin operar no deja tres filas iguales. La foto se toma por broker y
+solamente de los brokers que vinieron en la carga, asi que una carga
+parcial no se lee como si se hubiera vendido todo lo que falta.
+
+Se ve por especie, con la diferencia contra la foto anterior del mismo
+broker.
+
+**Splits y canjes.** Tabla `evento_societario` con especie, fecha y
+factor: un split de 1 a 10 va con factor 10. El broker ajusta la
+cantidad pero no siempre el PPC, y entonces el resultado sale al reves.
+MIRG figuraba con PPC 9609,87 contra un precio de 1795 y una perdida del
+81% que en realidad era una ganancia del 87%.
+
+El ajuste se aplica al leer y no al guardar, para que el valor original
+del broker no se pierda si el evento se carga mal. Solo alcanza a las
+compras anteriores al evento. Si la tenencia no tiene fecha de alta no
+hay forma de saber de que lado cae, asi que se ajusta igual pero la
+columna lo marca con un signo de pregunta.
+
 ## 0.23.6
 
 **El grafico historico de un bono en pesos salia vacio.** `reconstruir`

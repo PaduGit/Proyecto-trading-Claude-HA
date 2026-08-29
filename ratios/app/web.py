@@ -796,6 +796,33 @@ def crear_app(monitor):
         n = db.guardar_tenencias(filas, d.get("reemplazar") or "todo")
         return jsonify({"cargadas": n, "en_rulo": monitor.tengo_actual()})
 
+    @app.get("/api/tenencias/historial")
+    def tenencias_historial():
+        return jsonify({
+            "historial": db.historial_tenencia(
+                request.args.get("broker"), request.args.get("simbolo"),
+                request.args.get("desde")),
+            "fechas": db.fechas_snapshot(request.args.get("broker")),
+        })
+
+    @app.get("/api/eventos")
+    def eventos_listar():
+        return jsonify({"eventos": db.eventos(request.args.get("simbolo"))})
+
+    @app.post("/api/eventos")
+    def eventos_crear():
+        d = request.get_json(silent=True) or {}
+        try:
+            eid = db.guardar_evento(d.get("simbolo"), d.get("fecha"),
+                                    d.get("factor"), d.get("nota"))
+        except (TypeError, ValueError) as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify({"id": eid})
+
+    @app.delete("/api/eventos/<int:eid>")
+    def eventos_borrar(eid):
+        return jsonify({"borrados": db.borrar_evento(eid)})
+
     # IOL agrupa por tipo de instrumento y no lo escribe siempre igual:
     # "TIT. PUBLICOS", "TitulosPublicos" y "titulos publicos" son el
     # mismo tipo. Se compara sin puntos, espacios ni acentos, buscando la

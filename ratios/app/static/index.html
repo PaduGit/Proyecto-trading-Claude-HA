@@ -437,7 +437,34 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       <div class="nota">Con <b>reemplazar</b> en "todo" se pisa la lista
         entera; con el nombre de un broker, solo la de ese broker. El
         <b>tipo</b> puede ser moneda, bonos, letras, bcra, on, cedears,
-        acciones, fci u otros.</div>
+        acciones, fci u otros. Opcionales: <b>ppc</b>, <b>fecha_alta</b>
+        y <b>precision</b> (exacta, mes o antes). Si no vienen, se
+        conserva lo que ya estaba: el botón que baja de IOL trae solo
+        cantidades y no pisa el costo cargado a mano.</div>
+    </details>
+    <details style="margin-top:12px">
+      <summary>Historial de cantidades</summary>
+      <div class="nota" style="margin-top:8px">Cada actualización guarda
+        una foto por broker, y solo si algo cambió.</div>
+      <div class="periodos" id="hist-esp" style="margin:8px 0"></div>
+      <div id="hist-out"></div>
+    </details>
+    <details style="margin-top:12px">
+      <summary>Splits y canjes</summary>
+      <div class="nota" style="margin-top:8px">El factor es cuántas
+        unidades nuevas salen de cada vieja: un split de 1 a 10 va con
+        factor 10. El broker ajusta la cantidad pero no siempre el PPC,
+        así que el costo se corrige acá para las compras anteriores al
+        evento.</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+        <input id="ev-simbolo" placeholder="Especie" style="flex:1 1 90px">
+        <input id="ev-fecha" type="date" style="flex:1 1 130px">
+        <input id="ev-factor" type="number" step="any" placeholder="Factor"
+          style="flex:1 1 80px">
+        <input id="ev-nota" placeholder="Nota" style="flex:2 1 140px">
+        <button class="primario" id="ev-agregar">Agregar</button>
+      </div>
+      <div id="ev-out" style="margin-top:10px"></div>
     </details>
 </section>
 
@@ -3388,7 +3415,11 @@ function tenPintar(){
       '<th onclick="tenOrdenar(\'tipo\')">Tipo' + flecha("tipo") + '</th>' +
       '<th onclick="tenOrdenar(\'broker\')">Broker' + flecha("broker") + '</th>' +
       '<th class="num" onclick="tenOrdenar(\'cantidad\')">Cantidad' +
-        flecha("cantidad") + '</th></tr></thead><tbody>' +
+        flecha("cantidad") + '</th>' +
+      '<th class="num" onclick="tenOrdenar(\'ppc_ajustado\')">PPC' +
+        flecha("ppc_ajustado") + '</th>' +
+      '<th onclick="tenOrdenar(\'fecha_alta\')">Alta' +
+        flecha("fecha_alta") + '</th></tr></thead><tbody>' +
     filas.map(t =>
       '<tr><td>' + esc(t.simbolo) +
         (t.extranjero ? ' <span class="tocar">exterior</span>' : "") + '</td>' +
@@ -3396,7 +3427,9 @@ function tenPintar(){
         esc((TIPOS_TEN.find(x => x[0] === (t.tipo || "otros")) || ["", "?"])[1]) +
         '</td>' +
       '<td style="font-size:11px">' + esc(t.broker) + '</td>' +
-      '<td class="num">' + ent(t.cantidad) + '</td></tr>').join("") +
+      '<td class="num">' + ent(t.cantidad) + '</td>' +
+      '<td class="num">' + tenPpc(t) + '</td>' +
+      '<td style="font-size:11px">' + tenAlta(t) + '</td></tr>').join("") +
     '</tbody></table>' +
     '<div class="nota">' + filas.length + ' de ' + tenDatos.length +
       ' líneas.</div>';
@@ -3406,6 +3439,94 @@ function tenOrdenar(col){
   if(tenOrden.col === col) tenOrden.asc = !tenOrden.asc;
   else { tenOrden.col = col; tenOrden.asc = true; }
   tenPintar();
+}
+
+/* El PPC ajustado por splits. Si el ajuste se dedujo sin fecha de compra
+   queda marcado: puede estar de más si la compra fue posterior. */
+function tenPpc(t){
+  if(t.ppc_ajustado == null) return "—";
+  let s = num(t.ppc_ajustado, 6);
+  if((t.eventos || []).length){
+    s += ' <span class="tocar" title="' + esc(t.eventos.join(" · ")) +
+      '">aj' + (t.ajuste_supuesto ? "?" : "") + '</span>';
+  }
+  return s;
+}
+
+function tenAlta(t){
+  if(!t.fecha_alta) return '<span style="color:var(--muted)">—</span>';
+  const marca = {mes: " (mes)", antes: " (antes de)"}[t.precision] || "";
+  return esc(t.fecha_alta) + marca;
+}
+
+/* ---------- historial de tenencias ---------- */
+let histEsp = "";
+
+function histChips(){
+  const cont = $("#hist-esp");
+  if(!cont) return;
+  const esp = [...new Set(tenDatos.map(t => t.simbolo))].sort();
+  cont.innerHTML = esp.map(s => '<button aria-pressed="' +
+    (histEsp === s) + '" data-esp="' + esc(s) + '">' + esc(s) +
+    '</button>').join("");
+}
+
+async function cargarHistorial(){
+  const out = $("#hist-out");
+  if(!out) return;
+  if(!histEsp){
+    out.innerHTML = '<div class="nota">Elegí una especie.</div>';
+    return;
+  }
+  try{
+    const d = await (await fetch(base + "api/tenencias/historial?simbolo=" +
+      encodeURIComponent(histEsp))).json();
+    const h = d.historial || [];
+    if(!h.length){
+      out.innerHTML = '<div class="vacio">Sin fotos guardadas todavía. ' +
+        'La primera se toma en la próxima actualización.</div>';
+      return;
+    }
+    out.innerHTML = '<table class="tabla"><thead><tr><th>Fecha</th>' +
+      '<th>Broker</th><th class="num">Cantidad</th>' +
+      '<th class="num">Cambio</th></tr></thead><tbody>' +
+      h.map((f, i) => {
+        // El historial viene de la fecha mas nueva a la mas vieja, asi
+        // que el anterior del mismo broker esta mas abajo en la lista.
+        const prev = h.slice(i + 1).find(x => x.broker === f.broker);
+        const dif = prev ? f.cantidad - prev.cantidad : null;
+        return '<tr><td>' + esc(f.fecha) + '</td><td style="font-size:11px">' +
+          esc(f.broker) + '</td><td class="num">' + ent(f.cantidad) +
+          '</td><td class="num">' + (dif ? (dif > 0 ? "+" : "") + ent(dif)
+            : '<span style="color:var(--muted)">—</span>') + '</td></tr>';
+      }).join("") + '</tbody></table>';
+  }catch(e){
+    out.innerHTML = '<div class="msg error">No se pudo leer el historial.</div>';
+  }
+}
+
+/* ---------- splits y canjes ---------- */
+async function cargarEventos(){
+  const out = $("#ev-out");
+  if(!out) return;
+  try{
+    const d = await (await fetch(base + "api/eventos")).json();
+    const ev = d.eventos || [];
+    if(!ev.length){
+      out.innerHTML = '<div class="nota">Ninguno cargado.</div>';
+      return;
+    }
+    out.innerHTML = '<table class="tabla"><thead><tr><th>Especie</th>' +
+      '<th>Fecha</th><th class="num">Factor</th><th>Nota</th>' +
+      '<th></th></tr></thead><tbody>' +
+      ev.map(e => '<tr><td>' + esc(e.simbolo) + '</td><td>' + esc(e.fecha) +
+        '</td><td class="num">×' + num(e.factor, 4) +
+        '</td><td style="font-size:11px">' + esc(e.nota || "") +
+        '</td><td><button data-borrar-ev="' + e.id + '">Borrar</button>' +
+        '</td></tr>').join("") + '</tbody></table>';
+  }catch(e){
+    out.innerHTML = '<div class="msg error">No se pudieron leer.</div>';
+  }
 }
 
 function tenChips(){
@@ -3431,12 +3552,16 @@ async function cargarTenencias(){
     if(!tenDatos.length){
       $("#ten-broker").innerHTML = "";
       $("#ten-tipo").innerHTML = "";
+      $("#hist-esp").innerHTML = "";
+      cargarEventos();
       out.innerHTML = '<div class="vacio">Todavía no cargaste tenencias. ' +
         'Se pegan abajo en formato JSON.</div>';
       return;
     }
     tenChips();
     tenPintar();
+    histChips();
+    cargarEventos();
     const r = d.en_rulo || {};
     out.insertAdjacentHTML("beforeend",
       '<div class="nota">El Rulo parte de <b>' +
@@ -3447,6 +3572,46 @@ async function cargarTenencias(){
     out.innerHTML = '<div class="msg error">No se pudieron leer.</div>';
   }
 }
+
+$("#hist-esp").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-esp]");
+  if(!b) return;
+  histEsp = histEsp === b.dataset.esp ? "" : b.dataset.esp;
+  histChips(); cargarHistorial();
+});
+
+$("#ev-agregar").addEventListener("click", async e => {
+  const b = e.target;
+  const cuerpo = {simbolo: $("#ev-simbolo").value.trim(),
+                  fecha: $("#ev-fecha").value,
+                  factor: parseFloat($("#ev-factor").value),
+                  nota: $("#ev-nota").value.trim()};
+  if(!cuerpo.simbolo || !cuerpo.fecha || !isFinite(cuerpo.factor)){
+    alert("Faltan la especie, la fecha o el factor.");
+    return;
+  }
+  b.disabled = true;
+  try{
+    const r = await (await fetch(base + "api/eventos", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(cuerpo)})).json();
+    if(r.error){ alert(r.error); return; }
+    $("#ev-simbolo").value = ""; $("#ev-factor").value = "";
+    $("#ev-nota").value = "";
+    cargarEventos(); cargarTenencias();
+  }catch(err){ alert("No se pudo guardar."); }
+  finally{ b.disabled = false; }
+});
+
+$("#ev-out").addEventListener("click", async ev => {
+  const b = ev.target.closest("[data-borrar-ev]");
+  if(!b) return;
+  if(!confirm("¿Borrar el evento? El PPC vuelve al valor del broker.")) return;
+  try{
+    await fetch(base + "api/eventos/" + b.dataset.borrarEv, {method:"DELETE"});
+    cargarEventos(); cargarTenencias();
+  }catch(err){ alert("No se pudo borrar."); }
+});
 
 $("#ten-broker").addEventListener("click", ev => {
   const b = ev.target.closest("[data-broker]");

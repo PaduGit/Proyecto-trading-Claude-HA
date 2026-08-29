@@ -802,6 +802,33 @@ CREATE TABLE IF NOT EXISTS tenencia (
   ts       TEXT NOT NULL,
   PRIMARY KEY (broker, simbolo)
 );
+
+-- Foto de la tenencia cada vez que se actualiza. Una fila por especie y
+-- fecha: es lo que despues permite ver como evoluciono una posicion y
+-- deducir los movimientos que no se cargaron a mano.
+CREATE TABLE IF NOT EXISTS tenencia_hist (
+  fecha    TEXT NOT NULL,
+  broker   TEXT NOT NULL,
+  simbolo  TEXT NOT NULL,
+  cantidad REAL NOT NULL,
+  tipo     TEXT,
+  PRIMARY KEY (fecha, broker, simbolo)
+);
+CREATE INDEX IF NOT EXISTS ix_tenhist ON tenencia_hist(broker, simbolo, fecha);
+
+-- Splits, canjes y cambios de lamina. El factor es cuantas unidades
+-- nuevas salen de cada vieja: un split 1 a 10 va con factor 10. Las
+-- cantidades ya llegan ajustadas desde el broker, pero el PPC no
+-- siempre, y la serie de precios tampoco.
+CREATE TABLE IF NOT EXISTS evento_societario (
+  id      INTEGER PRIMARY KEY AUTOINCREMENT,
+  simbolo TEXT NOT NULL,
+  fecha   TEXT NOT NULL,
+  factor  REAL NOT NULL,
+  nota    TEXT,
+  creado  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_evento_sim ON evento_societario(simbolo, fecha);
 """
 
 
@@ -817,6 +844,12 @@ def init_alertas():
     cols = {r["name"] for r in c.execute("PRAGMA table_info(tenencia)")}
     if "tipo" not in cols:
         c.execute("ALTER TABLE tenencia ADD COLUMN tipo TEXT")
+    # Costo de entrada. Se carga a mano o pegando el JSON: ningun broker
+    # lo devuelve por API. "precision" dice si la fecha es exacta, si
+    # solo se sabe el mes o si es un "antes de".
+    for col in ("ppc REAL", "fecha_alta TEXT", "precision TEXT"):
+        if col.split()[0] not in cols:
+            c.execute("ALTER TABLE tenencia ADD COLUMN " + col)
     c.commit()
 
 
@@ -943,7 +976,40 @@ def tenencias(broker=None):
         q += " WHERE broker = ?"
         args.append(broker)
     q += " ORDER BY broker, simbolo"
-    return [dict(r) for r in conn().execute(q, args)]
+    filas = [dict(r) for r in conn().execute(q, args)]
+    return [_con_eventos(f) for f in filas]
+
+
+def _con_eventos(f):
+    """Ajusta el PPC por los splits posteriores a la compra.
+
+    El broker informa la cantidad ya ajustada pero no siempre el PPC, asi
+    que el costo queda multiplicado por el factor y el resultado sale al
+    reves. Se corrige al leer y no al guardar: el valor original se
+    conserva por si el evento se carga mal.
+    """
+    ppc = f.get("ppc")
+    if ppc is None:
+        f["ppc_ajustado"] = None
+        return f
+    alta = f.get("fecha_alta") or ""
+    factor, aplicados, supuesto = 1.0, [], False
+    for e in eventos(f.get("simbolo")):
+        if not e["factor"]:
+            continue
+        # Sin fecha de compra no se sabe de que lado del evento cae. Se
+        # ajusta igual, porque es lo mas probable en una posicion vieja,
+        # pero queda marcado para que no se lea como un dato firme.
+        if not alta:
+            supuesto = True
+        elif alta >= e["fecha"]:
+            continue
+        factor *= float(e["factor"])
+        aplicados.append(e["fecha"] + " ×" + ("%g" % e["factor"]))
+    f["ppc_ajustado"] = round(ppc / factor, 6) if factor != 1 else ppc
+    f["eventos"] = aplicados
+    f["ajuste_supuesto"] = supuesto and bool(aplicados)
+    return f
 
 
 def guardar_tenencias(filas, reemplazar="todo"):
@@ -951,14 +1017,22 @@ def guardar_tenencias(filas, reemplazar="todo"):
 
     Reemplazar por broker permite actualizar una cuenta sin tocar la otra,
     que es lo habitual: se mira el saldo de un broker por vez.
+
+    El PPC y la fecha de alta se conservan si la carga nueva no los trae:
+    el boton que baja de IOL solo devuelve cantidades, y de otro modo
+    borraria el costo cargado a mano en cada actualizacion.
     """
     c = conn()
+    previo = {}
+    for r in c.execute("SELECT broker, simbolo, ppc, fecha_alta, precision "
+                       "FROM tenencia"):
+        previo[(r["broker"], r["simbolo"])] = r
     if reemplazar == "todo":
         c.execute("DELETE FROM tenencia")
     elif reemplazar:
         c.execute("DELETE FROM tenencia WHERE broker = ?", (reemplazar,))
     ahora = datetime.now().isoformat(timespec="seconds")
-    n = 0
+    n, brokers = 0, set()
     for f in filas or []:
         br = (f.get("broker") or "").strip()
         sim = (f.get("simbolo") or "").strip().upper()
@@ -971,13 +1045,118 @@ def guardar_tenencias(filas, reemplazar="todo"):
         tipo = (f.get("tipo") or "").strip().lower()
         if tipo not in TIPOS_TENENCIA:
             tipo = "otros"
+        antes = previo.get((br, sim))
+        try:
+            ppc = float(f["ppc"]) if f.get("ppc") is not None else None
+        except (TypeError, ValueError):
+            ppc = None
+        if ppc is None and antes:
+            ppc = antes["ppc"]
+        alta = (f.get("fecha_alta") or "").strip() or (
+            antes["fecha_alta"] if antes else None)
+        prec = (f.get("precision") or "").strip().lower()
+        if prec not in ("exacta", "mes", "antes"):
+            prec = antes["precision"] if antes else None
         c.execute(
             "INSERT OR REPLACE INTO tenencia "
-            "(broker, simbolo, cantidad, tipo, ts) VALUES (?,?,?,?,?)",
-            (br, sim, cant, tipo, ahora))
+            "(broker, simbolo, cantidad, tipo, ts, ppc, fecha_alta, precision) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (br, sim, cant, tipo, ahora, ppc, alta, prec))
+        brokers.add(br)
         n += 1
     c.commit()
+    for br in brokers:
+        snapshot(br)
     return n
+
+
+def snapshot(broker, fecha=None):
+    """Guarda la foto del dia para un broker, si cambio.
+
+    Se compara contra el ultimo snapshot de ese broker y no se escribe
+    nada si las cantidades son las mismas: actualizar tres veces en un
+    dia sin operar no tiene que dejar tres filas iguales.
+    """
+    c = conn()
+    fecha = fecha or datetime.now().date().isoformat()
+    actual = {r["simbolo"]: (r["cantidad"], r["tipo"]) for r in c.execute(
+        "SELECT simbolo, cantidad, tipo FROM tenencia WHERE broker = ?",
+        (broker,))}
+    ult = c.execute("SELECT MAX(fecha) f FROM tenencia_hist WHERE broker = ? "
+                    "AND fecha < ?", (broker, fecha)).fetchone()
+    if ult and ult["f"]:
+        previo = {r["simbolo"]: r["cantidad"] for r in c.execute(
+            "SELECT simbolo, cantidad FROM tenencia_hist "
+            "WHERE broker = ? AND fecha = ?", (broker, ult["f"]))}
+        if previo == {k: v[0] for k, v in actual.items()}:
+            return 0
+    c.execute("DELETE FROM tenencia_hist WHERE broker = ? AND fecha = ?",
+              (broker, fecha))
+    for sim, (cant, tipo) in actual.items():
+        c.execute("INSERT INTO tenencia_hist "
+                  "(fecha, broker, simbolo, cantidad, tipo) VALUES (?,?,?,?,?)",
+                  (fecha, broker, sim, cant, tipo))
+    c.commit()
+    return len(actual)
+
+
+def historial_tenencia(broker=None, simbolo=None, desde=None):
+    q = "SELECT * FROM tenencia_hist WHERE 1=1"
+    args = []
+    for campo, valor in (("broker", broker), ("simbolo", simbolo)):
+        if valor:
+            q += " AND %s = ?" % campo
+            args.append(valor)
+    if desde:
+        q += " AND fecha >= ?"
+        args.append(desde)
+    q += " ORDER BY fecha DESC, broker, simbolo"
+    return [dict(r) for r in conn().execute(q, args)]
+
+
+def fechas_snapshot(broker=None):
+    q = "SELECT DISTINCT fecha FROM tenencia_hist"
+    args = []
+    if broker:
+        q += " WHERE broker = ?"
+        args.append(broker)
+    q += " ORDER BY fecha DESC"
+    return [r["fecha"] for r in conn().execute(q, args)]
+
+
+def eventos(simbolo=None):
+    q = "SELECT * FROM evento_societario"
+    args = []
+    if simbolo:
+        q += " WHERE simbolo = ?"
+        args.append(simbolo.upper())
+    q += " ORDER BY fecha"
+    return [dict(r) for r in conn().execute(q, args)]
+
+
+def guardar_evento(simbolo, fecha, factor, nota=None):
+    sim = (simbolo or "").strip().upper()
+    fecha = (fecha or "").strip()
+    factor = float(factor)
+    if not sim or not fecha:
+        raise ValueError("faltan el símbolo o la fecha")
+    if factor <= 0:
+        raise ValueError("el factor tiene que ser mayor que cero")
+    c = conn()
+    cur = c.execute(
+        "INSERT INTO evento_societario (simbolo, fecha, factor, nota, creado) "
+        "VALUES (?,?,?,?,?)",
+        (sim, fecha, factor, (nota or "").strip() or None,
+         datetime.now().isoformat(timespec="seconds")))
+    c.commit()
+    return cur.lastrowid
+
+
+def borrar_evento(eid):
+    c = conn()
+    cur = c.execute("DELETE FROM evento_societario WHERE id=?", (eid,))
+    c.commit()
+    return cur.rowcount
 
 
 def migrar_pares(pares_cfg):
