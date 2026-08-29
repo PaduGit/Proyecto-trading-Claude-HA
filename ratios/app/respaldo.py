@@ -19,7 +19,7 @@ RUTA = os.environ.get("RATIOS_RESPALDO", "/data/respaldo.json")
 
 # nunca se guardan credenciales en el archivo
 SECRETOS = ("iol_pass", "ha_token", "telegram_token", "iol_user",
-            "telegram_chat_id")
+            "telegram_chat_id", "iol2_user", "iol2_pass")
 
 
 def guardar_config(cfg):

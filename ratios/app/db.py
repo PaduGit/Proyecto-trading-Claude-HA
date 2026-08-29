@@ -847,7 +847,8 @@ def init_alertas():
     # Costo de entrada. Se carga a mano o pegando el JSON: ningun broker
     # lo devuelve por API. "precision" dice si la fecha es exacta, si
     # solo se sabe el mes o si es un "antes de".
-    for col in ("ppc REAL", "fecha_alta TEXT", "precision TEXT"):
+    for col in ("ppc REAL", "fecha_alta TEXT", "precision TEXT",
+                "ppc_base REAL"):
         if col.split()[0] not in cols:
             c.execute("ALTER TABLE tenencia ADD COLUMN " + col)
     c.commit()
@@ -1024,8 +1025,8 @@ def guardar_tenencias(filas, reemplazar="todo"):
     """
     c = conn()
     previo = {}
-    for r in c.execute("SELECT broker, simbolo, ppc, fecha_alta, precision "
-                       "FROM tenencia"):
+    for r in c.execute("SELECT broker, simbolo, ppc, fecha_alta, precision, "
+                       "ppc_base FROM tenencia"):
         previo[(r["broker"], r["simbolo"])] = r
     if reemplazar == "todo":
         c.execute("DELETE FROM tenencia")
@@ -1057,11 +1058,17 @@ def guardar_tenencias(filas, reemplazar="todo"):
         prec = (f.get("precision") or "").strip().lower()
         if prec not in ("exacta", "mes", "antes"):
             prec = antes["precision"] if antes else None
+        try:
+            pbase = float(f["ppc_base"]) if f.get("ppc_base") else None
+        except (TypeError, ValueError):
+            pbase = None
+        if pbase is None and antes:
+            pbase = antes["ppc_base"]
         c.execute(
             "INSERT OR REPLACE INTO tenencia "
-            "(broker, simbolo, cantidad, tipo, ts, ppc, fecha_alta, precision) "
-            "VALUES (?,?,?,?,?,?,?,?)",
-            (br, sim, cant, tipo, ahora, ppc, alta, prec))
+            "(broker, simbolo, cantidad, tipo, ts, ppc, fecha_alta, "
+            "precision, ppc_base) VALUES (?,?,?,?,?,?,?,?,?)",
+            (br, sim, cant, tipo, ahora, ppc, alta, prec, pbase))
         brokers.add(br)
         n += 1
     c.commit()

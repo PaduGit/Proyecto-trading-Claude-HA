@@ -852,52 +852,46 @@ def crear_app(monitor):
                 return valor
         return "otros"
 
-    @app.post("/api/tenencias/traer")
-    def tenencias_traer():
-        """Baja la tenencia de la cuenta configurada y la carga.
+    def _bajar_cuenta(cli, nombre):
+        """Baja titulos y efectivo de una cuenta de IOL.
 
-        Solo reemplaza ese broker: la cuenta del exterior y las que se
-        cargan a mano quedan intactas.
+        Devuelve las filas listas para guardar. No escribe: el que llama
+        decide, porque cada cuenta se reemplaza por separado y una que
+        falla no tiene que impedir que la otra se cargue.
         """
-        nombre = (request.args.get("broker")
-                  or monitor.cfg.get("broker_propio") or "IOL").strip()
         filas, vacios = [], []
-        try:
-            with monitor.iol.como("boton"):
-                for pais in ("argentina", "estados_Unidos"):
-                    d = monitor.iol.portafolio(pais)
-                    # la respuesta trae los titulos bajo "activos" o bajo
-                    # "positions" segun la version; se aceptan las dos
-                    activos = ((d or {}).get("activos")
-                               or (d or {}).get("positions") or [])
-                    if not activos:
-                        vacios.append(pais)
-                    for a in activos:
-                        t = (a or {}).get("titulo") or (a or {}).get("asset") \
-                            or {}
-                        sim = (t.get("simbolo") or t.get("symbol")
-                               or "").strip().upper()
-                        try:
-                            cant = float(a.get("cantidad")
-                                         or a.get("quantity") or 0)
-                        except (TypeError, ValueError):
-                            cant = 0
-                        if not sim or not cant:
-                            continue
-                        tipo = _tipo_iol(t.get("tipo") or t.get("type")
-                                         or a.get("tipo"))
-                        filas.append({"broker": nombre, "simbolo": sim,
-                                      "cantidad": cant, "tipo": tipo})
-        except IOLError as e:
-            return jsonify({"error": str(e)}), 502
+        with cli.como("boton"):
+            for pais in ("argentina", "estados_Unidos"):
+                d = cli.portafolio(pais)
+                # la respuesta trae los titulos bajo "activos" o bajo
+                # "positions" segun la version; se aceptan las dos
+                activos = ((d or {}).get("activos")
+                           or (d or {}).get("positions") or [])
+                if not activos:
+                    vacios.append(pais)
+                for a in activos:
+                    t = (a or {}).get("titulo") or (a or {}).get("asset") or {}
+                    sim = (t.get("simbolo") or t.get("symbol")
+                           or "").strip().upper()
+                    try:
+                        cant = float(a.get("cantidad")
+                                     or a.get("quantity") or 0)
+                    except (TypeError, ValueError):
+                        cant = 0
+                    if not sim or not cant:
+                        continue
+                    tipo = _tipo_iol(t.get("tipo") or t.get("type")
+                                     or a.get("tipo"))
+                    filas.append({"broker": nombre, "simbolo": sim,
+                                  "cantidad": cant, "tipo": tipo})
 
         # El portafolio trae solo titulos; el efectivo sale de otro
         # endpoint. Sin el disponible por moneda, el Rulo no sabe con que
         # se cuenta para partir desde una moneda.
         monedas = []
         try:
-            with monitor.iol.como("boton"):
-                ec = monitor.iol.estado_cuenta()
+            with cli.como("boton"):
+                ec = cli.estado_cuenta()
             for cu in (ec or {}).get("cuentas") or []:
                 tipo_cta = (cu.get("tipo") or "").lower()
                 if "estados_unidos" in tipo_cta:
@@ -924,18 +918,89 @@ def crear_app(monitor):
                               "cantidad": monto, "tipo": "moneda"})
                 monedas.append("%s %s" % (sim, monto))
         except IOLError as e:
-            log.warning("estado de cuenta: %s", e)
+            log.warning("estado de cuenta de %s: %s", nombre, e)
+        return filas, vacios, monedas
 
-        if not filas:
-            return jsonify({"error": "IOL no devolvió posiciones"}), 502
-        n = db.guardar_tenencias(filas, nombre)
-        sin_clasificar = sorted({f["simbolo"] for f in filas
-                                 if f["tipo"] == "otros"})
-        return jsonify({"cargadas": n, "broker": nombre,
-                        "sin_posiciones": vacios,
-                        "sin_clasificar": sin_clasificar,
-                        "monedas": monedas,
+    def _cuentas_iol():
+        """Las cuentas configuradas, en orden. La segunda es opcional."""
+        cta = [((monitor.cfg.get("broker_propio") or "IOL").strip(),
+                monitor.iol)]
+        cli2 = getattr(monitor, "iol2", None)
+        if cli2:
+            cta.append(((monitor.cfg.get("broker2_nombre")
+                         or "IOL-2").strip(), cli2))
+        return cta
+
+    @app.post("/api/tenencias/traer")
+    def tenencias_traer():
+        """Baja la tenencia de las cuentas de IOL y las carga.
+
+        Cada cuenta reemplaza solo su propio broker: las cargadas a mano
+        y la del exterior quedan intactas. Si una cuenta falla, la otra
+        se carga igual y el error se informa aparte.
+        """
+        pedido = (request.args.get("broker") or "").strip()
+        cuentas = _cuentas_iol()
+        if pedido:
+            cuentas = [c for c in cuentas if c[0] == pedido] or \
+                      [(pedido, monitor.iol)]
+        resultados, errores = [], []
+        for nombre, cli in cuentas:
+            try:
+                filas, vacios, monedas = _bajar_cuenta(cli, nombre)
+            except IOLError as e:
+                errores.append("%s: %s" % (nombre, e))
+                continue
+            if not filas:
+                errores.append("%s: no devolvió posiciones" % nombre)
+                continue
+            n = db.guardar_tenencias(filas, nombre)
+            resultados.append({
+                "broker": nombre, "cargadas": n,
+                "sin_posiciones": vacios, "monedas": monedas,
+                "sin_clasificar": sorted({f["simbolo"] for f in filas
+                                          if f["tipo"] == "otros"}),
+            })
+        if not resultados:
+            return jsonify({"error": " · ".join(errores)
+                            or "IOL no devolvió posiciones"}), 502
+        primero = resultados[0]
+        # Los campos sueltos quedan por compatibilidad: son los de la
+        # primera cuenta, que es la principal.
+        return jsonify({"cuentas": resultados, "errores": errores,
+                        "cargadas": sum(r["cargadas"] for r in resultados),
+                        "broker": primero["broker"],
+                        "sin_posiciones": primero["sin_posiciones"],
+                        "sin_clasificar": primero["sin_clasificar"],
+                        "monedas": primero["monedas"],
                         "en_rulo": monitor.tengo_actual()})
+
+    @app.get("/api/cartera")
+    def cartera_valuada():
+        import cartera as CA
+        import bonos as BO
+        filas = db.tenencias()
+        fuera = monitor.brokers_extranjeros()
+        for f in filas:
+            f["extranjero"] = f["broker"].upper() in fuera
+        # Solo lo que ya esta en cache: valuar no justifica una rueda de
+        # requests por cada visita a la pestania.
+        cache = monitor.cotizaciones_vigentes()
+        precios = {s: c["ref"] for s, c in cache.items() if c.get("ref")}
+        try:
+            bonos_cfg, _ = BO.cargar()
+        except Exception as e:
+            log.warning("bonos.yaml para la cartera: %s", e)
+            bonos_cfg = {}
+        mep = None
+        try:
+            mep = (BO.calcular_mep(
+                cache, monitor.cfg.get("mep_par_pesos") or "AL30",
+                monitor.cfg.get("mep_par_usd") or "AL30D"
+            ).get("medio") or 0) or None
+        except Exception as e:
+            log.debug("mep para la cartera: %s", e)
+        return jsonify(CA.valuar(filas, precios, mep, bonos_cfg))
 
     @app.get("/api/cobros")
     def cobros_listar():

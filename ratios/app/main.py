@@ -150,6 +150,15 @@ def main():
     notif = Notificador(cfg)
     iol = IOL(cfg["iol_user"], cfg["iol_pass"])
     monitor = Monitor(cfg, iol, notif)
+    # Cuenta secundaria: se usa solo para bajar su tenencia cuando se
+    # aprieta el boton. No entra en el ciclo ni pide precios: los datos
+    # de mercado son los mismos y serian llamadas de mas.
+    if cfg.get("iol2_user") and cfg.get("iol2_pass"):
+        monitor.iol2 = IOL(cfg["iol2_user"], cfg["iol2_pass"])
+        log.info("cuenta secundaria configurada como %s",
+                 cfg.get("broker2_nombre") or "IOL-2")
+    else:
+        monitor.iol2 = None
 
     log.info("%d pares, %d instrumentos, refresco cada %ss",
              len(monitor.pares), len(monitor.instrumentos_orleans()),

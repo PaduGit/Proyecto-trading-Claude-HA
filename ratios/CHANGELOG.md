@@ -1,5 +1,36 @@
 # Registro de cambios
 
+## 0.24.1
+
+**Segunda cuenta de IOL.** `iol2_user`, `iol2_pass` y `broker2_nombre`,
+los tres opcionales y fuera del respaldo. El cliente se crea solo si hay
+credenciales y se usa unicamente para bajar la tenencia cuando se aprieta
+el boton: no entra en el ciclo ni pide precios, porque los datos de
+mercado son los mismos y serian llamadas de mas.
+
+El endpoint recorre las cuentas y guarda cada una por separado, asi que
+si una falla la otra se carga igual y el error se informa aparte. Cada
+cuenta reemplaza solo su propio broker.
+
+**Cartera valuada.** Modulo `cartera.py` y endpoint `/api/cartera`.
+Valua a precio de mercado usando lo que ya esta en cache, sin disparar
+requests: lo que falte se lista aparte y no entra en el total.
+
+Arriba el total, el equivalente en dolares al MEP y el resultado contra
+el PPC. El resultado dice sobre que porcion de la cartera se midio:
+mezclar posiciones con costo cargado y sin el daria un porcentaje que no
+significa nada.
+
+Abajo una barra apilada por moneda de rendimiento y la lista de
+posiciones ordenada por valor, cada una con su peso y su resultado. La
+barra agrupa por donde rinde el bono y no por donde cotiza, asi que un
+hard dollar que cotiza en pesos cuenta como dolar.
+
+**`ppc_base` en la tenencia.** El PPC de una planilla suele venir por
+unidad y el mercado cotiza por cada 100: sin declararlo, el resultado de
+los titulos de deuda salia cien veces mal. Si no se carga, se asume la
+misma base que el precio.
+
 ## 0.24.0
 
 **Costo de entrada en la tenencia.** La tabla suma `ppc`, `fecha_alta` y

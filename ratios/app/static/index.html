@@ -198,6 +198,29 @@ table.tabla tr.dolar td:first-child{color:var(--amber)}
   min-height:2px}
 
 .avanzado{margin-top:18px;border-top:1px solid var(--rule);padding-top:12px}
+/* -- cartera -- */
+.cart-tot{background:var(--panel);border:1px solid var(--rule);border-radius:4px;
+  padding:12px 14px;margin-bottom:12px}
+.cart-cifra{font-family:var(--mono);font-size:28px;font-variant-numeric:tabular-nums;
+  line-height:1.1}
+.cart-sub{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:3px}
+.cart-res{font-family:var(--mono);font-size:14px;margin-top:8px;
+  padding-top:8px;border-top:1px solid var(--rule)}
+.expo{display:flex;height:16px;border-radius:3px;overflow:hidden;
+  background:var(--panel-2);margin:10px 0 8px}
+.expo span{display:block;height:100%}
+.expo-ley{display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;
+  font-family:var(--mono);font-size:11px}
+.expo-ley div{display:flex;align-items:center;gap:6px;
+  justify-content:space-between}
+.punto{width:8px;height:8px;border-radius:2px;flex:0 0 8px}
+.pos{border-bottom:1px solid var(--rule);padding:8px 0}
+.pos-top{display:flex;justify-content:space-between;align-items:baseline;
+  gap:10px;font-family:var(--mono);font-size:13px}
+.pos-bar{height:3px;background:var(--panel-2);margin-top:5px;border-radius:2px}
+.pos-bar span{display:block;height:100%;background:var(--muted);border-radius:2px}
+.pos-pie{display:flex;justify-content:space-between;font-family:var(--mono);
+  font-size:10px;color:var(--muted);margin-top:4px}
 .avanzado summary{font-family:var(--mono);font-size:10px;color:var(--muted);
   letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
 pre.crudo{background:var(--ink);border:1px solid var(--rule);border-radius:3px;
@@ -408,6 +431,8 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
   </section>
 
   <section id="v-pos" hidden>
+    <div id="cart-out"></div>
+    <h3 style="margin:20px 0 6px">Tenencias</h3>
     <div class="filtro-fila"><span class="filtro-etq">Broker</span>
       <div class="periodos" id="ten-broker" style="margin:0"></div></div>
     <div class="filtro-fila" style="margin-bottom:10px">
@@ -415,6 +440,9 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       <div class="periodos" id="ten-tipo" style="margin:0"></div></div>
     <button class="primario" id="ten-traer" style="margin-bottom:12px">
       Traer tenencia de IOL</button>
+    <div class="nota" style="margin:-6px 0 12px">Baja las cuentas de IOL
+      configuradas. Cada una reemplaza solo su propio broker; el PPC y la
+      fecha de alta se conservan.</div>
     <div id="ten-out"></div>
     <h3 style="margin:22px 0 6px">Próximos cobros</h3>
     <div class="periodos" id="cob-rango" style="margin-bottom:8px">
@@ -3383,6 +3411,94 @@ $("#cob-rango").addEventListener("click", ev => {
   cargarCobros();
 });
 
+/* ---------- cartera valuada ---------- */
+/* Un color por moneda de rendimiento. La barra apilada entra en el ancho
+   del celular y se lee de un vistazo; una torta a este tamano obliga a
+   comparar angulos y no se puede etiquetar. */
+const COLOR_EXPO = {
+  "Dólar": "#6FA88C", "CER": "#C6A24B", "Dólar linked": "#7FA6C4",
+  "Tasa $": "#DF7168", "CEDEARs": "#9B8AC4", "Acciones": "#C98A5E",
+  "FCI": "#5E9AA8", "Otros": "#7B8794", "Sin clasificar": "#4A5462",
+};
+const colorExpo = n => COLOR_EXPO[n] || "#7B8794";
+const plata = v => v == null ? "—" :
+  (v < 0 ? "-$" : "$") + ent(Math.abs(v));
+
+function pintarCartera(d){
+  const out = $("#cart-out");
+  if(!out) return;
+  if(!d.total){
+    out.innerHTML = '<div class="vacio">Sin valuar: no hay precios en ' +
+      'caché todavía. Se llena en el próximo ciclo.</div>';
+    return;
+  }
+  const res = d.resultado, rp = d.resultado_pct;
+  const tono = res == null ? "var(--muted)"
+             : (res >= 0 ? "var(--sage)" : "var(--coral)");
+  let h = '<div class="cart-tot">' +
+    '<div class="cart-cifra">' + plata(d.total) + '</div>' +
+    '<div class="cart-sub">' +
+      (d.total_usd ? "US$ " + ent(d.total_usd) + " al MEP " + ent(d.mep)
+                   : "sin MEP disponible") + '</div>';
+  if(res != null){
+    h += '<div class="cart-res" style="color:' + tono + '">' +
+      (res >= 0 ? "+" : "") + plata(res).replace("-", "") +
+      "  (" + (rp >= 0 ? "+" : "") + rp.toFixed(2) + "%)" +
+      '<span class="tocar">sobre ' + (d.cubierto_pct || 0).toFixed(0) +
+      '% con PPC cargado</span></div>';
+  } else {
+    h += '<div class="cart-res" style="color:var(--muted)">' +
+      'Sin PPC cargado: no hay resultado que medir.</div>';
+  }
+  h += '</div>';
+
+  /* barra apilada por moneda de rendimiento */
+  const ex = d.por_exposicion || [];
+  if(ex.length){
+    h += '<div class="expo">' + ex.map(e =>
+      '<span style="width:' + e.pct.toFixed(2) + '%;background:' +
+      colorExpo(e.nombre) + '" title="' + esc(e.nombre) + '"></span>'
+    ).join("") + '</div><div class="expo-ley">' + ex.map(e =>
+      '<div><span style="display:flex;align-items:center;gap:6px">' +
+      '<i class="punto" style="background:' + colorExpo(e.nombre) +
+      '"></i>' + esc(e.nombre) + '</span><b>' + e.pct.toFixed(1) +
+      '%</b></div>').join("") + '</div>';
+  }
+
+  h += '<div style="margin-top:14px">' + (d.posiciones || []).map(p => {
+    const t = p.resultado_pct == null ? "var(--muted)"
+            : (p.resultado_pct >= 0 ? "var(--sage)" : "var(--coral)");
+    return '<div class="pos"><div class="pos-top">' +
+      '<span>' + esc(p.simbolo) +
+        (p.ajuste_supuesto ? ' <span class="tocar">aj?</span>' : "") +
+      '</span><span>' + plata(p.valor) + '</span></div>' +
+      '<div class="pos-bar"><span style="width:' +
+        (p.peso_pct || 0).toFixed(2) + '%;background:' +
+        colorExpo(p.exposicion) + '"></span></div>' +
+      '<div class="pos-pie"><span>' + esc(p.broker) + " · " +
+        esc(p.exposicion) + '</span><span style="color:' + t + '">' +
+        (p.resultado_pct == null ? "sin PPC"
+          : (p.resultado_pct >= 0 ? "+" : "") + p.resultado_pct.toFixed(1) +
+            "%") +
+      '</span></div></div>';
+  }).join("") + '</div>';
+
+  if((d.sin_precio || []).length)
+    h += '<div class="aviso" style="margin-top:12px">Sin precio en caché: ' +
+      d.sin_precio.map(esc).join(", ") + '. No entran en el total.</div>';
+  out.innerHTML = h;
+}
+
+async function cargarCartera(){
+  const out = $("#cart-out");
+  if(!out) return;
+  try{
+    pintarCartera(await (await fetch(base + "api/cartera")).json());
+  }catch(e){
+    out.innerHTML = '<div class="msg error">No se pudo valuar.</div>';
+  }
+}
+
 /* ---------- tenencias ---------- */
 const TIPOS_TEN = [["", "Todos"], ["moneda", "Efectivo"], ["bonos", "Bonos"],
   ["letras", "Letras"], ["bcra", "BCRA"], ["on", "ON"],
@@ -3562,6 +3678,7 @@ async function cargarTenencias(){
     tenPintar();
     histChips();
     cargarEventos();
+    cargarCartera();
     const r = d.en_rulo || {};
     out.insertAdjacentHTML("beforeend",
       '<div class="nota">El Rulo parte de <b>' +
@@ -3638,17 +3755,26 @@ $("#ten-traer").addEventListener("click", async e => {
     const r = await (await fetch(base + "api/tenencias/traer",
       {method:"POST"})).json();
     if(r.error){ alert("No se pudo: " + r.error); return; }
-    let msg = "Se cargaron " + ent(r.cargadas) + " posiciones en " +
-      r.broker + ".";
-    if((r.sin_posiciones || []).length)
-      msg += "\nSin posiciones en: " + r.sin_posiciones.join(", ") + ".";
-    if((r.sin_clasificar || []).length)
-      msg += "\n\nQuedaron sin clasificar: " + r.sin_clasificar.join(", ") +
-        ". Se guardaron como Otros; si alguno es un bono, corregilo pegando " +
-        "el JSON con su tipo.";
-    msg += (r.monedas || []).length
-      ? "\n\nEfectivo: " + r.monedas.join(" · ") + "."
-      : "\n\nSin efectivo disponible en ninguna moneda.";
+    /* Puede venir mas de una cuenta: cada una reemplaza solo su broker,
+       y una que falla no impide que la otra se cargue. */
+    const cuentas = r.cuentas || [{broker: r.broker, cargadas: r.cargadas,
+      sin_posiciones: r.sin_posiciones, sin_clasificar: r.sin_clasificar,
+      monedas: r.monedas}];
+    let msg = cuentas.map(c => {
+      let t = c.broker + ": " + ent(c.cargadas) + " posiciones.";
+      if((c.sin_posiciones || []).length)
+        t += "\nSin posiciones en: " + c.sin_posiciones.join(", ") + ".";
+      if((c.sin_clasificar || []).length)
+        t += "\nSin clasificar: " + c.sin_clasificar.join(", ") +
+          ". Se guardaron como Otros; si alguno es un bono, corregilo " +
+          "pegando el JSON con su tipo.";
+      t += (c.monedas || []).length
+        ? "\nEfectivo: " + c.monedas.join(" · ") + "."
+        : "\nSin efectivo disponible.";
+      return t;
+    }).join("\n\n");
+    if((r.errores || []).length)
+      msg += "\n\nNo se pudo con: " + r.errores.join(" · ");
     alert(msg);
     cargarTenencias();
   }catch(err){ alert("No se pudo consultar."); }
