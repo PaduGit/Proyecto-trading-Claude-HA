@@ -829,7 +829,55 @@ CREATE TABLE IF NOT EXISTS evento_societario (
   creado  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_evento_sim ON evento_societario(simbolo, fecha);
+
+-- Por que se tiene cada cosa. No guarda cantidades: esas salen de la
+-- tenencia y se actualizan solas. `grupo_id` la ata a un grupo de
+-- rotacion existente en lugar de duplicarlo.
+CREATE TABLE IF NOT EXISTS estrategia (
+  id       INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre   TEXT NOT NULL,
+  familia  TEXT NOT NULL,
+  tesis    TEXT,
+  origen   TEXT,
+  -- Contra que se mide. En reserva de valor es el patron (dolar, CER o
+  -- BADLAR); en oportunidad cambiaria, el tipo de cambio de entrada.
+  patron   TEXT,
+  patron_valor REAL,
+  objetivo REAL,
+  stop     REAL,
+  revisar  TEXT,                     -- fecha para volver a mirarla
+  grupo_id INTEGER,
+  alta     TEXT NOT NULL,
+  cierre   TEXT,
+  motivo_cierre TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_estr_familia ON estrategia(familia, cierre);
+
+-- Una especie de un broker pertenece a una sola estrategia.
+CREATE TABLE IF NOT EXISTS estrategia_especie (
+  estrategia_id INTEGER NOT NULL,
+  broker        TEXT NOT NULL,
+  simbolo       TEXT NOT NULL,
+  PRIMARY KEY (broker, simbolo)
+);
+CREATE INDEX IF NOT EXISTS ix_ee_estr ON estrategia_especie(estrategia_id);
 """
+
+# Como se mide cada una y que campos le sirven. El patron no es un
+# adorno: una reserva de valor que sube 40% en pesos con el dolar 60%
+# arriba es una estrategia que fallo, y sin declarar contra que se mide
+# eso se lee como ganancia.
+FAMILIAS = {
+    "rotacion":   {"nombre": "Rotación", "patron": False, "precio": False},
+    "intradiaria": {"nombre": "Intradiaria", "patron": False, "precio": False},
+    "tecnica":    {"nombre": "Técnica", "patron": False, "precio": True},
+    "opciones":   {"nombre": "Opciones", "patron": False, "precio": True},
+    "reserva":    {"nombre": "Reserva de valor", "patron": True,
+                   "precio": False},
+    "cambiaria":  {"nombre": "Oportunidad cambiaria", "patron": True,
+                   "precio": False},
+}
+PATRONES = ("dolar", "cer", "badlar", "tc_entrada")
 
 
 # Los que puede tener una tenencia. Salen de como agrupa el broker.
@@ -847,6 +895,15 @@ def init_alertas():
     # Costo de entrada. Se carga a mano o pegando el JSON: ningun broker
     # lo devuelve por API. "precision" dice si la fecha es exacta, si
     # solo se sabe el mes o si es un "antes de".
+    for tabla in ("alerta_precio", "alerta_fecha"):
+        try:
+            hay = {r["name"] for r in c.execute("PRAGMA table_info(%s)" % tabla)}
+        except Exception:
+            continue
+        # Con estrategia son de vigilancia, sin ella de busqueda: es la
+        # unica diferencia, no hacen falta tablas nuevas.
+        if hay and "estrategia_id" not in hay:
+            c.execute("ALTER TABLE %s ADD COLUMN estrategia_id INTEGER" % tabla)
     for col in ("ppc REAL", "fecha_alta TEXT", "precision TEXT",
                 "ppc_base REAL"):
         if col.split()[0] not in cols:
@@ -978,6 +1035,14 @@ def tenencias(broker=None):
         args.append(broker)
     q += " ORDER BY broker, simbolo"
     filas = [dict(r) for r in conn().execute(q, args)]
+    asig = asignaciones()
+    est = {e["id"]: e for e in estrategias(incluir_cerradas=True)}
+    for f in filas:
+        eid = asig.get((f["broker"], f["simbolo"]))
+        f["estrategia_id"] = eid
+        e = est.get(eid) if eid else None
+        f["estrategia"] = e["nombre"] if e else None
+        f["familia"] = e["familia"] if e else None
     return [_con_eventos(f) for f in filas]
 
 
@@ -1074,6 +1139,7 @@ def guardar_tenencias(filas, reemplazar="todo"):
     c.commit()
     for br in brokers:
         snapshot(br)
+    cerrar_sin_tenencia()
     return n
 
 
@@ -1127,6 +1193,180 @@ def borrar_tenencia(broker, simbolo):
     if cur.rowcount:
         snapshot(broker)
     return cur.rowcount
+
+
+def estrategias(incluir_cerradas=False, familia=None):
+    q = "SELECT * FROM estrategia WHERE 1=1"
+    args = []
+    if not incluir_cerradas:
+        q += " AND cierre IS NULL"
+    if familia:
+        q += " AND familia = ?"
+        args.append(familia)
+    q += " ORDER BY cierre IS NOT NULL, familia, nombre"
+    filas = [dict(r) for r in conn().execute(q, args)]
+    for f in filas:
+        f["especies"] = [dict(r) for r in conn().execute(
+            "SELECT broker, simbolo FROM estrategia_especie "
+            "WHERE estrategia_id = ? ORDER BY broker, simbolo", (f["id"],))]
+    return filas
+
+
+def guardar_estrategia(datos, eid=None):
+    familia = (datos.get("familia") or "").strip().lower()
+    if familia not in FAMILIAS:
+        raise ValueError("familia inválida: %s" % familia)
+    nombre = (datos.get("nombre") or "").strip()
+    if not nombre:
+        raise ValueError("falta el nombre")
+    patron = (datos.get("patron") or "").strip().lower() or None
+    if patron and patron not in PATRONES:
+        raise ValueError("patrón inválido: %s" % patron)
+    if FAMILIAS[familia]["patron"] and not patron:
+        raise ValueError("%s necesita declarar contra qué se mide"
+                         % FAMILIAS[familia]["nombre"])
+
+    def num(k):
+        v = datos.get(k)
+        try:
+            return float(v) if v not in (None, "") else None
+        except (TypeError, ValueError):
+            return None
+
+    campos = (nombre, familia, (datos.get("tesis") or "").strip() or None,
+              (datos.get("origen") or "").strip() or None, patron,
+              num("patron_valor"), num("objetivo"), num("stop"),
+              (datos.get("revisar") or "").strip() or None,
+              datos.get("grupo_id") or None)
+    c = conn()
+    if eid:
+        c.execute("UPDATE estrategia SET nombre=?, familia=?, tesis=?, "
+                  "origen=?, patron=?, patron_valor=?, objetivo=?, stop=?, "
+                  "revisar=?, grupo_id=? WHERE id=?", campos + (eid,))
+    else:
+        cur = c.execute(
+            "INSERT INTO estrategia (nombre, familia, tesis, origen, patron, "
+            "patron_valor, objetivo, stop, revisar, grupo_id, alta) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            campos + (datetime.now().date().isoformat(),))
+        eid = cur.lastrowid
+    c.commit()
+    return eid
+
+
+def cerrar_estrategia(eid, motivo="manual"):
+    c = conn()
+    c.execute("UPDATE estrategia SET cierre=?, motivo_cierre=? "
+              "WHERE id=? AND cierre IS NULL",
+              (datetime.now().date().isoformat(), motivo, eid))
+    c.commit()
+
+
+def reabrir_estrategia(eid):
+    c = conn()
+    c.execute("UPDATE estrategia SET cierre=NULL, motivo_cierre=NULL "
+              "WHERE id=?", (eid,))
+    c.commit()
+
+
+def borrar_estrategia(eid):
+    c = conn()
+    c.execute("DELETE FROM estrategia_especie WHERE estrategia_id=?", (eid,))
+    cur = c.execute("DELETE FROM estrategia WHERE id=?", (eid,))
+    c.commit()
+    return cur.rowcount
+
+
+def asignar(broker, simbolo, eid):
+    """Ata una especie a una estrategia, o la desata si eid es None.
+
+    La clave primaria es broker mas simbolo, asi que reasignar pisa la
+    anterior sin dejar la especie en dos lados.
+    """
+    c = conn()
+    sim = simbolo.upper()
+    if eid:
+        c.execute("INSERT OR REPLACE INTO estrategia_especie "
+                  "(estrategia_id, broker, simbolo) VALUES (?,?,?)",
+                  (eid, broker, sim))
+    else:
+        c.execute("DELETE FROM estrategia_especie WHERE broker=? AND simbolo=?",
+                  (broker, sim))
+    c.commit()
+
+
+def asignaciones():
+    return {(r["broker"], r["simbolo"]): r["estrategia_id"]
+            for r in conn().execute("SELECT * FROM estrategia_especie")}
+
+
+def asignar_por_grupos():
+    """Asigna sola las especies que ya estan en un grupo de rotacion.
+
+    Solo toca las que no tienen estrategia: una asignacion hecha a mano
+    nunca se pisa. Devuelve lo que asigno para poder mostrarlo.
+    """
+    import json as _json
+    c = conn()
+    ya = asignaciones()
+    hechas = []
+    for g in c.execute("SELECT * FROM grupos"):
+        est = c.execute("SELECT id FROM estrategia WHERE grupo_id=? "
+                        "AND cierre IS NULL", (g["id"],)).fetchone()
+        if est:
+            eid = est["id"]
+        else:
+            eid = guardar_estrategia({
+                "nombre": g["nombre"], "familia": "rotacion",
+                "origen": "grupo de rotación",
+                "tesis": "Rotar entre %s manteniendo o subiendo los "
+                         "nominales medidos en %s." % (
+                             ", ".join(_json.loads(g["tickers"] or "[]"))
+                             or "el grupo", g["base"]),
+                "grupo_id": g["id"]})
+        try:
+            tickers = _json.loads(g["tickers"] or "[]")
+        except ValueError:
+            tickers = []
+        for t in tickers:
+            sim = (t or "").strip().upper()
+            if not sim:
+                continue
+            for r in c.execute("SELECT broker FROM tenencia WHERE simbolo=?",
+                               (sim,)):
+                clave = (r["broker"], sim)
+                if clave in ya:
+                    continue
+                asignar(r["broker"], sim, eid)
+                ya[clave] = eid
+                hechas.append("%s · %s → %s" % (r["broker"], sim, g["nombre"]))
+    return hechas
+
+
+def cerrar_sin_tenencia():
+    """Cierra las estrategias cuyas especies ya no estan en cartera.
+
+    Se corre despues de cargar tenencias. Una estrategia sin especies
+    asignadas no se toca: recien creada todavia no tiene ninguna y
+    cerrarla seria absurdo.
+    """
+    c = conn()
+    cerradas = []
+    for e in c.execute("SELECT id, nombre FROM estrategia WHERE cierre IS NULL"):
+        esp = c.execute("SELECT broker, simbolo FROM estrategia_especie "
+                        "WHERE estrategia_id=?", (e["id"],)).fetchall()
+        if not esp:
+            continue
+        vivas = 0
+        for s in esp:
+            r = c.execute("SELECT cantidad FROM tenencia WHERE broker=? "
+                          "AND simbolo=?", (s["broker"], s["simbolo"])).fetchone()
+            if r and r["cantidad"]:
+                vivas += 1
+        if not vivas:
+            cerrar_estrategia(e["id"], "sin tenencia")
+            cerradas.append(e["nombre"])
+    return cerradas
 
 
 def snapshot(broker, fecha=None):

@@ -1,5 +1,47 @@
 # Registro de cambios
 
+## 0.25.0
+
+**Estrategias.** Tabla `estrategia` con nombre, familia, tesis, origen,
+patron, objetivo, stop, fecha de revision y un `grupo_id` opcional que la
+ata a un grupo de rotacion en lugar de duplicarlo. No guarda cantidades:
+esas salen de la tenencia y se actualizan solas.
+
+Seis familias: rotacion, intradiaria, tecnica, opciones, reserva de valor
+y oportunidad cambiaria. Las dos ultimas exigen declarar contra que se
+miden y se rechazan sin patron. Un activo que sube 40% en pesos con el
+dolar 60% arriba es una estrategia que fallo, y sin patron eso se lee
+como ganancia.
+
+**Una especie de un broker pertenece a una sola estrategia.** Es la clave
+primaria de `estrategia_especie`, asi que reasignar pisa la anterior en
+vez de dejarla en dos lados.
+
+**Asignacion automatica desde los grupos.** Un boton crea una estrategia
+de rotacion por grupo y le asigna sus tickers en todos los brokers donde
+esten. Nunca pisa una asignacion hecha a mano.
+
+**Asignacion manual** desde el editor de tenencia, con un selector al
+final del formulario.
+
+**Cierre automatico.** Al cargar tenencias, una estrategia cuyas especies
+quedaron todas en cero se cierra sola. Una recien creada, sin especies
+asignadas todavia, no se toca.
+
+**Filtro por estrategia** como tercera fila de chips, con las familias en
+uso y "Sin asignar". Filtra la tabla y el tablero de valuacion a la vez,
+asi que se ve que parte de la cartera esta sin justificar. La tabla suma
+una columna con la estrategia de cada posicion.
+
+**`estrategia_id` en las alertas de precio y de fecha.** Con estrategia
+son de vigilancia, sin ella de busqueda: es toda la diferencia, no hacen
+falta tablas nuevas. Las columnas quedan cargadas; la pantalla de alertas
+todavia no las usa.
+
+**El tablero de valuacion pasa abajo de los filtros** y responde a los
+tres: el total, los pesos y la barra de exposicion se recalculan sobre lo
+que se esta mirando.
+
 ## 0.24.3
 
 **El efectivo salia negativo con dinero en la cuenta.** Se tomaba el

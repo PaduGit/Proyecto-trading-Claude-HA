@@ -819,6 +819,57 @@ def crear_app(monitor):
         return jsonify({"borradas": db.borrar_tenencia(br, sim),
                         "en_rulo": monitor.tengo_actual()})
 
+    @app.get("/api/estrategias")
+    def estrategias_listar():
+        return jsonify({
+            "estrategias": db.estrategias(
+                incluir_cerradas=request.args.get("cerradas") == "1",
+                familia=request.args.get("familia") or None),
+            "familias": [{"id": k, "nombre": v["nombre"],
+                          "patron": v["patron"], "precio": v["precio"]}
+                         for k, v in db.FAMILIAS.items()],
+            "patrones": list(db.PATRONES),
+            "grupos": [{"id": g["id"], "nombre": g["nombre"]}
+                       for g in db.listar_grupos()],
+        })
+
+    @app.post("/api/estrategias")
+    def estrategias_guardar():
+        d = request.get_json(silent=True) or {}
+        try:
+            eid = db.guardar_estrategia(d, d.get("id"))
+        except (TypeError, ValueError) as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify({"id": eid})
+
+    @app.delete("/api/estrategias/<int:eid>")
+    def estrategias_borrar(eid):
+        return jsonify({"borradas": db.borrar_estrategia(eid)})
+
+    @app.post("/api/estrategias/<int:eid>/cerrar")
+    def estrategias_cerrar(eid):
+        d = request.get_json(silent=True) or {}
+        if d.get("reabrir"):
+            db.reabrir_estrategia(eid)
+        else:
+            db.cerrar_estrategia(eid, (d.get("motivo") or "manual"))
+        return jsonify({"ok": True})
+
+    @app.post("/api/estrategias/asignar")
+    def estrategias_asignar():
+        d = request.get_json(silent=True) or {}
+        br, sim = (d.get("broker") or "").strip(), (d.get("simbolo") or "").strip()
+        if not br or not sim:
+            return jsonify({"error": "faltan el broker o el símbolo"}), 400
+        db.asignar(br, sim, d.get("estrategia_id") or None)
+        return jsonify({"ok": True})
+
+    @app.post("/api/estrategias/auto")
+    def estrategias_auto():
+        """Crea una estrategia por grupo de rotacion y le asigna sus
+        especies. Nunca pisa una asignacion hecha a mano."""
+        return jsonify({"asignadas": db.asignar_por_grupos()})
+
     @app.get("/api/tenencias/historial")
     def tenencias_historial():
         return jsonify({
@@ -1048,6 +1099,20 @@ def crear_app(monitor):
         fuera = monitor.brokers_extranjeros()
         for f in filas:
             f["extranjero"] = f["broker"].upper() in fuera
+        # Los mismos filtros que la tabla de abajo: al mirar solo un
+        # broker o un tipo, el total y los pesos tienen que ser de eso y
+        # no de la cartera entera.
+        br = (request.args.get("broker") or "").strip()
+        tp = (request.args.get("tipo") or "").strip().lower()
+        fa = (request.args.get("familia") or "").strip().lower()
+        if br:
+            filas = [f for f in filas if f["broker"] == br]
+        if tp:
+            filas = [f for f in filas if (f.get("tipo") or "otros") == tp]
+        if fa == "_sin":
+            filas = [f for f in filas if not f.get("estrategia_id")]
+        elif fa:
+            filas = [f for f in filas if f.get("familia") == fa]
         # Solo lo que ya esta en cache: valuar no justifica una rueda de
         # requests por cada visita a la pestania.
         cache = monitor.cotizaciones_vigentes()

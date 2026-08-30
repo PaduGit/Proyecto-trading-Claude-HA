@@ -433,19 +433,38 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
   </section>
 
   <section id="v-pos" hidden>
-    <div id="cart-out"></div>
-    <h3 style="margin:20px 0 6px">Tenencias</h3>
     <div class="filtro-fila"><span class="filtro-etq">Broker</span>
       <div class="periodos" id="ten-broker" style="margin:0"></div></div>
     <div class="filtro-fila" style="margin-bottom:10px">
       <span class="filtro-etq">Tipo</span>
       <div class="periodos" id="ten-tipo" style="margin:0"></div></div>
+    <div class="filtro-fila" style="margin-bottom:10px">
+      <span class="filtro-etq">Estrategia</span>
+      <div class="periodos" id="ten-fam" style="margin:0"></div></div>
+    <div id="cart-out"></div>
+    <h3 style="margin:20px 0 6px">Tenencias</h3>
     <button class="primario" id="ten-traer" style="margin-bottom:12px">
       Traer tenencia de IOL</button>
     <div class="nota" style="margin:-6px 0 12px">Baja las cuentas de IOL
       configuradas. Cada una reemplaza solo su propio broker; el PPC y la
       fecha de alta se conservan.</div>
     <div id="ten-out"></div>
+    <details style="margin-top:12px" id="estr-caja">
+      <summary>Estrategias</summary>
+      <div class="nota" style="margin-top:8px">Por qué tenés cada cosa.
+        No guarda cantidades: las toma de la tenencia. Se cierra sola
+        cuando todas sus especies quedan en cero.</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">
+        <button class="secundario" id="estr-nueva"
+          style="width:auto;padding:0 14px">Nueva</button>
+        <button class="secundario" id="estr-auto"
+          style="width:auto;padding:0 14px">Crear desde los grupos</button>
+        <button class="secundario" id="estr-cerradas"
+          style="width:auto;padding:0 14px">Ver cerradas</button>
+      </div>
+      <div id="estr-form" hidden></div>
+      <div id="estr-out"></div>
+    </details>
     <h3 style="margin:22px 0 6px">Próximos cobros</h3>
     <div class="periodos" id="cob-rango" style="margin-bottom:8px">
       <button aria-pressed="true" data-dias="90">90 días</button>
@@ -3445,6 +3464,121 @@ $("#cob-rango").addEventListener("click", ev => {
   cargarCobros();
 });
 
+/* ---------- estrategias ---------- */
+let estrDatos = [], estrFamilias = [], estrPatrones = [], estrGrupos = [];
+let estrCerradas = false, estrEditando = null;
+
+const NOM_PATRON = {dolar:"Dólar", cer:"CER", badlar:"BADLAR",
+                    tc_entrada:"Tipo de cambio de entrada"};
+const famNombre = f => (estrFamilias.find(x => x.id === f) || {}).nombre || f;
+
+async function cargarEstrategias(){
+  try{
+    const d = await (await fetch(base + "api/estrategias" +
+      (estrCerradas ? "?cerradas=1" : ""))).json();
+    estrDatos = d.estrategias || [];
+    estrFamilias = d.familias || [];
+    estrPatrones = d.patrones || [];
+    estrGrupos = d.grupos || [];
+    pintarEstrategias();
+    famChips();
+    /* El editor de tenencia arma su selector con esta lista; si estaba
+       abierto cuando llego, hay que repintarlo. */
+    if(tenAbierta) tenPintar();
+  }catch(e){
+    $("#estr-out").innerHTML = '<div class="msg error">No se pudieron leer.</div>';
+  }
+}
+
+function pintarEstrategias(){
+  const out = $("#estr-out");
+  if(!out) return;
+  if(!estrDatos.length){
+    out.innerHTML = '<div class="vacio">Ninguna cargada. ' +
+      '"Crear desde los grupos" arma una por cada grupo de rotación.</div>';
+    return;
+  }
+  out.innerHTML = estrDatos.map(e => {
+    const esp = (e.especies || []).map(x =>
+      esc(x.simbolo) + " (" + esc(x.broker) + ")").join(" · ");
+    let meta = famNombre(e.familia);
+    if(e.patron) meta += " · contra " + (NOM_PATRON[e.patron] || e.patron) +
+      (e.patron_valor ? " " + num(e.patron_valor, 6) : "");
+    if(e.objetivo) meta += " · objetivo " + num(e.objetivo, 6);
+    if(e.stop) meta += " · stop " + num(e.stop, 6);
+    if(e.revisar) meta += " · revisar " + esc(e.revisar);
+    return '<div class="pos"><div class="pos-top">' +
+      '<span>' + esc(e.nombre) + (e.cierre
+        ? ' <span class="tocar">cerrada ' + esc(e.cierre) + '</span>' : "") +
+      '</span></div>' +
+      '<div class="pos-pie" style="display:block">' + esc(meta) + '</div>' +
+      (esp ? '<div class="pos-pie" style="display:block">' + esp + '</div>'
+           : '<div class="pos-pie" style="display:block;color:var(--amber)">' +
+             'Sin especies asignadas</div>') +
+      (e.tesis ? '<div class="nota" style="margin:6px 0 0">' + esc(e.tesis) +
+                 '</div>' : "") +
+      '<div class="acciones" style="margin-top:6px">' +
+      '<button data-editar-estr="' + e.id + '">Editar</button>' +
+      '<button data-cerrar-estr="' + e.id + '">' +
+        (e.cierre ? "Reabrir" : "Cerrar") + '</button>' +
+      '<button data-borrar-estr="' + e.id + '">Borrar</button></div></div>';
+  }).join("");
+}
+
+function formEstrategia(e){
+  e = e || {};
+  const fam = estrFamilias.map(f => '<option value="' + f.id + '"' +
+    (e.familia === f.id ? " selected" : "") + '>' + esc(f.nombre) +
+    '</option>').join("");
+  const pat = ['<option value="">Sin patrón</option>'].concat(
+    estrPatrones.map(p => '<option value="' + p + '"' +
+      (e.patron === p ? " selected" : "") + '>' +
+      esc(NOM_PATRON[p] || p) + '</option>')).join("");
+  const gr = ['<option value="">Ninguno</option>'].concat(
+    estrGrupos.map(g => '<option value="' + g.id + '"' +
+      (e.grupo_id === g.id ? " selected" : "") + '>' + esc(g.nombre) +
+      '</option>')).join("");
+  const v = k => e[k] == null ? "" : e[k];
+  return '<div class="form" style="margin:8px 0">' +
+    '<label>Nombre<input data-e="nombre" value="' + esc(v("nombre")) +
+      '"></label>' +
+    '<label>Familia<select data-e="familia">' + fam + '</select></label>' +
+    '<label>Se mide contra<select data-e="patron">' + pat + '</select></label>' +
+    '<label>Valor del patrón<input data-e="patron_valor" type="number" ' +
+      'step="any" placeholder="tipo de cambio de entrada" value="' +
+      v("patron_valor") + '"></label>' +
+    '<label>Objetivo<input data-e="objetivo" type="number" step="any" value="' +
+      v("objetivo") + '"></label>' +
+    '<label>Stop<input data-e="stop" type="number" step="any" value="' +
+      v("stop") + '"></label>' +
+    '<label>Revisar el<input data-e="revisar" type="date" value="' +
+      esc(v("revisar")) + '"></label>' +
+    '<label>Grupo de rotación<select data-e="grupo_id">' + gr +
+      '</select></label>' +
+    '<label style="grid-column:1/-1">Tesis<textarea data-e="tesis" rows="2">' +
+      esc(v("tesis")) + '</textarea></label>' +
+    '<label style="grid-column:1/-1">Origen<input data-e="origen" value="' +
+      esc(v("origen")) + '"></label></div>' +
+    '<div class="nota" style="margin-bottom:8px">Reserva de valor y ' +
+      'oportunidad cambiaria necesitan declarar contra qué se miden: sin ' +
+      'eso, un activo que sube en pesos menos que el dólar se lee como ' +
+      'ganancia.</div>' +
+    '<div class="acciones"><button class="primario" data-estr-guardar>' +
+      'Guardar</button><button data-estr-cancelar>Cancelar</button></div>';
+}
+
+function famChips(){
+  const cont = $("#ten-fam");
+  if(!cont) return;
+  const usadas = [...new Set(estrDatos.map(e => e.familia))];
+  const opc = [["", "Todas"]].concat(
+    estrFamilias.filter(f => usadas.includes(f.id)).map(f => [f.id, f.nombre]),
+    [["_sin", "Sin asignar"]]);
+  cont.innerHTML = opc.map(o => '<button aria-pressed="' +
+    (tenFiltro.familia === o[0]) + '" data-fam="' + o[0] + '">' +
+    esc(o[1]) + '</button>').join("");
+}
+
 /* ---------- cartera valuada ---------- */
 /* Un color por moneda de rendimiento. La barra apilada entra en el ancho
    del celular y se lee de un vistazo; una torta a este tamano obliga a
@@ -3554,8 +3688,12 @@ $("#cart-out").addEventListener("click", e => {
 async function cargarCartera(){
   const out = $("#cart-out");
   if(!out) return;
+  const q = new URLSearchParams();
+  if(tenFiltro.broker) q.set("broker", tenFiltro.broker);
+  if(tenFiltro.tipo) q.set("tipo", tenFiltro.tipo);
+  if(tenFiltro.familia) q.set("familia", tenFiltro.familia);
   try{
-    pintarCartera(await (await fetch(base + "api/cartera")).json());
+    pintarCartera(await (await fetch(base + "api/cartera?" + q)).json());
   }catch(e){
     out.innerHTML = '<div class="msg error">No se pudo valuar.</div>';
   }
@@ -3567,7 +3705,7 @@ const TIPOS_TEN = [["", "Todos"], ["moneda", "Efectivo"], ["bonos", "Bonos"],
   ["cedears", "CEDEARs"], ["acciones", "Acciones"], ["fci", "FCI"],
   ["otros", "Otros"]];
 let tenDatos = [];
-let tenFiltro = {broker: "", tipo: ""};
+let tenFiltro = {broker: "", tipo: "", familia: ""};
 let tenOrden = {col: "simbolo", asc: true};
 let tenAbierta = "";      // broker|simbolo de la fila desplegada
 
@@ -3576,7 +3714,10 @@ function tenPintar(){
   if(!out) return;
   let filas = tenDatos.filter(t =>
     (!tenFiltro.broker || t.broker === tenFiltro.broker) &&
-    (!tenFiltro.tipo || (t.tipo || "otros") === tenFiltro.tipo));
+    (!tenFiltro.tipo || (t.tipo || "otros") === tenFiltro.tipo) &&
+    (!tenFiltro.familia ||
+      (tenFiltro.familia === "_sin" ? !t.estrategia_id
+                                    : t.familia === tenFiltro.familia)));
   const c = tenOrden.col, signo = tenOrden.asc ? 1 : -1;
   filas = filas.slice().sort((a, b) => {
     const x = a[c], y = b[c];
@@ -3598,7 +3739,9 @@ function tenPintar(){
       '<th class="num" onclick="tenOrdenar(\'ppc_ajustado\')">PPC' +
         flecha("ppc_ajustado") + '</th>' +
       '<th onclick="tenOrdenar(\'fecha_alta\')">Alta' +
-        flecha("fecha_alta") + '</th></tr></thead><tbody>' +
+        flecha("fecha_alta") + '</th>' +
+      '<th onclick="tenOrdenar(\'estrategia\')">Estrategia' +
+        flecha("estrategia") + '</th></tr></thead><tbody>' +
     filas.map(t =>
       '<tr class="ten-fila" data-br="' + esc(t.broker) + '" data-sim="' +
         esc(t.simbolo) + '"><td>' + esc(t.simbolo) +
@@ -3609,7 +3752,10 @@ function tenPintar(){
       '<td style="font-size:11px">' + esc(t.broker) + '</td>' +
       '<td class="num">' + ent(t.cantidad) + '</td>' +
       '<td class="num">' + tenPpc(t) + '</td>' +
-      '<td style="font-size:11px">' + tenAlta(t) + '</td></tr>' +
+      '<td style="font-size:11px">' + tenAlta(t) + '</td>' +
+      '<td style="font-size:11px">' + (t.estrategia ? esc(t.estrategia)
+        : '<span style="color:var(--amber)">sin asignar</span>') +
+        '</td></tr>' +
       tenEditor(t)).join("") +
     '</tbody></table>' +
     '<div class="nota">' + filas.length + ' de ' + tenDatos.length +
@@ -3631,7 +3777,7 @@ function tenEditor(t){
     '>' + (p ? {exacta:"Exacta", mes:"Solo el mes", antes:"Antes de"}[p]
              : "Sin precisar") + '</option>').join("");
   return '<tr class="ten-edit" data-br="' + esc(t.broker) + '" data-sim="' +
-    esc(t.simbolo) + '"><td colspan="6" style="padding:10px 4px">' +
+    esc(t.simbolo) + '"><td colspan="7" style="padding:10px 4px">' +
     '<div class="form" style="margin-bottom:8px">' +
     '<label>Cantidad<input data-c="cantidad" type="number" step="any" value="' +
       t.cantidad + '"></label>' +
@@ -3644,6 +3790,13 @@ function tenEditor(t){
     '<label>Fecha de alta<input data-c="fecha_alta" type="date" value="' +
       (t.fecha_alta || "") + '"></label>' +
     '<label>Precisión<select data-c="precision">' + prec + '</select></label>' +
+    '<label style="grid-column:1/-1">Estrategia<select data-estr-sel>' +
+      ['<option value="">Sin asignar</option>'].concat(
+        estrDatos.filter(x => !x.cierre).map(x =>
+          '<option value="' + x.id + '"' +
+          (t.estrategia_id === x.id ? " selected" : "") + '>' +
+          esc(x.nombre) + ' · ' + esc(famNombre(x.familia)) + '</option>')
+      ).join("") + '</select></label>' +
     '</div>' +
     '<div class="nota" style="margin:0 0 8px">La base es 100 para títulos ' +
       'de deuda y 1 para el resto. Si el PPC vino de una planilla que ' +
@@ -3781,6 +3934,7 @@ async function cargarTenencias(){
     histChips();
     cargarEventos();
     cargarCartera();
+    cargarEstrategias();
     const r = d.en_rulo || {};
     out.insertAdjacentHTML("beforeend",
       '<div class="nota">El Rulo parte de <b>' +
@@ -3825,15 +3979,107 @@ $("#ten-out").addEventListener("click", async ev => {
     campos[i.dataset.c] = i.value === "" ? null : i.value;
   });
   const b = ev.target.closest("[data-guardar]");
+  const sel = caja.querySelector("[data-estr-sel]");
   b.disabled = true;
   try{
     const r = await (await fetch(base + "api/tenencias/una", {method:"POST",
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify({broker: br, simbolo: sim, campos})})).json();
     if(r.error){ alert(r.error); return; }
-    tenAbierta = ""; cargarTenencias();
+    if(sel){
+      await fetch(base + "api/estrategias/asignar", {method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({broker: br, simbolo: sim,
+          estrategia_id: sel.value ? parseInt(sel.value, 10) : null})});
+    }
+    tenAbierta = ""; cargarTenencias(); cargarEstrategias();
   }catch(e){ alert("No se pudo guardar."); }
   finally{ b.disabled = false; }
+});
+
+$("#ten-fam").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-fam]");
+  if(!b) return;
+  tenFiltro.familia = b.dataset.fam;
+  tenAbierta = "";
+  famChips(); tenPintar(); cargarCartera();
+});
+
+/* Alta, edicion, cierre y borrado de estrategias, todo por delegacion. */
+$("#estr-nueva").addEventListener("click", () => {
+  estrEditando = null;
+  $("#estr-form").innerHTML = formEstrategia(null);
+  $("#estr-form").hidden = false;
+});
+
+$("#estr-cerradas").addEventListener("click", e => {
+  estrCerradas = !estrCerradas;
+  e.target.textContent = estrCerradas ? "Ocultar cerradas" : "Ver cerradas";
+  cargarEstrategias();
+});
+
+$("#estr-auto").addEventListener("click", async e => {
+  e.target.disabled = true;
+  try{
+    const d = await (await fetch(base + "api/estrategias/auto",
+      {method:"POST"})).json();
+    const a = d.asignadas || [];
+    alert(a.length ? "Asignadas:\n" + a.join("\n")
+                   : "No quedó nada por asignar.");
+    cargarEstrategias(); cargarTenencias();
+  }catch(err){ alert("No se pudo."); }
+  finally{ e.target.disabled = false; }
+});
+
+$("#estr-form").addEventListener("click", async ev => {
+  if(ev.target.closest("[data-estr-cancelar]")){
+    $("#estr-form").hidden = true; estrEditando = null; return;
+  }
+  if(!ev.target.closest("[data-estr-guardar]")) return;
+  const d = {};
+  $("#estr-form").querySelectorAll("[data-e]").forEach(i => {
+    d[i.dataset.e] = i.value === "" ? null : i.value;
+  });
+  if(estrEditando) d.id = estrEditando;
+  if(d.grupo_id) d.grupo_id = parseInt(d.grupo_id, 10);
+  const b = ev.target.closest("[data-estr-guardar]");
+  b.disabled = true;
+  try{
+    const r = await (await fetch(base + "api/estrategias", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(d)})).json();
+    if(r.error){ alert(r.error); return; }
+    $("#estr-form").hidden = true; estrEditando = null;
+    cargarEstrategias(); cargarTenencias();
+  }catch(err){ alert("No se pudo guardar."); }
+  finally{ b.disabled = false; }
+});
+
+$("#estr-out").addEventListener("click", async ev => {
+  const ed = ev.target.closest("[data-editar-estr]");
+  if(ed){
+    estrEditando = parseInt(ed.dataset.editarEstr, 10);
+    $("#estr-form").innerHTML = formEstrategia(
+      estrDatos.find(x => x.id === estrEditando));
+    $("#estr-form").hidden = false;
+    return;
+  }
+  const ce = ev.target.closest("[data-cerrar-estr]");
+  if(ce){
+    const e = estrDatos.find(x => x.id === parseInt(ce.dataset.cerrarEstr, 10));
+    await fetch(base + "api/estrategias/" + ce.dataset.cerrarEstr + "/cerrar",
+      {method:"POST", headers:{"Content-Type":"application/json"},
+       body: JSON.stringify({reabrir: !!(e && e.cierre)})});
+    cargarEstrategias(); cargarTenencias();
+    return;
+  }
+  const bo = ev.target.closest("[data-borrar-estr]");
+  if(!bo) return;
+  if(!confirm("¿Borrar la estrategia? Las tenencias quedan sin asignar."))
+    return;
+  await fetch(base + "api/estrategias/" + bo.dataset.borrarEstr,
+    {method:"DELETE"});
+  cargarEstrategias(); cargarTenencias();
 });
 
 $("#hist-esp").addEventListener("click", ev => {
@@ -3880,13 +4126,17 @@ $("#ten-broker").addEventListener("click", ev => {
   const b = ev.target.closest("[data-broker]");
   if(!b) return;
   tenFiltro.broker = b.dataset.broker;
-  tenChips(); tenPintar();
+  /* La fila abierta puede quedar fuera del filtro nuevo. */
+  tenAbierta = "";
+  tenChips(); tenPintar(); cargarCartera();
 });
 $("#ten-tipo").addEventListener("click", ev => {
   const b = ev.target.closest("[data-tipo]");
   if(!b) return;
   tenFiltro.tipo = b.dataset.tipo;
-  tenChips(); tenPintar();
+  /* La fila abierta puede quedar fuera del filtro nuevo. */
+  tenAbierta = "";
+  tenChips(); tenPintar(); cargarCartera();
 });
 
 
