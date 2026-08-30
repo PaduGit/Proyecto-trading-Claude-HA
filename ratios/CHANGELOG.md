@@ -1,5 +1,49 @@
 # Registro de cambios
 
+## 0.24.3
+
+**El efectivo salia negativo con dinero en la cuenta.** Se tomaba el
+campo `disponible` de la cuenta, que netea lo comprometido de una compra
+sin liquidar contra el saldo inmediato: con 24.405,92 en el dia y
+6.064.407,55 comprometidos por una compra que se paga con una venta del
+mismo dia, daba -6.040.001,63.
+
+Ahora se suman los disponibles de `saldos`, plazo por plazo, que para ese
+mismo caso da los 24.897,33 que muestra IOL. El desglose aparece en el
+aviso cuando hay mas de un plazo, asi que se ve de donde sale el numero.
+Si la respuesta no trae el desglose se cae al campo anterior.
+
+**El saldo negativo ya no se descarta.** La version anterior lo dejaba
+afuera de la tenencia para que el Rulo no calculara una cantidad maxima
+negativa. Con el campo correcto no deberia aparecer nunca, y si aparece
+conviene verlo: se carga igual y el aviso pide revisarlo.
+
+**Estado de cuenta crudo en Explorar.** Un boton que devuelve la
+respuesta de cada cuenta configurada sin interpretarla. El registro de
+llamadas guarda ruta, estado y demora, pero nunca el cuerpo, asi que
+hasta ahora no habia donde mirar cuando un saldo no cerraba.
+
+## 0.24.2
+
+**Efectivo negativo.** Una cuenta en descubierto entraba como tenencia
+de moneda con cantidad negativa, y de ahi salia una cantidad maxima
+negativa en el Rulo. El saldo se informa al traer y no se guarda: la
+deuda es real, pero no es algo con lo que se pueda arrancar un circuito.
+
+**El total de la cartera arranca tapado.** Se destapa con un boton. El
+porcentaje de resultado se muestra igual, porque no dice cuanto hay, y
+con el total oculto cada posicion figura por su peso en vez de por su
+monto.
+
+**La lista muestra tres posiciones.** El boton abre el resto.
+
+**"Dolar" pasa a "Hard dollar"** en la barra de exposicion.
+
+**Edicion de una tenencia.** Al tocar una fila se despliega el editor:
+cantidad, tipo, PPC, base del PPC, fecha de alta y precision. Guarda solo
+esa posicion, sin reemplazar el broker entero, que era la unica forma de
+corregir un dato hasta ahora. Tambien permite borrarla.
+
 ## 0.24.1
 
 **Segunda cuenta de IOL.** `iol2_user`, `iol2_pass` y `broker2_nombre`,

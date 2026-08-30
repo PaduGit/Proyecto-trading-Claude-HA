@@ -1077,6 +1077,58 @@ def guardar_tenencias(filas, reemplazar="todo"):
     return n
 
 
+def actualizar_tenencia(broker, simbolo, campos):
+    """Edita una sola posicion sin tocar el resto.
+
+    La carga por JSON reemplaza el broker entero, que sirve para
+    actualizar contra el saldo real pero obliga a mandar todo para
+    corregir un dato. Aca se cambia lo que se pasa y nada mas.
+    """
+    permitidos = ("cantidad", "tipo", "ppc", "ppc_base", "fecha_alta",
+                  "precision")
+    sets, args = [], []
+    for k in permitidos:
+        if k not in campos:
+            continue
+        v = campos[k]
+        if k == "tipo":
+            v = (v or "").strip().lower()
+            if v not in TIPOS_TENENCIA:
+                raise ValueError("tipo inválido: %s" % v)
+        elif k == "precision":
+            v = (v or "").strip().lower() or None
+            if v and v not in ("exacta", "mes", "antes"):
+                raise ValueError("precisión inválida: %s" % v)
+        elif k == "fecha_alta":
+            v = (v or "").strip() or None
+        else:
+            v = float(v) if v not in (None, "") else None
+            if k == "cantidad" and v is None:
+                raise ValueError("la cantidad no puede quedar vacía")
+        sets.append("%s = ?" % k)
+        args.append(v)
+    if not sets:
+        return 0
+    c = conn()
+    args += [broker, simbolo.upper()]
+    cur = c.execute("UPDATE tenencia SET " + ", ".join(sets) +
+                    " WHERE broker = ? AND simbolo = ?", args)
+    c.commit()
+    if cur.rowcount:
+        snapshot(broker)
+    return cur.rowcount
+
+
+def borrar_tenencia(broker, simbolo):
+    c = conn()
+    cur = c.execute("DELETE FROM tenencia WHERE broker = ? AND simbolo = ?",
+                    (broker, simbolo.upper()))
+    c.commit()
+    if cur.rowcount:
+        snapshot(broker)
+    return cur.rowcount
+
+
 def snapshot(broker, fecha=None):
     """Guarda la foto del dia para un broker, si cambio.
 

@@ -796,6 +796,29 @@ def crear_app(monitor):
         n = db.guardar_tenencias(filas, d.get("reemplazar") or "todo")
         return jsonify({"cargadas": n, "en_rulo": monitor.tengo_actual()})
 
+    @app.post("/api/tenencias/una")
+    def tenencia_editar():
+        d = request.get_json(silent=True) or {}
+        br, sim = (d.get("broker") or "").strip(), (d.get("simbolo") or "").strip()
+        if not br or not sim:
+            return jsonify({"error": "faltan el broker o el símbolo"}), 400
+        try:
+            n = db.actualizar_tenencia(br, sim, d.get("campos") or {})
+        except (TypeError, ValueError) as e:
+            return jsonify({"error": str(e)}), 400
+        if not n:
+            return jsonify({"error": "no se encontró esa posición"}), 404
+        return jsonify({"actualizadas": n, "en_rulo": monitor.tengo_actual()})
+
+    @app.delete("/api/tenencias/una")
+    def tenencia_borrar():
+        br = (request.args.get("broker") or "").strip()
+        sim = (request.args.get("simbolo") or "").strip()
+        if not br or not sim:
+            return jsonify({"error": "faltan el broker o el símbolo"}), 400
+        return jsonify({"borradas": db.borrar_tenencia(br, sim),
+                        "en_rulo": monitor.tengo_actual()})
+
     @app.get("/api/tenencias/historial")
     def tenencias_historial():
         return jsonify({
@@ -859,7 +882,7 @@ def crear_app(monitor):
         decide, porque cada cuenta se reemplaza por separado y una que
         falla no tiene que impedir que la otra se cargue.
         """
-        filas, vacios = [], []
+        filas, vacios, deudas = [], [], []
         with cli.como("boton"):
             for pais in ("argentina", "estados_Unidos"):
                 d = cli.portafolio(pais)
@@ -902,24 +925,47 @@ def crear_app(monitor):
                     sim = "ARS"
                 else:
                     continue
-                # El total de la cuenta, no el del plazo inmediato: lo
-                # que liquida en 24 o 48 horas igual esta disponible para
-                # operar, solo que con esa fecha de liquidacion.
-                monto = cu.get("disponible")
-                if monto is None:
-                    monto = cu.get("saldo") or 0
-                try:
-                    monto = float(monto)
-                except (TypeError, ValueError):
-                    monto = 0
+                # La suma de los disponibles por plazo, no el campo
+                # "disponible" de la cuenta: ese ultimo netea lo
+                # comprometido de una compra contra el saldo inmediato y
+                # llega a dar negativo con dinero en la cuenta. Lo que
+                # liquida en 24 o 48 horas igual sirve para operar, solo
+                # que con esa fecha.
+                monto, por_plazo = 0.0, []
+                for sa in cu.get("saldos") or []:
+                    try:
+                        v = float(sa.get("disponible") or 0)
+                    except (TypeError, ValueError):
+                        continue
+                    if not v:
+                        continue
+                    monto += v
+                    por_plazo.append("%s %s" % (
+                        sa.get("liquidacion") or "?", round(v, 2)))
+                if not por_plazo:
+                    # Sin desglose por plazo se cae al campo de la
+                    # cuenta, que es mejor que no informar nada.
+                    try:
+                        monto = float(cu.get("disponible")
+                                      or cu.get("saldo") or 0)
+                    except (TypeError, ValueError):
+                        monto = 0
                 if not monto:
                     continue
                 filas.append({"broker": nombre, "simbolo": sim,
                               "cantidad": monto, "tipo": "moneda"})
-                monedas.append("%s %s" % (sim, monto))
+                monedas.append("%s %s%s" % (
+                    sim, round(monto, 2),
+                    " (" + " · ".join(por_plazo) + ")" if len(por_plazo) > 1
+                    else ""))
+                if monto < 0:
+                    # No se descarta: si el saldo da negativo con el
+                    # campo correcto, es un dato que hay que ver y no
+                    # algo para tragarse en silencio.
+                    deudas.append("%s %s" % (sim, round(monto, 2)))
         except IOLError as e:
             log.warning("estado de cuenta de %s: %s", nombre, e)
-        return filas, vacios, monedas
+        return filas, vacios, monedas, deudas
 
     def _cuentas_iol():
         """Las cuentas configuradas, en orden. La segunda es opcional."""
@@ -930,6 +976,23 @@ def crear_app(monitor):
             cta.append(((monitor.cfg.get("broker2_nombre")
                          or "IOL-2").strip(), cli2))
         return cta
+
+    @app.post("/api/iol/estadocuenta")
+    def iol_estado_cuenta():
+        """La respuesta cruda, sin interpretar.
+
+        El registro de llamadas guarda ruta, estado y demora, pero no el
+        cuerpo. Sin esto, cuando un saldo no cierra no hay donde mirar.
+        """
+        salida = []
+        for nombre, cli in _cuentas_iol():
+            try:
+                with cli.como("boton"):
+                    salida.append({"broker": nombre, "respuesta":
+                                   cli.estado_cuenta()})
+            except IOLError as e:
+                salida.append({"broker": nombre, "error": str(e)})
+        return jsonify({"cuentas": salida})
 
     @app.post("/api/tenencias/traer")
     def tenencias_traer():
@@ -947,7 +1010,7 @@ def crear_app(monitor):
         resultados, errores = [], []
         for nombre, cli in cuentas:
             try:
-                filas, vacios, monedas = _bajar_cuenta(cli, nombre)
+                filas, vacios, monedas, deudas = _bajar_cuenta(cli, nombre)
             except IOLError as e:
                 errores.append("%s: %s" % (nombre, e))
                 continue
@@ -958,6 +1021,7 @@ def crear_app(monitor):
             resultados.append({
                 "broker": nombre, "cargadas": n,
                 "sin_posiciones": vacios, "monedas": monedas,
+                "deudas": deudas,
                 "sin_clasificar": sorted({f["simbolo"] for f in filas
                                           if f["tipo"] == "otros"}),
             })
@@ -973,6 +1037,7 @@ def crear_app(monitor):
                         "sin_posiciones": primero["sin_posiciones"],
                         "sin_clasificar": primero["sin_clasificar"],
                         "monedas": primero["monedas"],
+                        "deudas": primero["deudas"],
                         "en_rulo": monitor.tengo_actual()})
 
     @app.get("/api/cartera")

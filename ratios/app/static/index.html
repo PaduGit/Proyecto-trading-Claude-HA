@@ -219,6 +219,8 @@ table.tabla tr.dolar td:first-child{color:var(--amber)}
   gap:10px;font-family:var(--mono);font-size:13px}
 .pos-bar{height:3px;background:var(--panel-2);margin-top:5px;border-radius:2px}
 .pos-bar span{display:block;height:100%;background:var(--muted);border-radius:2px}
+.ten-fila{cursor:pointer}
+.ten-fila:active{background:var(--panel-2)}
 .pos-pie{display:flex;justify-content:space-between;font-family:var(--mono);
   font-size:10px;color:var(--muted);margin-top:4px}
 .avanzado summary{font-family:var(--mono);font-size:10px;color:var(--muted);
@@ -537,6 +539,15 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
     </div>
     <p class="nota">Cada botón fuerza una descarga, saltea la espera de cinco
       minutos que sigue a un fallo y muestra el error crudo del BCRA.</p>
+    <h3 style="margin:16px 0 6px">API de IOL</h3>
+    <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+      <button class="secundario" id="probar-ec" style="width:auto;padding:0 14px">
+        Ver estado de cuenta</button>
+    </div>
+    <p class="nota">Devuelve la respuesta cruda de cada cuenta
+      configurada, sin interpretarla. Es para ver de qué campo sale cada
+      número cuando un saldo no cierra.</p>
+    <div id="ec-out"></div>
     <div style="display:flex;gap:6px;margin:10px 0">
       <button class="secundario" id="log-ver" style="width:auto;padding:0 14px">
         Ver llamadas</button>
@@ -1923,6 +1934,29 @@ $("#probar-cer").addEventListener("click", async e => {
              d.respuesta.slice(0,300) : ""));
     }
   }catch(err){ alert("No se pudo probar."); }
+});
+
+$("#probar-ec").addEventListener("click", async e => {
+  e.preventDefault(); e.stopPropagation();
+  const out = $("#ec-out");
+  const b = e.target;
+  b.disabled = true;
+  out.innerHTML = '<div class="nota">Consultando…</div>';
+  try{
+    const d = await (await fetch(base + "api/iol/estadocuenta",
+      {method:"POST"})).json();
+    out.innerHTML = (d.cuentas || []).map(c =>
+      '<div style="margin-top:10px"><b>' + esc(c.broker) + '</b>' +
+      (c.error ? '<div class="msg error">' + esc(c.error) + '</div>'
+               : '<pre style="font-family:var(--mono);font-size:10px;' +
+                 'white-space:pre-wrap;word-break:break-all;' +
+                 'background:var(--panel);border:1px solid var(--rule);' +
+                 'padding:8px;border-radius:4px;max-height:50vh;overflow:auto">' +
+                 esc(JSON.stringify(c.respuesta, null, 1)) + '</pre>') +
+      '</div>').join("") || '<div class="vacio">Sin cuentas.</div>';
+  }catch(err){
+    out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
+  }finally{ b.disabled = false; }
 });
 
 $("#probar-badlar").addEventListener("click", async e => {
@@ -3416,7 +3450,7 @@ $("#cob-rango").addEventListener("click", ev => {
    del celular y se lee de un vistazo; una torta a este tamano obliga a
    comparar angulos y no se puede etiquetar. */
 const COLOR_EXPO = {
-  "Dólar": "#6FA88C", "CER": "#C6A24B", "Dólar linked": "#7FA6C4",
+  "Hard dollar": "#6FA88C", "CER": "#C6A24B", "Dólar linked": "#7FA6C4",
   "Tasa $": "#DF7168", "CEDEARs": "#9B8AC4", "Acciones": "#C98A5E",
   "FCI": "#5E9AA8", "Otros": "#7B8794", "Sin clasificar": "#4A5462",
 };
@@ -3424,9 +3458,14 @@ const colorExpo = n => COLOR_EXPO[n] || "#7B8794";
 const plata = v => v == null ? "—" :
   (v < 0 ? "-$" : "$") + ent(Math.abs(v));
 
+/* El total arranca tapado: la pestaña se abre en cualquier lado y no
+   hace falta que el saldo quede a la vista de quien pase al lado. */
+let cartTotal = false, cartTodas = false, cartUlt = null;
+
 function pintarCartera(d){
   const out = $("#cart-out");
   if(!out) return;
+  cartUlt = d;
   if(!d.total){
     out.innerHTML = '<div class="vacio">Sin valuar: no hay precios en ' +
       'caché todavía. Se llena en el próximo ciclo.</div>';
@@ -3436,14 +3475,21 @@ function pintarCartera(d){
   const tono = res == null ? "var(--muted)"
              : (res >= 0 ? "var(--sage)" : "var(--coral)");
   let h = '<div class="cart-tot">' +
-    '<div class="cart-cifra">' + plata(d.total) + '</div>' +
+    '<div class="cart-cifra">' +
+      (cartTotal ? plata(d.total) : '<span style="letter-spacing:.1em">' +
+        '••••••</span>') + '</div>' +
     '<div class="cart-sub">' +
-      (d.total_usd ? "US$ " + ent(d.total_usd) + " al MEP " + ent(d.mep)
-                   : "sin MEP disponible") + '</div>';
+      (cartTotal
+        ? (d.total_usd ? "US$ " + ent(d.total_usd) + " al MEP " + ent(d.mep)
+                       : "sin MEP disponible")
+        : "total oculto") +
+      ' <button id="cart-ojo" style="margin-left:8px">' +
+      (cartTotal ? "Ocultar" : "Ver") + '</button></div>';
   if(res != null){
+    /* El porcentaje se muestra siempre: no revela cuanto hay. */
     h += '<div class="cart-res" style="color:' + tono + '">' +
-      (res >= 0 ? "+" : "") + plata(res).replace("-", "") +
-      "  (" + (rp >= 0 ? "+" : "") + rp.toFixed(2) + "%)" +
+      (cartTotal ? (res >= 0 ? "+" : "") + plata(res).replace("-", "") + "  " : "") +
+      "(" + (rp >= 0 ? "+" : "") + rp.toFixed(2) + "%)" +
       '<span class="tocar">sobre ' + (d.cubierto_pct || 0).toFixed(0) +
       '% con PPC cargado</span></div>';
   } else {
@@ -3465,13 +3511,16 @@ function pintarCartera(d){
       '%</b></div>').join("") + '</div>';
   }
 
-  h += '<div style="margin-top:14px">' + (d.posiciones || []).map(p => {
+  const todas = d.posiciones || [];
+  const ver = cartTodas ? todas : todas.slice(0, 3);
+  h += '<div style="margin-top:14px">' + ver.map(p => {
     const t = p.resultado_pct == null ? "var(--muted)"
             : (p.resultado_pct >= 0 ? "var(--sage)" : "var(--coral)");
     return '<div class="pos"><div class="pos-top">' +
       '<span>' + esc(p.simbolo) +
         (p.ajuste_supuesto ? ' <span class="tocar">aj?</span>' : "") +
-      '</span><span>' + plata(p.valor) + '</span></div>' +
+      '</span><span>' + (cartTotal ? plata(p.valor)
+        : (p.peso_pct || 0).toFixed(1) + "%") + '</span></div>' +
       '<div class="pos-bar"><span style="width:' +
         (p.peso_pct || 0).toFixed(2) + '%;background:' +
         colorExpo(p.exposicion) + '"></span></div>' +
@@ -3482,12 +3531,25 @@ function pintarCartera(d){
             "%") +
       '</span></div></div>';
   }).join("") + '</div>';
+  if(todas.length > 3)
+    h += '<button id="cart-mas" style="margin-top:10px">' +
+      (cartTodas ? "Ver solo las tres primeras"
+                 : "Ver las " + todas.length + " posiciones") + '</button>';
 
   if((d.sin_precio || []).length)
     h += '<div class="aviso" style="margin-top:12px">Sin precio en caché: ' +
       d.sin_precio.map(esc).join(", ") + '. No entran en el total.</div>';
   out.innerHTML = h;
 }
+
+/* Los dos botones se redibujan en cada pintada, asi que el listener va
+   en el contenedor y no en cada boton. */
+$("#cart-out").addEventListener("click", e => {
+  if(e.target.id === "cart-ojo"){ cartTotal = !cartTotal; }
+  else if(e.target.id === "cart-mas"){ cartTodas = !cartTodas; }
+  else return;
+  if(cartUlt) pintarCartera(cartUlt);
+});
 
 async function cargarCartera(){
   const out = $("#cart-out");
@@ -3507,6 +3569,7 @@ const TIPOS_TEN = [["", "Todos"], ["moneda", "Efectivo"], ["bonos", "Bonos"],
 let tenDatos = [];
 let tenFiltro = {broker: "", tipo: ""};
 let tenOrden = {col: "simbolo", asc: true};
+let tenAbierta = "";      // broker|simbolo de la fila desplegada
 
 function tenPintar(){
   const out = $("#ten-out");
@@ -3537,7 +3600,8 @@ function tenPintar(){
       '<th onclick="tenOrdenar(\'fecha_alta\')">Alta' +
         flecha("fecha_alta") + '</th></tr></thead><tbody>' +
     filas.map(t =>
-      '<tr><td>' + esc(t.simbolo) +
+      '<tr class="ten-fila" data-br="' + esc(t.broker) + '" data-sim="' +
+        esc(t.simbolo) + '"><td>' + esc(t.simbolo) +
         (t.extranjero ? ' <span class="tocar">exterior</span>' : "") + '</td>' +
       '<td style="font-size:11px;color:var(--muted)">' +
         esc((TIPOS_TEN.find(x => x[0] === (t.tipo || "otros")) || ["", "?"])[1]) +
@@ -3545,10 +3609,48 @@ function tenPintar(){
       '<td style="font-size:11px">' + esc(t.broker) + '</td>' +
       '<td class="num">' + ent(t.cantidad) + '</td>' +
       '<td class="num">' + tenPpc(t) + '</td>' +
-      '<td style="font-size:11px">' + tenAlta(t) + '</td></tr>').join("") +
+      '<td style="font-size:11px">' + tenAlta(t) + '</td></tr>' +
+      tenEditor(t)).join("") +
     '</tbody></table>' +
     '<div class="nota">' + filas.length + ' de ' + tenDatos.length +
       ' líneas.</div>';
+}
+
+/* Fila de edicion, oculta hasta que se toca la posicion. Sin ids: las
+   filas se redibujan y dos brokers pueden tener la misma especie, asi
+   que todo se ubica por data-atributos y closest(). */
+function tenEditor(t){
+  const clave = t.broker + "|" + t.simbolo;
+  if(tenAbierta !== clave) return "";
+  const opc = TIPOS_TEN.filter(x => x[0] !== "todos").map(x =>
+    '<option value="' + x[0] + '"' +
+    ((t.tipo || "otros") === x[0] ? " selected" : "") + '>' + esc(x[1]) +
+    '</option>').join("");
+  const prec = ["", "exacta", "mes", "antes"].map(p =>
+    '<option value="' + p + '"' + ((t.precision || "") === p ? " selected" : "") +
+    '>' + (p ? {exacta:"Exacta", mes:"Solo el mes", antes:"Antes de"}[p]
+             : "Sin precisar") + '</option>').join("");
+  return '<tr class="ten-edit" data-br="' + esc(t.broker) + '" data-sim="' +
+    esc(t.simbolo) + '"><td colspan="6" style="padding:10px 4px">' +
+    '<div class="form" style="margin-bottom:8px">' +
+    '<label>Cantidad<input data-c="cantidad" type="number" step="any" value="' +
+      t.cantidad + '"></label>' +
+    '<label>Tipo<select data-c="tipo">' + opc + '</select></label>' +
+    '<label>PPC<input data-c="ppc" type="number" step="any" value="' +
+      (t.ppc == null ? "" : t.ppc) + '"></label>' +
+    '<label>Base del PPC<input data-c="ppc_base" type="number" step="any" ' +
+      'placeholder="según el tipo" value="' +
+      (t.ppc_base == null ? "" : t.ppc_base) + '"></label>' +
+    '<label>Fecha de alta<input data-c="fecha_alta" type="date" value="' +
+      (t.fecha_alta || "") + '"></label>' +
+    '<label>Precisión<select data-c="precision">' + prec + '</select></label>' +
+    '</div>' +
+    '<div class="nota" style="margin:0 0 8px">La base es 100 para títulos ' +
+      'de deuda y 1 para el resto. Si el PPC vino de una planilla que ' +
+      'cotiza por unidad, va en 1.</div>' +
+    '<div class="acciones"><button class="primario" data-guardar>Guardar' +
+      '</button><button data-borrar-ten>Borrar</button>' +
+      '<button data-cerrar>Cerrar</button></div></td></tr>';
 }
 
 function tenOrdenar(col){
@@ -3690,6 +3792,50 @@ async function cargarTenencias(){
   }
 }
 
+/* Todo por delegacion en el contenedor: la tabla se redibuja entera en
+   cada pintada y los listeners por fila se perderian. */
+$("#ten-out").addEventListener("click", async ev => {
+  const fila = ev.target.closest(".ten-fila");
+  if(fila){
+    const clave = fila.dataset.br + "|" + fila.dataset.sim;
+    tenAbierta = tenAbierta === clave ? "" : clave;
+    tenPintar();
+    return;
+  }
+  const caja = ev.target.closest(".ten-edit");
+  if(!caja) return;
+  const br = caja.dataset.br, sim = caja.dataset.sim;
+
+  if(ev.target.closest("[data-cerrar]")){
+    tenAbierta = ""; tenPintar(); return;
+  }
+  if(ev.target.closest("[data-borrar-ten]")){
+    if(!confirm("¿Borrar " + sim + " de " + br + "?")) return;
+    try{
+      await fetch(base + "api/tenencias/una?broker=" +
+        encodeURIComponent(br) + "&simbolo=" + encodeURIComponent(sim),
+        {method:"DELETE"});
+      tenAbierta = ""; cargarTenencias();
+    }catch(e){ alert("No se pudo borrar."); }
+    return;
+  }
+  if(!ev.target.closest("[data-guardar]")) return;
+  const campos = {};
+  caja.querySelectorAll("[data-c]").forEach(i => {
+    campos[i.dataset.c] = i.value === "" ? null : i.value;
+  });
+  const b = ev.target.closest("[data-guardar]");
+  b.disabled = true;
+  try{
+    const r = await (await fetch(base + "api/tenencias/una", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({broker: br, simbolo: sim, campos})})).json();
+    if(r.error){ alert(r.error); return; }
+    tenAbierta = ""; cargarTenencias();
+  }catch(e){ alert("No se pudo guardar."); }
+  finally{ b.disabled = false; }
+});
+
 $("#hist-esp").addEventListener("click", ev => {
   const b = ev.target.closest("[data-esp]");
   if(!b) return;
@@ -3771,6 +3917,9 @@ $("#ten-traer").addEventListener("click", async e => {
       t += (c.monedas || []).length
         ? "\nEfectivo: " + c.monedas.join(" · ") + "."
         : "\nSin efectivo disponible.";
+      if((c.deudas || []).length)
+        t += "\nSaldo negativo en: " + c.deudas.join(" · ") +
+          ". Se cargó igual; revisalo en Explorar.";
       return t;
     }).join("\n\n");
     if((r.errores || []).length)

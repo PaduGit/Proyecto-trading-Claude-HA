@@ -19,7 +19,7 @@ BASE_100 = ("bonos", "letras", "on", "bcra")
 EXPOSICION = {
     "cer": "CER",
     "dolar_linked": "Dólar linked",
-    "hard_dollar": "Dólar",
+    "hard_dollar": "Hard dollar",
     "tasa_variable": "Tasa $",
     "cuotas": "Tasa $",
 }
@@ -37,7 +37,8 @@ def _exposicion(t, bonos_cfg):
     """La moneda en la que rinde la posicion."""
     tipo = (t.get("tipo") or "otros").lower()
     if tipo == "moneda":
-        return "Dólar" if t["simbolo"] in ("MEP", "CABLE") else "Tasa $"
+        return "Hard dollar" if t["simbolo"] in ("MEP", "CABLE") \
+            else "Tasa $"
     b = (bonos_cfg or {}).get(t["simbolo"])
     if b:
         ajuste = (b.get("ajuste") or "").lower()
@@ -47,7 +48,7 @@ def _exposicion(t, bonos_cfg):
         if clase in EXPOSICION:
             return EXPOSICION[clase]
         if (b.get("moneda") or "").upper() == "USD":
-            return "Dólar"
+            return "Hard dollar"
     return ETIQUETAS.get(tipo, "Sin clasificar")
 
 
