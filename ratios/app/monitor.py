@@ -42,6 +42,8 @@ class Monitor:
 
         self._zona_actual = self._cargar_zonas()
         self._zonas_curva = self._cargar_zonas_curva()
+        self._canjes_avisado = set()
+        self.canjes = []
         self._pidiendo = threading.Lock()
         self._ultimo_manual = datetime.min
         self._opc_estado = None     # persistencia del cruce, por combinacion
@@ -566,6 +568,76 @@ class Monitor:
             })
         return estado
 
+    def canjes_curva(self, cot=None):
+        """Los canjes que convienen hoy sobre lo que se tiene.
+
+        Se calcula aparte de revisar_curva porque responde otra cosa: no
+        que bono se despego, sino contra cual conviene rotar el que ya
+        esta en cartera para terminar con mas nominales.
+        """
+        import bonos as BO
+        import curva as CU
+        import costos as CO
+
+        with self.lock:
+            cot = cot or dict(self.cotizaciones)
+        if not cot:
+            return []
+        tenidos = {t["simbolo"] for t in db.tenencias()
+                   if (t.get("tipo") or "") in ("bonos", "letras", "on")}
+        if not tenidos:
+            return []
+        t = BO.tabla(cot, cer_actual=float(self.cfg.get("cer_actual") or 0))
+        an = CU.analizar(t["filas"])
+        # Ida y vuelta: se vende una especie y se compra otra.
+        una = CO.pct(self.cfg.get("comisiones") or {}, "bonos")
+        return CU.canjes(
+            t["filas"], an, tenidos, costo_pct=una * 2,
+            min_ganancia=float(self.cfg.get("canje_min_pct") or 1.0))
+
+    def revisar_canjes(self, cot=None):
+        """Avisa cuando aparece un canje que antes no estaba."""
+        if not float(self.cfg.get("canje_min_pct") or 0):
+            return 0
+        try:
+            filas = self.canjes_curva(cot)
+        except Exception as e:
+            log.debug("canjes: %s", e)
+            return 0
+        with self.lock:
+            self.canjes = filas
+        vigentes = {"%s>%s" % (f["desde"], f["hacia"]) for f in filas}
+        nuevos = [f for f in filas
+                  if "%s>%s" % (f["desde"], f["hacia"]) not in self._canjes_avisado]
+        # Se rearma al desaparecer, igual que las alertas de precio.
+        self._canjes_avisado &= vigentes
+        if not nuevos:
+            return 0
+        lineas, planas = [], []
+        for f in nuevos:
+            self._canjes_avisado.add("%s>%s" % (f["desde"], f["hacia"]))
+            lineas.append(
+                "<b>%s → %s</b>: +%.2f%% neto<br>"
+                "%s z %+.2f · MD %.2f · TIR %.2f%%<br>"
+                "%s z %+.2f · MD %.2f · TIR %.2f%%" % (
+                    f["desde"], f["hacia"], f["ganancia_pct"],
+                    f["desde"], f["z_desde"] or 0, f["md_desde"],
+                    f["tir_desde"] or 0,
+                    f["hacia"], f["z_hacia"], f["md_hacia"],
+                    f["tir_hacia"] or 0))
+            # En el celular la notificacion se lee de un vistazo: una
+            # linea por canje con lo que hace falta para decidir mirar.
+            planas.append("%s → %s: +%.2f%% neto (z %+.2f → %+.2f)" % (
+                f["desde"], f["hacia"], f["ganancia_pct"],
+                f["z_desde"] or 0, f["z_hacia"]))
+        titulo = ("Canje %s → %s" % (nuevos[0]["desde"], nuevos[0]["hacia"])
+                  if len(nuevos) == 1 else "%d canjes convenientes" % len(nuevos))
+        self.notif.enviar(titulo, "<br><br>".join(lineas), "\n".join(planas))
+        for f in nuevos:
+            db.registrar_alerta(f["desde"], "canje", f["ganancia_pct"], None,
+                                "%s → %s" % (f["desde"], f["hacia"]))
+        return len(nuevos)
+
     # -- desvíos de curva ---------------------------------------------
 
     def revisar_curva(self, cot=None):
@@ -768,6 +840,10 @@ class Monitor:
                 self.revisar_rulo(mapa)
             except Exception as e:
                 log.debug("revisar rulo: %s", e)
+            try:
+                self.revisar_canjes(mapa)
+            except Exception as e:
+                log.debug("revisar canjes: %s", e)
             try:
                 self.revisar_plazos(mapa)
             except Exception as e:

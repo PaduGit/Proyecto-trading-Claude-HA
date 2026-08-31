@@ -1,10 +1,13 @@
 """Persistencia en SQLite. Vive en /data, que HA conserva entre reinicios."""
 
 import json
+import logging
 import os
 import sqlite3
 import threading
 from datetime import datetime, timedelta
+
+log = logging.getLogger("ratios.db")
 
 RUTA = os.environ.get("RATIOS_DB", "/data/ratios.db")
 _local = threading.local()
@@ -861,6 +864,27 @@ CREATE TABLE IF NOT EXISTS estrategia_especie (
   PRIMARY KEY (broker, simbolo)
 );
 CREATE INDEX IF NOT EXISTS ix_ee_estr ON estrategia_especie(estrategia_id);
+
+-- Lo que el diff entre dos fotos deduce que paso. No se aplica solo:
+-- queda pendiente hasta que se confirma, porque una foto no distingue
+-- una rotacion de dos operaciones sueltas del mismo dia.
+CREATE TABLE IF NOT EXISTS mov_propuesto (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  detectado TEXT NOT NULL,
+  broker    TEXT NOT NULL,
+  desde     TEXT NOT NULL,          -- fecha de la foto anterior
+  hasta     TEXT NOT NULL,          -- fecha de la foto nueva
+  tipo      TEXT NOT NULL,          -- rotacion | aporte | retiro
+  sale      TEXT,
+  cant_sale REAL,
+  entra     TEXT,
+  cant_entra REAL,
+  ratio     REAL,
+  grupo_id  INTEGER,
+  estado    TEXT NOT NULL DEFAULT 'pendiente',
+  UNIQUE (broker, desde, hasta, tipo, sale, entra)
+);
+CREATE INDEX IF NOT EXISTS ix_mp_estado ON mov_propuesto(estado, detectado);
 """
 
 # Como se mide cada una y que campos le sirven. El patron no es un
@@ -1139,6 +1163,10 @@ def guardar_tenencias(filas, reemplazar="todo"):
     c.commit()
     for br in brokers:
         snapshot(br)
+        try:
+            detectar_movimientos(br)
+        except Exception as e:
+            log.warning("diff de %s: %s", br, e)
     cerrar_sin_tenencia()
     return n
 
@@ -1367,6 +1395,138 @@ def cerrar_sin_tenencia():
             cerrar_estrategia(e["id"], "sin tenencia")
             cerradas.append(e["nombre"])
     return cerradas
+
+
+def detectar_movimientos(broker):
+    """Compara las dos ultimas fotos de un broker y propone que paso.
+
+    Una rotacion solo se propone si las dos especies estan en el mismo
+    grupo declarado y se movieron en sentido contrario. El ratio sale de
+    la relacion de nominales, que es exacta y no necesita precios ni la
+    hora de la operacion. Todo lo demas queda como aporte o retiro.
+
+    No aplica nada: entre dos fotos, dos operaciones sueltas del mismo
+    dia se ven igual que una rotacion, y esa diferencia la sabe el que
+    opero, no la base.
+    """
+    import json as _json
+    c = conn()
+    fechas = [r["fecha"] for r in c.execute(
+        "SELECT DISTINCT fecha FROM tenencia_hist WHERE broker=? "
+        "ORDER BY fecha DESC LIMIT 2", (broker,))]
+    if len(fechas) < 2:
+        return []
+    hasta, desde = fechas[0], fechas[1]
+
+    def foto(f):
+        return {r["simbolo"]: r["cantidad"] for r in c.execute(
+            "SELECT simbolo, cantidad FROM tenencia_hist "
+            "WHERE broker=? AND fecha=?", (broker, f))}
+
+    a, b = foto(desde), foto(hasta)
+    difs = {}
+    for sim in set(a) | set(b):
+        d = (b.get(sim) or 0) - (a.get(sim) or 0)
+        if abs(d) > 1e-9:
+            difs[sim] = d
+
+    # Los grupos dicen que especies son intercambiables entre si.
+    grupos = []
+    for g in c.execute("SELECT id, nombre, tickers FROM grupos"):
+        try:
+            tk = {t.strip().upper() for t in _json.loads(g["tickers"] or "[]")}
+        except ValueError:
+            tk = set()
+        if tk:
+            grupos.append((g["id"], g["nombre"], tk))
+
+    ahora = datetime.now().isoformat(timespec="seconds")
+    props, usados = [], set()
+    for gid, gnom, tk in grupos:
+        bajan = sorted((s for s in difs if s in tk and difs[s] < 0
+                        and s not in usados),
+                       key=lambda s: difs[s])
+        suben = sorted((s for s in difs if s in tk and difs[s] > 0
+                        and s not in usados),
+                       key=lambda s: -difs[s])
+        for sale, entra in zip(bajan, suben):
+            cs, ce = -difs[sale], difs[entra]
+            props.append({
+                "broker": broker, "desde": desde, "hasta": hasta,
+                "tipo": "rotacion", "sale": sale, "cant_sale": cs,
+                "entra": entra, "cant_entra": ce,
+                "ratio": (cs / ce) if ce else None, "grupo_id": gid,
+                "grupo": gnom})
+            usados.update((sale, entra))
+
+    for sim, d in sorted(difs.items()):
+        if sim in usados:
+            continue
+        props.append({
+            "broker": broker, "desde": desde, "hasta": hasta,
+            "tipo": "aporte" if d > 0 else "retiro",
+            "sale": None if d > 0 else sim,
+            "cant_sale": None if d > 0 else -d,
+            "entra": sim if d > 0 else None,
+            "cant_entra": d if d > 0 else None,
+            "ratio": None, "grupo_id": None, "grupo": None})
+
+    for p in props:
+        c.execute(
+            "INSERT OR IGNORE INTO mov_propuesto (detectado, broker, desde, "
+            "hasta, tipo, sale, cant_sale, entra, cant_entra, ratio, grupo_id) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (ahora, broker, desde, hasta, p["tipo"], p["sale"],
+             p["cant_sale"], p["entra"], p["cant_entra"], p["ratio"],
+             p["grupo_id"]))
+    c.commit()
+    return props
+
+
+def movimientos_propuestos(estado="pendiente"):
+    q = "SELECT * FROM mov_propuesto"
+    args = []
+    if estado:
+        q += " WHERE estado = ?"
+        args.append(estado)
+    q += " ORDER BY hasta DESC, id DESC"
+    return [dict(r) for r in conn().execute(q, args)]
+
+
+def resolver_propuesto(mid, accion):
+    """Confirma o descarta uno.
+
+    Al confirmar una rotacion se mueve la asignacion de estrategia de la
+    especie que sale a la que entra: si no, la estrategia se cerraria
+    sola justo cuando se la esta ejecutando bien.
+    """
+    c = conn()
+    p = c.execute("SELECT * FROM mov_propuesto WHERE id=?", (mid,)).fetchone()
+    if not p:
+        return None
+    if accion == "descartar":
+        c.execute("UPDATE mov_propuesto SET estado='descartado' WHERE id=?",
+                  (mid,))
+        c.commit()
+        return "descartado"
+
+    if p["tipo"] == "rotacion" and p["sale"] and p["entra"]:
+        eid = c.execute("SELECT estrategia_id FROM estrategia_especie "
+                        "WHERE broker=? AND simbolo=?",
+                        (p["broker"], p["sale"])).fetchone()
+        if eid:
+            asignar(p["broker"], p["entra"], eid["estrategia_id"])
+            c.execute("DELETE FROM estrategia_especie WHERE broker=? "
+                      "AND simbolo=?", (p["broker"], p["sale"]))
+            # La estrategia recupera una especie viva, asi que si se
+            # habia cerrado por quedarse sin tenencia hay que reabrirla.
+            e = c.execute("SELECT cierre, motivo_cierre FROM estrategia "
+                          "WHERE id=?", (eid["estrategia_id"],)).fetchone()
+            if e and e["cierre"] and e["motivo_cierre"] == "sin tenencia":
+                reabrir_estrategia(eid["estrategia_id"])
+    c.execute("UPDATE mov_propuesto SET estado='confirmado' WHERE id=?", (mid,))
+    c.commit()
+    return "confirmado"
 
 
 def snapshot(broker, fecha=None):

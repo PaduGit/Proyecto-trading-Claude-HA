@@ -174,7 +174,11 @@ class Notificador:
 
 
 def _sin_html(t):
-    for a, b in (("<b>", ""), ("</b>", ""), ("<i>", ""), ("</i>", "")):
+    # El <br> tiene que volverse un salto real: Home Assistant muestra el
+    # texto plano tal cual, asi que hasta ahora la etiqueta se veia
+    # escrita en la notificacion.
+    for a, b in (("<br>", "\n"), ("<br/>", "\n"), ("<br />", "\n"),
+                 ("<b>", ""), ("</b>", ""), ("<i>", ""), ("</i>", "")):
         t = t.replace(a, b)
     return t
 

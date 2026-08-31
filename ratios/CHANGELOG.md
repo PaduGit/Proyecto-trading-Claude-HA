@@ -1,5 +1,59 @@
 # Registro de cambios
 
+## 0.26.0
+
+**El `<br>` se veia escrito en las notificaciones.** `_sin_html` limpiaba
+negritas y cursivas pero no los saltos de linea, asi que Home Assistant
+mostraba la etiqueta como texto. Afectaba a todas las alertas, no solo a
+las nuevas.
+
+**Canjes por curva.** Contra que bono conviene rotar cada uno de los que
+se tienen. La cuenta no es cual rinde mas, que llevaria siempre al mas
+largo y cambiaria la cartera, sino cuanto se espera que recorra cada
+punta hasta su propio residuo medio: con el residuo en puntos basicos y
+la duration en anios, el precio se mueve MD x (residuo - media) / 100 por
+ciento. La ganancia es la diferencia entre las dos puntas menos una
+comision de salida y una de entrada.
+
+Tres filtros: misma familia de curva, duration dentro del 35% de la del
+bono que se tiene, y la punta de destino barata contra su propia
+historia y no solo contra la curva. Sin lo ultimo entrarian los bonos
+estructuralmente baratos, que estan baratos todos los dias y no
+convergen.
+
+Se ve en un desplegable y avisa en el ciclo cuando aparece uno nuevo,
+rearmandose al desaparecer. Umbral en `canje_min_pct`, 1% por defecto.
+
+**Estrategias medidas contra su patron.** Cuanto rindio y cuanto le gano
+o le perdio a su vara. El costo sale del PPC de las especies asignadas y
+la fecha de referencia del patron es el alta de la estrategia y no la de
+la especie: si se roto, la especie nueva tiene fecha reciente pero la
+apuesta empezo antes. La medicion va siempre sobre la cartera entera
+aunque haya filtros: media estrategia no significa nada.
+
+**Diff de tenencias.** Al cargar se comparan las dos ultimas fotos de
+cada broker y quedan movimientos propuestos. Una rotacion solo se propone
+si las dos especies estan en el mismo grupo y se movieron en sentido
+contrario; el ratio sale de la relacion de nominales, que es exacta y no
+necesita precios. El resto queda como aporte o retiro.
+
+No se aplica nada solo: entre dos fotos, dos operaciones sueltas del
+mismo dia se ven igual que una rotacion, y esa diferencia la sabe el que
+opero. Al confirmar una rotacion, la estrategia pasa de la especie que
+sale a la que entra, y si se habia cerrado por quedarse sin tenencia se
+reabre. Solo si ese fue el motivo del cierre.
+
+**Una sola lista de posiciones.** El tablero y la tabla mostraban lo
+mismo con criterios distintos y podian desincronizarse. Ahora hay una
+lista de tarjetas: simbolo y valor arriba, barra del color de su
+exposicion, y abajo la estrategia, el broker y el resultado contra el
+PPC. Al tocarla se abre el editor.
+
+Orden por chips: valor, resultado, especie o estrategia, invirtiendo al
+tocar el mismo. La cantidad, el PPC y el alta se ven al abrir cada
+posicion. Las posiciones sin precio ya no desaparecen de la vista. Con el
+total tapado, toda la pantalla muestra pesos en vez de montos.
+
 ## 0.25.0
 
 **Estrategias.** Tabla `estrategia` con nombre, familia, tesis, origen,

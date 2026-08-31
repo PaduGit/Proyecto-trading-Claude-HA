@@ -819,6 +819,19 @@ def crear_app(monitor):
         return jsonify({"borradas": db.borrar_tenencia(br, sim),
                         "en_rulo": monitor.tengo_actual()})
 
+    @app.get("/api/movimientos-propuestos")
+    def propuestos_listar():
+        return jsonify({"propuestos": db.movimientos_propuestos(
+            request.args.get("estado") or "pendiente")})
+
+    @app.post("/api/movimientos-propuestos/<int:mid>")
+    def propuestos_resolver(mid):
+        d = request.get_json(silent=True) or {}
+        r = db.resolver_propuesto(mid, d.get("accion") or "confirmar")
+        if not r:
+            return jsonify({"error": "no existe"}), 404
+        return jsonify({"estado": r})
+
     @app.get("/api/estrategias")
     def estrategias_listar():
         return jsonify({
@@ -1091,6 +1104,17 @@ def crear_app(monitor):
                         "deudas": primero["deudas"],
                         "en_rulo": monitor.tengo_actual()})
 
+    @app.get("/api/canjes")
+    def canjes_listar():
+        """Contra que conviene rotar cada bono que se tiene."""
+        try:
+            filas = monitor.canjes_curva()
+        except Exception as e:
+            log.warning("canjes: %s", e)
+            return jsonify({"error": str(e)}), 500
+        return jsonify({"canjes": filas,
+                        "minimo": float(monitor.cfg.get("canje_min_pct") or 1)})
+
     @app.get("/api/cartera")
     def cartera_valuada():
         import cartera as CA
@@ -1102,6 +1126,10 @@ def crear_app(monitor):
         # Los mismos filtros que la tabla de abajo: al mirar solo un
         # broker o un tipo, el total y los pesos tienen que ser de eso y
         # no de la cartera entera.
+        # La medicion de estrategias va siempre sobre la cartera
+        # entera: filtrada por broker daria el rendimiento de media
+        # estrategia, que no significa nada.
+        completa = CA.valuar(filas, precios, mep, bonos_cfg)
         br = (request.args.get("broker") or "").strip()
         tp = (request.args.get("tipo") or "").strip().lower()
         fa = (request.args.get("familia") or "").strip().lower()
@@ -1130,7 +1158,15 @@ def crear_app(monitor):
             ).get("medio") or 0) or None
         except Exception as e:
             log.debug("mep para la cartera: %s", e)
-        return jsonify(CA.valuar(filas, precios, mep, bonos_cfg))
+        r = (completa if not (br or tp or fa)
+             else CA.valuar(filas, precios, mep, bonos_cfg))
+        try:
+            r["estrategias"] = CA.medir(db.estrategias(),
+                                        completa["posiciones"])
+        except Exception as e:
+            log.warning("medición de estrategias: %s", e)
+            r["estrategias"] = []
+        return jsonify(r)
 
     @app.get("/api/cobros")
     def cobros_listar():

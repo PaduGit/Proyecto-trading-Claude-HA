@@ -29,6 +29,81 @@ ETIQUETAS = {
 }
 
 
+def patron_valor(patron, f=None):
+    """El indice contra el que se mide una estrategia, a una fecha.
+
+    El tipo de cambio de entrada no se busca: lo carga el usuario al
+    crear la estrategia, porque es el precio al que entro y no una serie
+    publicada.
+    """
+    from datetime import date as _date
+    f = f or _date.today()
+    try:
+        if patron == "cer":
+            import cer as C
+            return C.valor(f) if f != _date.today() else C.vigente()
+        if patron == "dolar":
+            import dolar as D
+            return D.valor(f) if f != _date.today() else D.vigente()
+        if patron == "badlar":
+            import badlar as B
+            return B.valor(f) if f != _date.today() else B.vigente()
+    except Exception as e:
+        log.debug("patrón %s al %s: %s", patron, f, e)
+    return None
+
+
+def medir(estrategias_, posiciones):
+    """Cuanto rindio cada estrategia y como le fue contra su patron.
+
+    El costo sale del PPC de las especies asignadas, asi que solo se mide
+    la parte de la estrategia que lo tiene cargado. La fecha de
+    referencia del patron es el alta de la estrategia: si se roto de un
+    bono a otro, la especie nueva tiene fecha propia mas reciente pero la
+    apuesta empezo antes, y es contra ese momento que hay que medirla.
+    """
+    por_estr = {}
+    for p in posiciones:
+        eid = p.get("estrategia_id")
+        if eid:
+            por_estr.setdefault(eid, []).append(p)
+
+    salida = []
+    for e in estrategias_:
+        pos = por_estr.get(e["id"]) or []
+        valor = sum(p["valor"] for p in pos if p["valor"])
+        costo = sum(p["costo"] for p in pos
+                    if p["costo"] and p["valor"] is not None)
+        medido = sum(p["valor"] for p in pos
+                     if p["costo"] and p["valor"] is not None)
+        d = {"id": e["id"], "nombre": e["nombre"], "familia": e["familia"],
+             "patron": e.get("patron"), "alta": e.get("alta"),
+             "especies": len(pos), "valor": valor, "costo": costo or None,
+             "rendimiento_pct": ((medido / costo - 1) * 100) if costo else None,
+             "patron_pct": None, "contra_patron_pct": None, "nota": None}
+
+        pat = e.get("patron")
+        if pat and costo:
+            if pat == "tc_entrada":
+                # Cargado a mano: es el tipo de cambio al que se entro.
+                base = e.get("patron_valor")
+                hoy = patron_valor("dolar")
+            else:
+                base = patron_valor(pat, e.get("alta"))
+                hoy = patron_valor(pat)
+            if base and hoy:
+                d["patron_pct"] = (hoy / base - 1) * 100
+                # Lo unico que importa: si le gano o le perdio a la vara.
+                d["contra_patron_pct"] = ((medido / costo) / (hoy / base) - 1) * 100
+            else:
+                d["nota"] = "sin valor del patrón para esa fecha"
+        elif pat:
+            d["nota"] = "sin PPC cargado en las especies"
+        salida.append(d)
+    salida.sort(key=lambda x: x["valor"] or 0, reverse=True)
+    return salida
+
+
 def base_de(tipo):
     return 100.0 if (tipo or "") in BASE_100 else 1.0
 
@@ -94,6 +169,8 @@ def valuar(tenencias, precios, mep=None, bonos_cfg=None):
             "resultado_pct": (res / costo * 100) if (res is not None and costo)
                              else None,
             "exposicion": _exposicion(t, bonos_cfg),
+            "estrategia_id": t.get("estrategia_id"),
+            "estrategia": t.get("estrategia"),
             "extranjero": t.get("extranjero"),
             "ajuste_supuesto": t.get("ajuste_supuesto"),
         })

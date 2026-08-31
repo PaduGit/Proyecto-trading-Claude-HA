@@ -148,6 +148,82 @@ def reconstruir(desde=None):
     return total
 
 
+def canjes(filas, an, tenidos, costo_pct=0.5, min_ganancia=1.0,
+           max_dif_md=0.35, min_z=1.0):
+    """Contra que bono conviene rotar cada uno de los que se tienen.
+
+    La cuenta no es "cual rinde mas" sino cuanto se espera que cada uno
+    se mueva hacia su propio residuo medio. Un bono estructuralmente
+    barato esta barato todos los dias y no por eso va a converger: lo que
+    revierte es el desvio contra la propia historia, que es lo que mide
+    el z-score.
+
+    Con el residuo en puntos basicos y la duration modificada en anios,
+    el precio esperado se mueve MD x (residuo - media) / 100 por ciento.
+    La ganancia del canje es la diferencia entre las dos puntas, menos lo
+    que cuesta salir y entrar.
+
+    Se compara solo dentro de la misma familia y con duration parecida:
+    pasar de un tramo corto a uno largo puede dar mas nominales y dejar
+    otra cartera, y eso ya no es la misma estrategia.
+    """
+    por_sim = {f["simbolo"]: f for f in filas}
+
+    def recorrido(sim):
+        d = an.get(sim) or {}
+        f = por_sim.get(sim) or {}
+        if d.get("media_hist") is None or f.get("md") is None:
+            return None
+        return f["md"] * (d["residuo"] - d["media_hist"]) / 100.0
+
+    salida = []
+    for sim in tenidos:
+        f = por_sim.get(sim)
+        d = an.get(sim)
+        if not f or not d or f.get("md") is None:
+            continue
+        rec_a = recorrido(sim)
+        if rec_a is None:
+            continue
+        mejor = None
+        for otro in filas:
+            osim = otro["simbolo"]
+            if osim == sim or otro.get("familia") != f.get("familia"):
+                continue
+            if otro.get("md") is None or not otro.get("ask"):
+                continue
+            # Duration parecida, en proporcion: medio anio de diferencia
+            # es mucho en un bono corto y poco en uno largo.
+            if abs(otro["md"] - f["md"]) > max_dif_md * max(f["md"], 0.5):
+                continue
+            od = an.get(osim) or {}
+            if od.get("z") is None or od["z"] < min_z:
+                continue
+            rec_b = recorrido(osim)
+            if rec_b is None:
+                continue
+            gana = rec_b - rec_a - costo_pct
+            if gana < min_ganancia:
+                continue
+            if not mejor or gana > mejor["ganancia_pct"]:
+                mejor = {
+                    "hacia": osim, "ganancia_pct": gana,
+                    "z_hacia": od["z"], "residuo_hacia": od["residuo"],
+                    "md_hacia": otro["md"], "tir_hacia": otro.get("tir_last"),
+                    "recorrido_hacia": rec_b,
+                }
+        if mejor:
+            mejor.update({
+                "desde": sim, "z_desde": d.get("z"),
+                "residuo_desde": d["residuo"], "md_desde": f["md"],
+                "tir_desde": f.get("tir_last"), "recorrido_desde": rec_a,
+                "familia": f.get("familia"), "costo_pct": costo_pct,
+            })
+            salida.append(mejor)
+    salida.sort(key=lambda x: x["ganancia_pct"], reverse=True)
+    return salida
+
+
 def zscore(simbolo, residuo_hoy):
     """Cuánto se aleja el residuo de hoy de su propia historia."""
     filas = db.conn().execute(

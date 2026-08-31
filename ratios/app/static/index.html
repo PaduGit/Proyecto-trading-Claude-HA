@@ -221,6 +221,7 @@ table.tabla tr.dolar td:first-child{color:var(--amber)}
 .pos-bar span{display:block;height:100%;background:var(--muted);border-radius:2px}
 .ten-fila{cursor:pointer}
 .ten-fila:active{background:var(--panel-2)}
+.ten-edit{border-bottom:1px solid var(--rule);padding:10px 0 12px;background:var(--panel)}
 .pos-pie{display:flex;justify-content:space-between;font-family:var(--mono);
   font-size:10px;color:var(--muted);margin-top:4px}
 .avanzado summary{font-family:var(--mono);font-size:10px;color:var(--muted);
@@ -442,13 +443,34 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       <span class="filtro-etq">Estrategia</span>
       <div class="periodos" id="ten-fam" style="margin:0"></div></div>
     <div id="cart-out"></div>
-    <h3 style="margin:20px 0 6px">Tenencias</h3>
+    <div class="filtro-fila" style="margin:14px 0 10px">
+      <span class="filtro-etq">Orden</span>
+      <div class="periodos" id="ten-orden" style="margin:0"></div></div>
     <button class="primario" id="ten-traer" style="margin-bottom:12px">
       Traer tenencia de IOL</button>
     <div class="nota" style="margin:-6px 0 12px">Baja las cuentas de IOL
       configuradas. Cada una reemplaza solo su propio broker; el PPC y la
       fecha de alta se conservan.</div>
     <div id="ten-out"></div>
+    <details style="margin-top:12px" id="prop-caja">
+      <summary>Movimientos detectados</summary>
+      <div class="nota" style="margin-top:8px">Lo que cambió entre las dos
+        últimas fotos de cada broker. Una rotación solo se propone si las
+        dos especies están en el mismo grupo y se movieron en sentido
+        contrario; el ratio sale de la relación de nominales. Confirmar
+        una rotación mueve la estrategia de la especie que sale a la que
+        entra.</div>
+      <div id="prop-out" style="margin-top:8px"></div>
+    </details>
+    <details style="margin-top:12px" id="canje-caja">
+      <summary>Canjes convenientes</summary>
+      <div class="nota" style="margin-top:8px">Contra qué bono conviene
+        rotar cada uno de los que tenés, dentro de la misma familia y con
+        duration parecida. La ganancia es lo que se espera que recorra
+        cada punta hasta su residuo medio, neta de comisiones de ida y
+        vuelta.</div>
+      <div id="canje-out" style="margin-top:8px"></div>
+    </details>
     <details style="margin-top:12px" id="estr-caja">
       <summary>Estrategias</summary>
       <div class="nota" style="margin-top:8px">Por qué tenés cada cosa.
@@ -3464,9 +3486,106 @@ $("#cob-rango").addEventListener("click", ev => {
   cargarCobros();
 });
 
+/* ---------- movimientos detectados ---------- */
+async function cargarPropuestos(){
+  const out = $("#prop-out");
+  if(!out) return;
+  try{
+    const d = await (await fetch(base + "api/movimientos-propuestos")).json();
+    const p = d.propuestos || [];
+    if(!p.length){
+      out.innerHTML = '<div class="vacio">Nada pendiente. Aparecen ' +
+        'cuando las cantidades cambian entre dos actualizaciones.</div>';
+      return;
+    }
+    out.innerHTML = p.map(m => {
+      let qué;
+      if(m.tipo === "rotacion")
+        qué = esc(m.sale) + " → " + esc(m.entra) +
+          " · ratio " + num(m.ratio, 4);
+      else if(m.tipo === "aporte")
+        qué = "Entró " + ent(m.cant_entra) + " de " + esc(m.entra);
+      else
+        qué = "Salió " + ent(m.cant_sale) + " de " + esc(m.sale);
+      return '<div class="pos"><div class="pos-top">' +
+        '<span>' + qué + '</span></div>' +
+        '<div class="pos-pie" style="display:block">' + esc(m.broker) +
+          " · entre " + esc(m.desde) + " y " + esc(m.hasta) +
+          (m.tipo === "rotacion"
+            ? " · salieron " + ent(m.cant_sale) + ", entraron " +
+              ent(m.cant_entra) : "") +
+        '</div><div class="acciones" style="margin-top:6px">' +
+        '<button class="primario" data-prop="' + m.id +
+          '" data-accion="confirmar">Confirmar</button>' +
+        '<button data-prop="' + m.id + '" data-accion="descartar">' +
+          'Descartar</button></div></div>';
+    }).join("");
+  }catch(e){
+    out.innerHTML = '<div class="msg error">No se pudieron leer.</div>';
+  }
+}
+
+$("#prop-out").addEventListener("click", async ev => {
+  const b = ev.target.closest("[data-prop]");
+  if(!b) return;
+  b.disabled = true;
+  try{
+    await fetch(base + "api/movimientos-propuestos/" + b.dataset.prop,
+      {method:"POST", headers:{"Content-Type":"application/json"},
+       body: JSON.stringify({accion: b.dataset.accion})});
+    cargarPropuestos();
+    if(b.dataset.accion === "confirmar"){
+      cargarTenencias(); cargarEstrategias();
+    }
+  }catch(e){ alert("No se pudo."); b.disabled = false; }
+});
+
+/* ---------- canjes por curva ---------- */
+async function cargarCanjes(){
+  const out = $("#canje-out");
+  if(!out) return;
+  out.innerHTML = '<div class="nota">Calculando…</div>';
+  try{
+    const d = await (await fetch(base + "api/canjes")).json();
+    if(d.error){
+      out.innerHTML = '<div class="msg error">' + esc(d.error) + '</div>';
+      return;
+    }
+    const c = d.canjes || [];
+    if(!c.length){
+      out.innerHTML = '<div class="vacio">Ningún canje supera ' +
+        num(d.minimo, 3) + '% neto. Es lo normal la mayoría de los días.</div>';
+      return;
+    }
+    out.innerHTML = c.map(f =>
+      '<div class="pos"><div class="pos-top">' +
+      '<span>' + esc(f.desde) + ' → ' + esc(f.hacia) + '</span>' +
+      '<span style="color:var(--sage)">+' + num(f.ganancia_pct, 3) + '%</span>' +
+      '</div><div class="pos-pie" style="display:block">' +
+      esc(f.desde) + ': z ' + (f.z_desde == null ? "—" : num(f.z_desde, 3)) +
+        ' · MD ' + num(f.md_desde, 3) +
+        ' · recorrido ' + num(f.recorrido_desde, 3) + '%' +
+      '</div><div class="pos-pie" style="display:block">' +
+      esc(f.hacia) + ': z ' + num(f.z_hacia, 3) +
+        ' · MD ' + num(f.md_hacia, 3) +
+        ' · recorrido ' + num(f.recorrido_hacia, 3) + '%' +
+      '</div><div class="pos-pie" style="display:block">' +
+      esc(f.familia) + ' · costo de ida y vuelta ' + num(f.costo_pct, 3) + '%' +
+      '</div></div>').join("");
+  }catch(e){
+    out.innerHTML = '<div class="msg error">No se pudo calcular.</div>';
+  }
+}
+
+$("#canje-caja").addEventListener("toggle", e => {
+  /* Recalcula toda la curva, asi que solo cuando se abre. */
+  if(e.target.open) cargarCanjes();
+});
+
 /* ---------- estrategias ---------- */
 let estrDatos = [], estrFamilias = [], estrPatrones = [], estrGrupos = [];
 let estrCerradas = false, estrEditando = null;
+let estrMedidas = [];
 
 const NOM_PATRON = {dolar:"Dólar", cer:"CER", badlar:"BADLAR",
                     tc_entrada:"Tipo de cambio de entrada"};
@@ -3507,11 +3626,33 @@ function pintarEstrategias(){
     if(e.objetivo) meta += " · objetivo " + num(e.objetivo, 6);
     if(e.stop) meta += " · stop " + num(e.stop, 6);
     if(e.revisar) meta += " · revisar " + esc(e.revisar);
+    /* La medicion viene del tablero de valuacion: la estrategia no
+       guarda cantidades ni valores, los toma de la tenencia. */
+    const m = estrMedidas.find(x => x.id === e.id);
+    let linea = "";
+    if(m && m.contra_patron_pct != null){
+      const t = m.contra_patron_pct >= 0 ? "var(--sage)" : "var(--coral)";
+      linea = '<div class="pos-pie" style="display:block;color:' + t + '">' +
+        (m.contra_patron_pct >= 0 ? "+" : "") +
+        num(m.contra_patron_pct, 3) + '% contra ' +
+        esc(NOM_PATRON[m.patron] || m.patron) +
+        '<span class="tocar">rindió ' + num(m.rendimiento_pct, 3) +
+        '% · el patrón ' + num(m.patron_pct, 3) + '%</span></div>';
+    } else if(m && m.nota){
+      linea = '<div class="pos-pie" style="display:block;color:var(--muted)">' +
+        esc(m.nota) + '</div>';
+    } else if(m && m.rendimiento_pct != null){
+      const t = m.rendimiento_pct >= 0 ? "var(--sage)" : "var(--coral)";
+      linea = '<div class="pos-pie" style="display:block;color:' + t + '">' +
+        (m.rendimiento_pct >= 0 ? "+" : "") + num(m.rendimiento_pct, 3) +
+        '%</div>';
+    }
     return '<div class="pos"><div class="pos-top">' +
       '<span>' + esc(e.nombre) + (e.cierre
         ? ' <span class="tocar">cerrada ' + esc(e.cierre) + '</span>' : "") +
       '</span></div>' +
       '<div class="pos-pie" style="display:block">' + esc(meta) + '</div>' +
+      linea +
       (esp ? '<div class="pos-pie" style="display:block">' + esp + '</div>'
            : '<div class="pos-pie" style="display:block;color:var(--amber)">' +
              'Sin especies asignadas</div>') +
@@ -3594,12 +3735,16 @@ const plata = v => v == null ? "—" :
 
 /* El total arranca tapado: la pestaña se abre en cualquier lado y no
    hace falta que el saldo quede a la vista de quien pase al lado. */
-let cartTotal = false, cartTodas = false, cartUlt = null;
+let cartTotal = false, cartUlt = null;
 
 function pintarCartera(d){
   const out = $("#cart-out");
   if(!out) return;
   cartUlt = d;
+  /* La medicion de cada estrategia viaja con la valuacion. */
+  estrMedidas = d.estrategias || [];
+  if(estrDatos.length) pintarEstrategias();
+  if(tenDatos.length) tenPintar();
   if(!d.total){
     out.innerHTML = '<div class="vacio">Sin valuar: no hay precios en ' +
       'caché todavía. Se llena en el próximo ciclo.</div>';
@@ -3645,44 +3790,21 @@ function pintarCartera(d){
       '%</b></div>').join("") + '</div>';
   }
 
-  const todas = d.posiciones || [];
-  const ver = cartTodas ? todas : todas.slice(0, 3);
-  h += '<div style="margin-top:14px">' + ver.map(p => {
-    const t = p.resultado_pct == null ? "var(--muted)"
-            : (p.resultado_pct >= 0 ? "var(--sage)" : "var(--coral)");
-    return '<div class="pos"><div class="pos-top">' +
-      '<span>' + esc(p.simbolo) +
-        (p.ajuste_supuesto ? ' <span class="tocar">aj?</span>' : "") +
-      '</span><span>' + (cartTotal ? plata(p.valor)
-        : (p.peso_pct || 0).toFixed(1) + "%") + '</span></div>' +
-      '<div class="pos-bar"><span style="width:' +
-        (p.peso_pct || 0).toFixed(2) + '%;background:' +
-        colorExpo(p.exposicion) + '"></span></div>' +
-      '<div class="pos-pie"><span>' + esc(p.broker) + " · " +
-        esc(p.exposicion) + '</span><span style="color:' + t + '">' +
-        (p.resultado_pct == null ? "sin PPC"
-          : (p.resultado_pct >= 0 ? "+" : "") + p.resultado_pct.toFixed(1) +
-            "%") +
-      '</span></div></div>';
-  }).join("") + '</div>';
-  if(todas.length > 3)
-    h += '<button id="cart-mas" style="margin-top:10px">' +
-      (cartTodas ? "Ver solo las tres primeras"
-                 : "Ver las " + todas.length + " posiciones") + '</button>';
-
   if((d.sin_precio || []).length)
-    h += '<div class="aviso" style="margin-top:12px">Sin precio en caché: ' +
-      d.sin_precio.map(esc).join(", ") + '. No entran en el total.</div>';
+    h += '<div class="aviso" style="margin-top:10px">Sin precio en caché: ' +
+      d.sin_precio.map(esc).join(", ") + '. No entran en el total, pero ' +
+      'siguen en la lista.</div>';
   out.innerHTML = h;
 }
 
 /* Los dos botones se redibujan en cada pintada, asi que el listener va
    en el contenedor y no en cada boton. */
 $("#cart-out").addEventListener("click", e => {
-  if(e.target.id === "cart-ojo"){ cartTotal = !cartTotal; }
-  else if(e.target.id === "cart-mas"){ cartTodas = !cartTodas; }
-  else return;
+  if(e.target.id !== "cart-ojo") return;
+  cartTotal = !cartTotal;
+  /* Con el total tapado la lista muestra pesos en vez de montos. */
   if(cartUlt) pintarCartera(cartUlt);
+  tenPintar();
 });
 
 async function cargarCartera(){
@@ -3706,60 +3828,80 @@ const TIPOS_TEN = [["", "Todos"], ["moneda", "Efectivo"], ["bonos", "Bonos"],
   ["otros", "Otros"]];
 let tenDatos = [];
 let tenFiltro = {broker: "", tipo: "", familia: ""};
-let tenOrden = {col: "simbolo", asc: true};
+let tenOrden = {col: "valor", asc: false};
 let tenAbierta = "";      // broker|simbolo de la fila desplegada
+
+const ORDENES = [["valor","Valor"],["resultado","Resultado"],
+                 ["simbolo","Especie"],["estrategia","Estrategia"]];
+
+function ordChips(){
+  const c = $("#ten-orden");
+  if(!c) return;
+  c.innerHTML = ORDENES.map(o => '<button aria-pressed="' +
+    (tenOrden.col === o[0]) + '" data-ord="' + o[0] + '">' + esc(o[1]) +
+    (tenOrden.col === o[0] ? (tenOrden.asc ? " \u2191" : " \u2193") : "") +
+    '</button>').join("");
+}
 
 function tenPintar(){
   const out = $("#ten-out");
   if(!out) return;
+  /* La valuacion viene del mismo pedido que el tablero: la lista es una
+     sola y no dos vistas del mismo dato que se pueden desincronizar. */
+  const val = {};
+  ((cartUlt && cartUlt.posiciones) || []).forEach(p => {
+    val[p.broker + "|" + p.simbolo] = p;
+  });
   let filas = tenDatos.filter(t =>
     (!tenFiltro.broker || t.broker === tenFiltro.broker) &&
     (!tenFiltro.tipo || (t.tipo || "otros") === tenFiltro.tipo) &&
     (!tenFiltro.familia ||
       (tenFiltro.familia === "_sin" ? !t.estrategia_id
                                     : t.familia === tenFiltro.familia)));
-  const c = tenOrden.col, signo = tenOrden.asc ? 1 : -1;
+  const signo = tenOrden.asc ? 1 : -1;
+  const clave = t => {
+    const p = val[t.broker + "|" + t.simbolo] || {};
+    if(tenOrden.col === "valor") return p.valor == null ? -1 : p.valor;
+    if(tenOrden.col === "resultado")
+      return p.resultado_pct == null ? -9e9 : p.resultado_pct;
+    if(tenOrden.col === "estrategia") return t.estrategia || "\uffff";
+    return t.simbolo;
+  };
   filas = filas.slice().sort((a, b) => {
-    const x = a[c], y = b[c];
+    const x = clave(a), y = clave(b);
     if(typeof x === "number" && typeof y === "number") return (x - y) * signo;
-    return String(x ?? "").localeCompare(String(y ?? "")) * signo;
+    return String(x).localeCompare(String(y)) * signo;
   });
   if(!filas.length){
     out.innerHTML = '<div class="vacio">Nada con esos filtros.</div>';
     return;
   }
-  const flecha = k => tenOrden.col === k ? (tenOrden.asc ? " ↑" : " ↓") : "";
-  out.innerHTML =
-    '<table class="tabla"><thead><tr>' +
-      '<th onclick="tenOrdenar(\'simbolo\')">Especie' + flecha("simbolo") + '</th>' +
-      '<th onclick="tenOrdenar(\'tipo\')">Tipo' + flecha("tipo") + '</th>' +
-      '<th onclick="tenOrdenar(\'broker\')">Broker' + flecha("broker") + '</th>' +
-      '<th class="num" onclick="tenOrdenar(\'cantidad\')">Cantidad' +
-        flecha("cantidad") + '</th>' +
-      '<th class="num" onclick="tenOrdenar(\'ppc_ajustado\')">PPC' +
-        flecha("ppc_ajustado") + '</th>' +
-      '<th onclick="tenOrdenar(\'fecha_alta\')">Alta' +
-        flecha("fecha_alta") + '</th>' +
-      '<th onclick="tenOrdenar(\'estrategia\')">Estrategia' +
-        flecha("estrategia") + '</th></tr></thead><tbody>' +
-    filas.map(t =>
-      '<tr class="ten-fila" data-br="' + esc(t.broker) + '" data-sim="' +
-        esc(t.simbolo) + '"><td>' + esc(t.simbolo) +
-        (t.extranjero ? ' <span class="tocar">exterior</span>' : "") + '</td>' +
-      '<td style="font-size:11px;color:var(--muted)">' +
-        esc((TIPOS_TEN.find(x => x[0] === (t.tipo || "otros")) || ["", "?"])[1]) +
-        '</td>' +
-      '<td style="font-size:11px">' + esc(t.broker) + '</td>' +
-      '<td class="num">' + ent(t.cantidad) + '</td>' +
-      '<td class="num">' + tenPpc(t) + '</td>' +
-      '<td style="font-size:11px">' + tenAlta(t) + '</td>' +
-      '<td style="font-size:11px">' + (t.estrategia ? esc(t.estrategia)
-        : '<span style="color:var(--amber)">sin asignar</span>') +
-        '</td></tr>' +
-      tenEditor(t)).join("") +
-    '</tbody></table>' +
+  out.innerHTML = filas.map(t => {
+    const p = val[t.broker + "|" + t.simbolo] || {};
+    const tono = p.resultado_pct == null ? "var(--muted)"
+               : (p.resultado_pct >= 0 ? "var(--sage)" : "var(--coral)");
+    const der = p.valor == null ? '<span style="color:var(--muted)">sin precio</span>'
+      : (cartTotal ? plata(p.valor) : num(p.peso_pct || 0, 3) + "%");
+    return '<div class="pos ten-fila" data-br="' + esc(t.broker) +
+      '" data-sim="' + esc(t.simbolo) + '">' +
+      '<div class="pos-top"><span>' + esc(t.simbolo) +
+        (t.ajuste_supuesto ? ' <span class="tocar">aj?</span>' : "") +
+        (t.extranjero ? ' <span class="tocar">exterior</span>' : "") +
+      '</span><span>' + der + '</span></div>' +
+      '<div class="pos-bar"><span style="width:' +
+        num(p.peso_pct || 0, 4) + '%;background:' +
+        colorExpo(p.exposicion) + '"></span></div>' +
+      '<div class="pos-pie"><span>' +
+        (t.estrategia ? esc(t.estrategia)
+          : '<span style="color:var(--amber)">sin asignar</span>') +
+        ' · ' + esc(t.broker) +
+      '</span><span style="color:' + tono + '">' +
+        (p.resultado_pct == null ? "sin PPC"
+          : (p.resultado_pct >= 0 ? "+" : "") + num(p.resultado_pct, 3) + "%") +
+      '</span></div></div>' + tenEditor(t);
+  }).join("") +
     '<div class="nota">' + filas.length + ' de ' + tenDatos.length +
-      ' líneas.</div>';
+      ' posiciones.</div>';
 }
 
 /* Fila de edicion, oculta hasta que se toca la posicion. Sin ids: las
@@ -3776,8 +3918,8 @@ function tenEditor(t){
     '<option value="' + p + '"' + ((t.precision || "") === p ? " selected" : "") +
     '>' + (p ? {exacta:"Exacta", mes:"Solo el mes", antes:"Antes de"}[p]
              : "Sin precisar") + '</option>').join("");
-  return '<tr class="ten-edit" data-br="' + esc(t.broker) + '" data-sim="' +
-    esc(t.simbolo) + '"><td colspan="7" style="padding:10px 4px">' +
+  return '<div class="ten-edit" data-br="' + esc(t.broker) + '" data-sim="' +
+    esc(t.simbolo) + '">' +
     '<div class="form" style="margin-bottom:8px">' +
     '<label>Cantidad<input data-c="cantidad" type="number" step="any" value="' +
       t.cantidad + '"></label>' +
@@ -3798,18 +3940,19 @@ function tenEditor(t){
           esc(x.nombre) + ' · ' + esc(famNombre(x.familia)) + '</option>')
       ).join("") + '</select></label>' +
     '</div>' +
-    '<div class="nota" style="margin:0 0 8px">La base es 100 para títulos ' +
-      'de deuda y 1 para el resto. Si el PPC vino de una planilla que ' +
-      'cotiza por unidad, va en 1.</div>' +
+    '<div class="nota" style="margin:0 0 8px">Alta ' + tenAlta(t) +
+      ' · PPC ' + tenPpc(t) + '. La base es 100 para títulos de deuda y 1 ' +
+      'para el resto: si el PPC vino de una planilla que cotiza por ' +
+      'unidad, va en 1.</div>' +
     '<div class="acciones"><button class="primario" data-guardar>Guardar' +
       '</button><button data-borrar-ten>Borrar</button>' +
-      '<button data-cerrar>Cerrar</button></div></td></tr>';
+      '<button data-cerrar>Cerrar</button></div></div>';
 }
 
 function tenOrdenar(col){
   if(tenOrden.col === col) tenOrden.asc = !tenOrden.asc;
-  else { tenOrden.col = col; tenOrden.asc = true; }
-  tenPintar();
+  else { tenOrden.col = col; tenOrden.asc = col === "simbolo"; }
+  ordChips(); tenPintar();
 }
 
 /* El PPC ajustado por splits. Si el ajuste se dedujo sin fecha de compra
@@ -3930,11 +4073,13 @@ async function cargarTenencias(){
       return;
     }
     tenChips();
+    ordChips();
     tenPintar();
     histChips();
     cargarEventos();
     cargarCartera();
     cargarEstrategias();
+    cargarPropuestos();
     const r = d.en_rulo || {};
     out.insertAdjacentHTML("beforeend",
       '<div class="nota">El Rulo parte de <b>' +
@@ -3995,6 +4140,11 @@ $("#ten-out").addEventListener("click", async ev => {
     tenAbierta = ""; cargarTenencias(); cargarEstrategias();
   }catch(e){ alert("No se pudo guardar."); }
   finally{ b.disabled = false; }
+});
+
+$("#ten-orden").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-ord]");
+  if(b) tenOrdenar(b.dataset.ord);
 });
 
 $("#ten-fam").addEventListener("click", ev => {
