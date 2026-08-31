@@ -219,8 +219,8 @@ table.tabla tr.dolar td:first-child{color:var(--amber)}
   gap:10px;font-family:var(--mono);font-size:13px}
 .pos-bar{height:3px;background:var(--panel-2);margin-top:5px;border-radius:2px}
 .pos-bar span{display:block;height:100%;background:var(--muted);border-radius:2px}
-.ten-fila{cursor:pointer}
-.ten-fila:active{background:var(--panel-2)}
+.ten-fila,.estr-fila{cursor:pointer}
+.ten-fila:active,.estr-fila:active{background:var(--panel-2)}
 .ten-edit{border-bottom:1px solid var(--rule);padding:10px 0 12px;background:var(--panel)}
 .pos-pie{display:flex;justify-content:space-between;font-family:var(--mono);
   font-size:10px;color:var(--muted);margin-top:4px}
@@ -386,25 +386,19 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       <div id="c-out"></div>
     </details>
     <div id="panel-out" style="margin-top:18px"></div>
-    <div id="pos-out" hidden></div>
-    <button class="secundario" id="pos-nuevo" style="margin-top:14px">
-      + Nuevo par</button>
-    <details class="avanzado">
-      <summary>Respaldo</summary>
-      <p class="nota" style="margin-top:10px">Copiá este texto y guardalo
-        afuera. Trae los pares con sus niveles y todos los movimientos:
-        es lo que te permite recuperarlos después de una reinstalación.</p>
-      <button class="secundario" id="pos-exportar">Exportar</button>
-      <textarea id="pos-texto" style="width:100%;min-height:110px;
-        background:var(--panel);border:1px solid var(--rule);color:var(--bone);
-        font-family:var(--mono);font-size:10px;padding:8px;border-radius:3px;
-        margin-top:8px" placeholder="Pegá acá un respaldo para importarlo"></textarea>
-      <button class="secundario" id="pos-importar">Importar lo pegado</button>
-      <div id="pos-msg"></div>
-    </details>
-  </section>
+</section>
 
   <section id="v-bonos" hidden>
+    <details style="margin-top:12px" id="canje-caja">
+      <summary>Canjes convenientes</summary>
+      <div class="nota" style="margin-top:8px">Contra qué bono conviene
+        rotar cada uno de los que tenés, dentro de la misma familia y con
+        duration parecida. La ganancia es lo que se espera que recorra
+        cada punta hasta su residuo medio, neta de comisiones de ida y
+        vuelta.</div>
+      <div id="canje-out" style="margin-top:8px"></div>
+    </details>
+
     <div id="b-mep"></div>
     <div id="b-out"><div class="vacio">Cargando…</div></div>
   </section>
@@ -446,6 +440,12 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
     <div class="filtro-fila" style="margin:14px 0 10px">
       <span class="filtro-etq">Orden</span>
       <div class="periodos" id="ten-orden" style="margin:0"></div></div>
+    <div class="filtro-fila" style="margin-bottom:10px">
+      <span class="filtro-etq">Ver</span>
+      <div class="periodos" id="ten-modo" style="margin:0">
+        <button data-modo="broker" aria-pressed="true">Por broker</button>
+        <button data-modo="especie" aria-pressed="false">Agrupadas</button>
+      </div></div>
     <button class="primario" id="ten-traer" style="margin-bottom:12px">
       Traer tenencia de IOL</button>
     <div class="nota" style="margin:-6px 0 12px">Baja las cuentas de IOL
@@ -462,15 +462,6 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
         entra.</div>
       <div id="prop-out" style="margin-top:8px"></div>
     </details>
-    <details style="margin-top:12px" id="canje-caja">
-      <summary>Canjes convenientes</summary>
-      <div class="nota" style="margin-top:8px">Contra qué bono conviene
-        rotar cada uno de los que tenés, dentro de la misma familia y con
-        duration parecida. La ganancia es lo que se espera que recorra
-        cada punta hasta su residuo medio, neta de comisiones de ida y
-        vuelta.</div>
-      <div id="canje-out" style="margin-top:8px"></div>
-    </details>
     <details style="margin-top:12px" id="estr-caja">
       <summary>Estrategias</summary>
       <div class="nota" style="margin-top:8px">Por qué tenés cada cosa.
@@ -486,6 +477,28 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       </div>
       <div id="estr-form" hidden></div>
       <div id="estr-out"></div>
+    </details>
+    <details style="margin-top:12px">
+      <summary>Grupos de rotación</summary>
+      <div class="nota" style="margin-top:8px">Los tickers entre los que
+        rotás y la contabilidad por cuotapartes. Un grupo con estrategia
+        se ve adentro de ella; acá quedan los que todavía no tienen.</div>
+    <div id="pos-out" hidden></div>
+    <button class="secundario" id="pos-nuevo" style="margin-top:14px">
+      + Nuevo par</button>
+    <details class="avanzado">
+      <summary>Respaldo</summary>
+      <p class="nota" style="margin-top:10px">Copiá este texto y guardalo
+        afuera. Trae los pares con sus niveles y todos los movimientos:
+        es lo que te permite recuperarlos después de una reinstalación.</p>
+      <button class="secundario" id="pos-exportar">Exportar</button>
+      <textarea id="pos-texto" style="width:100%;min-height:110px;
+        background:var(--panel);border:1px solid var(--rule);color:var(--bone);
+        font-family:var(--mono);font-size:10px;padding:8px;border-radius:3px;
+        margin-top:8px" placeholder="Pegá acá un respaldo para importarlo"></textarea>
+      <button class="secundario" id="pos-importar">Importar lo pegado</button>
+      <div id="pos-msg"></div>
+    </details>
     </details>
     <h3 style="margin:22px 0 6px">Próximos cobros</h3>
     <div class="periodos" id="cob-rango" style="margin-bottom:8px">
@@ -817,7 +830,7 @@ document.querySelectorAll("nav button").forEach(b => {
     ["panel","bonos","rulo","opc","plazos","pos","alertas","reg","expl"]
       .forEach(v =>
       $("#v-"+v).hidden = (v !== vista));
-    if(vista === "panel") cargarPosicion();
+    if(vista === "pos") cargarPosicion();
     if(vista === "bonos") cargarBonos();
     if(vista === "rulo") cargarCircuitos();
     if(vista === "opc") cargarOpciones();
@@ -1142,7 +1155,7 @@ $("#o-guardar").addEventListener("click", async () => {
     if(!r.ok){ $("#o-msg").innerHTML = '<div class="msg error">' +
       esc(d.error || "No se pudo guardar.") + '</div>'; return; }
     $("#dlg-op").close();
-    if(vista === "panel") cargarPosicion();
+    if(vista === "pos") cargarPosicion();
     if(vista === "bonos") cargarBonos();
     if(vista === "rulo") cargarCircuitos();
     if(vista === "opc") cargarOpciones();
@@ -1494,17 +1507,24 @@ async function cargarPosicion(){
   }catch(e){
     cont.innerHTML = '<div class="msg error">No se pudo cargar.</div>'; return;
   }
+  cont.hidden = false;
   if(!grupos.length){
     cont.innerHTML = '<div class="vacio">Todavía no hay grupos. ' +
       'Creá uno con los tickers entre los que rotás.</div>';
     return;
   }
-  try{
-    cont.innerHTML = grupos.map(tarjetaGrupo).join("");
-  }catch(err){
-    cont.innerHTML = '<div class="msg error">No se pudo dibujar: ' +
-      esc(err.message) + '</div>';
-    return;
+  /* El reparto entre "suelto" y "dentro de su estrategia" lo decide
+     pintarEstrategias, que es la que sabe cuales tienen una. */
+  if(estrDatos.length){
+    pintarEstrategias();
+  } else {
+    try{
+      cont.innerHTML = grupos.map(tarjetaGrupo).join("");
+    }catch(err){
+      cont.innerHTML = '<div class="msg error">No se pudo dibujar: ' +
+        esc(err.message) + '</div>';
+      return;
+    }
   }
   Object.keys(movsAbiertos).forEach(id => {
     if(movsAbiertos[id]) verMovimientos(parseInt(id), true);
@@ -1846,7 +1866,7 @@ $("#rehacer-curva").addEventListener("click", async e => {
       : "Desvíos recalculados.\n\n" + d.puntos + " puntos nuevos\n" +
         "Total: " + d.total + " de " + d.especies + " especies\n" +
         (d.desde ? d.desde + " a " + d.hasta : ""));
-    if(vista === "panel") cargarPosicion();
+    if(vista === "pos") cargarPosicion();
     if(vista === "bonos") cargarBonos();
   }catch(err){ alert("No se pudo recalcular."); }
 });
@@ -1897,7 +1917,7 @@ $("#reintentar-precio").addEventListener("click", async e => {
     alert(d.reintentadas
       ? "Se vuelven a pedir " + d.reintentadas + " especies."
       : "No había ninguna apartada.");
-    if(vista === "panel") cargarPosicion();
+    if(vista === "pos") cargarPosicion();
     if(vista === "bonos") cargarBonos();
   }catch(err){ alert("No se pudo."); }
 });
@@ -3541,6 +3561,8 @@ $("#prop-out").addEventListener("click", async ev => {
 });
 
 /* ---------- canjes por curva ---------- */
+let canjesCache = [];
+
 async function cargarCanjes(){
   const out = $("#canje-out");
   if(!out) return;
@@ -3552,6 +3574,8 @@ async function cargarCanjes(){
       return;
     }
     const c = d.canjes || [];
+    canjesCache = c;
+    if(estrDatos.length) pintarEstrategias();
     if(!c.length){
       out.innerHTML = '<div class="vacio">Ningún canje supera ' +
         num(d.minimo, 3) + '% neto. Es lo normal la mayoría de los días.</div>';
@@ -3586,6 +3610,7 @@ $("#canje-caja").addEventListener("toggle", e => {
 let estrDatos = [], estrFamilias = [], estrPatrones = [], estrGrupos = [];
 let estrCerradas = false, estrEditando = null;
 let estrMedidas = [];
+let estrAbierta = null;
 
 const NOM_PATRON = {dolar:"Dólar", cer:"CER", badlar:"BADLAR",
                     tc_entrada:"Tipo de cambio de entrada"};
@@ -3599,6 +3624,7 @@ async function cargarEstrategias(){
     estrFamilias = d.familias || [];
     estrPatrones = d.patrones || [];
     estrGrupos = d.grupos || [];
+    if(!grupos || !grupos.length) await cargarPosicion();
     pintarEstrategias();
     famChips();
     /* El editor de tenencia arma su selector con esta lista; si estaba
@@ -3647,23 +3673,89 @@ function pintarEstrategias(){
         (m.rendimiento_pct >= 0 ? "+" : "") + num(m.rendimiento_pct, 3) +
         '%</div>';
     }
-    return '<div class="pos"><div class="pos-top">' +
+    return '<div class="pos estr-fila" data-estr="' + e.id + '">' +
+      '<div class="pos-top">' +
       '<span>' + esc(e.nombre) + (e.cierre
         ? ' <span class="tocar">cerrada ' + esc(e.cierre) + '</span>' : "") +
-      '</span></div>' +
+      '</span><span style="color:var(--muted)">' +
+        (m && m.valor ? (cartTotal ? plata(m.valor) : (e.especies || []).length +
+          (((e.especies || []).length === 1) ? " especie" : " especies"))
+         : "") + '</span></div>' +
       '<div class="pos-pie" style="display:block">' + esc(meta) + '</div>' +
       linea +
       (esp ? '<div class="pos-pie" style="display:block">' + esp + '</div>'
            : '<div class="pos-pie" style="display:block;color:var(--amber)">' +
              'Sin especies asignadas</div>') +
-      (e.tesis ? '<div class="nota" style="margin:6px 0 0">' + esc(e.tesis) +
-                 '</div>' : "") +
-      '<div class="acciones" style="margin-top:6px">' +
-      '<button data-editar-estr="' + e.id + '">Editar</button>' +
-      '<button data-cerrar-estr="' + e.id + '">' +
-        (e.cierre ? "Reabrir" : "Cerrar") + '</button>' +
-      '<button data-borrar-estr="' + e.id + '">Borrar</button></div></div>';
+      '</div>' + detalleEstrategia(e, m);
   }).join("");
+  /* Los grupos que ya tienen estrategia se ven adentro de ella. */
+  const conEstr = new Set(estrDatos.map(e => e.grupo_id).filter(Boolean));
+  const sueltos = (grupos || []).filter(g => !conEstr.has(g.id));
+  const cont = $("#pos-out");
+  if(cont && grupos && grupos.length){
+    cont.hidden = false;
+    cont.innerHTML = sueltos.length
+      ? sueltos.map(tarjetaGrupo).join("")
+      : '<div class="vacio">Todos los grupos tienen estrategia.</div>';
+  }
+}
+
+/* Todo lo de una estrategia junto: como va, contra que se mide, que
+   especies la componen, la contabilidad de su grupo y si hay un canje
+   esperando en alguna de sus puntas. */
+function detalleEstrategia(e, m){
+  if(estrAbierta !== e.id) return "";
+  let h = '<div class="ten-edit" data-estr="' + e.id + '">';
+  if(e.tesis)
+    h += '<div class="nota" style="margin:0 0 10px">' + esc(e.tesis) +
+      (e.origen ? ' <span class="tocar">' + esc(e.origen) + '</span>' : "") +
+      '</div>';
+
+  if(m && m.rendimiento_pct != null){
+    h += '<div class="pos-pie" style="display:block;margin-bottom:8px">' +
+      'Rindió ' + num(m.rendimiento_pct, 3) + '%' +
+      (m.patron_pct != null ? ' · el patrón ' + num(m.patron_pct, 3) + '%'
+                            : "") +
+      (cartTotal && m.costo ? ' · costo ' + plata(m.costo) : "") + '</div>';
+  }
+
+  const posE = ((cartUlt && cartUlt.posiciones) || [])
+    .filter(p => p.estrategia_id === e.id);
+  if(posE.length){
+    h += posE.map(p => {
+      const t = p.resultado_pct == null ? "var(--muted)"
+              : (p.resultado_pct >= 0 ? "var(--sage)" : "var(--coral)");
+      return '<div class="pos-pie"><span>' + esc(p.simbolo) + ' · ' +
+        esc(p.broker) + '</span><span style="color:' + t + '">' +
+        (cartTotal && p.valor != null ? plata(p.valor) + "  " : "") +
+        (p.resultado_pct == null ? "sin PPC"
+          : (p.resultado_pct >= 0 ? "+" : "") + num(p.resultado_pct, 3) + "%") +
+        '</span></div>';
+    }).join("");
+  }
+
+  const hay = canjesCache.filter(c =>
+    posE.some(p => p.simbolo === c.desde));
+  if(hay.length)
+    h += '<div class="aviso" style="margin-top:10px">' + hay.map(c =>
+      esc(c.desde) + " → " + esc(c.hacia) + ": +" + num(c.ganancia_pct, 3) +
+      "%").join(" · ") + '. El detalle está en Bonos.</div>';
+
+  const g = (grupos || []).find(x => x.id === e.grupo_id);
+  if(g){
+    try{
+      h += '<div style="margin-top:10px">' + tarjetaGrupo(g) + '</div>';
+    }catch(err){
+      h += '<div class="msg error">No se pudo dibujar el grupo.</div>';
+    }
+  }
+
+  h += '<div class="acciones" style="margin-top:10px">' +
+    '<button data-editar-estr="' + e.id + '">Editar</button>' +
+    '<button data-cerrar-estr="' + e.id + '">' +
+      (e.cierre ? "Reabrir" : "Cerrar") + '</button>' +
+    '<button data-borrar-estr="' + e.id + '">Borrar</button></div></div>';
+  return h;
 }
 
 function formEstrategia(e){
@@ -3830,6 +3922,7 @@ let tenDatos = [];
 let tenFiltro = {broker: "", tipo: "", familia: ""};
 let tenOrden = {col: "valor", asc: false};
 let tenAbierta = "";      // broker|simbolo de la fila desplegada
+let tenModo = "broker";   // broker | especie
 
 const ORDENES = [["valor","Valor"],["resultado","Resultado"],
                  ["simbolo","Especie"],["estrategia","Estrategia"]];
@@ -3876,20 +3969,30 @@ function tenPintar(){
     out.innerHTML = '<div class="vacio">Nada con esos filtros.</div>';
     return;
   }
+  /* Agrupadas: la misma especie en varios brokers es una sola apuesta,
+     y repartida en tres lineas no se ve cuanto pesa de verdad. */
+  if(tenModo === "especie"){
+    filas = agrupar(filas, val);
+    if(tenOrden.col === "valor")
+      filas.sort((a, b) => ((a._suma.valor || 0) - (b._suma.valor || 0)) * signo);
+  }
+
   out.innerHTML = filas.map(t => {
-    const p = val[t.broker + "|" + t.simbolo] || {};
+    const p = t._suma || val[t.broker + "|" + t.simbolo] || {};
     const tono = p.resultado_pct == null ? "var(--muted)"
                : (p.resultado_pct >= 0 ? "var(--sage)" : "var(--coral)");
     const der = p.valor == null ? '<span style="color:var(--muted)">sin precio</span>'
       : (cartTotal ? plata(p.valor) : num(p.peso_pct || 0, 3) + "%");
-    return '<div class="pos ten-fila" data-br="' + esc(t.broker) +
-      '" data-sim="' + esc(t.simbolo) + '">' +
+    return '<div class="pos' + (t._suma ? "" : " ten-fila") +
+      '" data-br="' + esc(t.broker) + '" data-sim="' + esc(t.simbolo) + '">' +
       '<div class="pos-top"><span>' + esc(t.simbolo) +
         (t.ajuste_supuesto ? ' <span class="tocar">aj?</span>' : "") +
         (t.extranjero ? ' <span class="tocar">exterior</span>' : "") +
       '</span><span>' + der + '</span></div>' +
+      /* toFixed y no num(): es-AR formatea con coma y "width:34,4%"
+         es CSS invalido, asi que la barra quedaba al ancho por defecto. */
       '<div class="pos-bar"><span style="width:' +
-        num(p.peso_pct || 0, 4) + '%;background:' +
+        (p.peso_pct || 0).toFixed(2) + '%;background:' +
         colorExpo(p.exposicion) + '"></span></div>' +
       '<div class="pos-pie"><span>' +
         (t.estrategia ? esc(t.estrategia)
@@ -3898,10 +4001,44 @@ function tenPintar(){
       '</span><span style="color:' + tono + '">' +
         (p.resultado_pct == null ? "sin PPC"
           : (p.resultado_pct >= 0 ? "+" : "") + num(p.resultado_pct, 3) + "%") +
-      '</span></div></div>' + tenEditor(t);
+      '</span></div></div>' + (t._suma ? "" : tenEditor(t));
   }).join("") +
-    '<div class="nota">' + filas.length + ' de ' + tenDatos.length +
-      ' posiciones.</div>';
+    '<div class="nota">' + filas.length +
+      (tenModo === "especie" ? ' especies de ' + tenDatos.length +
+        ' posiciones. Para editar una, volvé a "Por broker".'
+       : ' de ' + tenDatos.length + ' posiciones.') + '</div>';
+}
+
+function agrupar(filas, val){
+  const m = new Map();
+  filas.forEach(t => {
+    const p = val[t.broker + "|" + t.simbolo] || {};
+    let g = m.get(t.simbolo);
+    if(!g){
+      g = {simbolo: t.simbolo, brokers: [], estrategias: new Set(),
+           extranjero: t.extranjero, ajuste_supuesto: t.ajuste_supuesto,
+           _suma: {valor: null, costo: 0, peso_pct: 0,
+                   exposicion: p.exposicion}};
+      m.set(t.simbolo, g);
+    }
+    g.brokers.push(t.broker);
+    if(t.estrategia) g.estrategias.add(t.estrategia);
+    if(p.valor != null) g._suma.valor = (g._suma.valor || 0) + p.valor;
+    if(p.costo) g._suma.costo += p.costo;
+    g._suma.peso_pct += (p.peso_pct || 0);
+  });
+  return [...m.values()].map(g => {
+    const s = g._suma;
+    /* El resultado del conjunto, no el promedio de los porcentajes: una
+       posicion chica con +80% no puede pesar igual que una grande. */
+    s.resultado_pct = (s.costo && s.valor != null)
+      ? (s.valor / s.costo - 1) * 100 : null;
+    g.broker = g.brokers.length === 1 ? g.brokers[0]
+      : g.brokers.length + " brokers";
+    g.estrategia = g.estrategias.size === 1 ? [...g.estrategias][0]
+      : (g.estrategias.size ? g.estrategias.size + " estrategias" : null);
+    return g;
+  });
 }
 
 /* Fila de edicion, oculta hasta que se toca la posicion. Sin ids: las
@@ -4142,6 +4279,16 @@ $("#ten-out").addEventListener("click", async ev => {
   finally{ b.disabled = false; }
 });
 
+$("#ten-modo").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-modo]");
+  if(!b) return;
+  tenModo = b.dataset.modo;
+  tenAbierta = "";
+  [...ev.currentTarget.children].forEach(x =>
+    x.setAttribute("aria-pressed", x.dataset.modo === tenModo));
+  tenPintar();
+});
+
 $("#ten-orden").addEventListener("click", ev => {
   const b = ev.target.closest("[data-ord]");
   if(b) tenOrdenar(b.dataset.ord);
@@ -4206,6 +4353,15 @@ $("#estr-form").addEventListener("click", async ev => {
 });
 
 $("#estr-out").addEventListener("click", async ev => {
+  const fila = ev.target.closest(".estr-fila");
+  if(fila){
+    const id = parseInt(fila.dataset.estr, 10);
+    estrAbierta = estrAbierta === id ? null : id;
+    pintarEstrategias();
+    /* Los canjes se calculan aparte y pueden no estar todavia. */
+    if(estrAbierta && !canjesCache.length) cargarCanjes();
+    return;
+  }
   const ed = ev.target.closest("[data-editar-estr]");
   if(ed){
     estrEditando = parseInt(ed.dataset.editarEstr, 10);

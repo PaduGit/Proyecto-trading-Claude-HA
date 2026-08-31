@@ -1,5 +1,34 @@
 # Registro de cambios
 
+## 0.27.0
+
+**La barra de peso salia siempre al 100%.** El ancho se armaba con
+`num()`, que formatea en es-AR y devuelve coma decimal: `width:34,4%` no
+es CSS valido y el navegador lo descarta. El tablero viejo usaba
+`toFixed`, que da punto, y se colo al reescribir la lista.
+
+**Agrupar por especie.** Un chip nuevo junta la misma especie de varios
+brokers en una linea: repartida en tres no se ve cuanto pesa de verdad.
+Suma valor, costo y peso, y el resultado se calcula sobre los totales y
+no como promedio de porcentajes, para que una posicion chica con +80% no
+pese igual que una grande. En ese modo no se abre el editor: no hay una
+sola fila que editar.
+
+**Cada pestania hace una cosa.** Tenencias es el seguimiento de lo que se
+tiene y por que; Ratios, Bonos, Rulo y Pases son para buscar
+oportunidades. Los canjes pasan a Bonos, que es donde estan la curva y
+los desvios.
+
+**El bloque de grupos sale de Ratios.** La contabilidad por cuotapartes
+es seguimiento, no analisis. Un grupo con estrategia se ve adentro de
+ella; los que todavia no tienen quedan en un desplegable aparte, con el
+boton de crear y el respaldo.
+
+**La estrategia se expande con todo junto**: tesis y origen, cuanto
+rindio y cuanto rindio su patron, cada especie con su broker y su
+resultado, el aviso de que hay un canje esperando en alguna de sus
+puntas, y la tarjeta del grupo con sus movimientos.
+
 ## 0.26.1
 
 **La pestania Posicion no cargaba.** Al agregar los filtros quedo
