@@ -927,45 +927,17 @@ function tarjeta(p){
       (p.z != null ? '<span>z <b>' + (p.z>=0?"+":"") + p.z.toFixed(2) + '</b></span>'
                    : '<span>n <b>' + (est.n||0) + '</b></span>') +
     '</div>' +
-    posicionDe(p) +
+    /* Sin tenencia ni movimientos: el panel es para ver la oportunidad.
+       Lo que se tiene y como viene rindiendo esta en la estrategia. */
     '<div class="acciones">' +
       '<button onclick="alternar(\'' + esc(p.alias) + '\')">Gráfico</button>' +
       '<button class="op" onclick="abrirOp(\'' + esc(p.alias) + '\')">Operé</button>' +
-      (p.posicion
-        ? '<button onclick="verMovimientos(' + p.posicion.id + ')">Movimientos</button>'
-        : "") +
       '<button onclick="editarPar(' + (p.posicion ? p.posicion.id : 0) +
         ')">Editar</button>' +
     '</div>' +
-    /* el detalle de movimientos se dibuja acá: antes vivía en la tarjeta
-       de grupo, que dejó de existir al unificar */
-    (p.posicion ? '<div class="movs" id="mv-' + p.posicion.id +
-      '" hidden></div>' : "") +
     '<div class="graf" id="g-' + css(p.alias) + '" hidden></div></div>';
 }
 
-
-/* La posicion vive en la misma tarjeta que el ratio: es la misma
-   estrategia mirada de dos maneras. */
-function posicionDe(p){
-  const s = p.posicion;
-  if(!s) return "";
-  if(s.faltan_precios && s.faltan_precios.length)
-    return '<div class="nota">Sin precio de ' +
-      esc(s.faltan_precios.join(", ")) + ': no se puede medir la rotación.</div>';
-  const tenencia = (s.tenencia || []).map(t =>
-    esc(t.ticker) + " " + ent(t.cantidad)).join(" · ");
-  if(!tenencia) return '<div class="nota">Sin posición cargada.</div>';
-  const r = s.rendimiento_pct;
-  const col = r == null ? "var(--muted)"
-    : r > 0 ? "var(--sage)" : r < 0 ? "var(--coral)" : "var(--bone)";
-  return '<div class="datos" style="border-top:1px solid var(--rule);' +
-    'padding-top:6px;margin-top:2px">' +
-    '<span>en <b>' + tenencia + '</b></span>' +
-    (r != null ? '<span>rotación <b style="color:' + col + '">' +
-      (r >= 0 ? "+" : "") + r.toFixed(2) + '%</b></span>' : "") +
-    '</div>';
-}
 
 function banda(p){
   const sop = p.soporte||0, res = p.resistencia||0;
@@ -1507,25 +1479,8 @@ async function cargarPosicion(){
   }catch(e){
     cont.innerHTML = '<div class="msg error">No se pudo cargar.</div>'; return;
   }
-  cont.hidden = false;
-  if(!grupos.length){
-    cont.innerHTML = '<div class="vacio">Todavía no hay grupos. ' +
-      'Creá uno con los tickers entre los que rotás.</div>';
-    return;
-  }
-  /* El reparto entre "suelto" y "dentro de su estrategia" lo decide
-     pintarEstrategias, que es la que sabe cuales tienen una. */
-  if(estrDatos.length){
-    pintarEstrategias();
-  } else {
-    try{
-      cont.innerHTML = grupos.map(tarjetaGrupo).join("");
-    }catch(err){
-      cont.innerHTML = '<div class="msg error">No se pudo dibujar: ' +
-        esc(err.message) + '</div>';
-      return;
-    }
-  }
+  pintarSueltos();
+  if(estrDatos.length) pintarEstrategias();
   Object.keys(movsAbiertos).forEach(id => {
     if(movsAbiertos[id]) verMovimientos(parseInt(id), true);
   });
@@ -1548,7 +1503,8 @@ function tarjetaGrupo(g){
         esc(g.base) + '</span></div>' +
         (r == null
           ? '<div style="font-family:var(--mono);font-size:12px;color:var(--muted)">' +
-            'Cargá un aporte con tu tenencia inicial para empezar a medir.</div>'
+            'Sin punto de partida no hay contra qué medir la rotación. ' +
+            '<button data-sembrar="' + g.id + '">Usar la tenencia actual</button></div>'
           : '<div style="font-family:var(--mono);font-size:12px;color:' + color + '">' +
             (r >= 0 ? "+" : "") + r.toFixed(2) + '% · ' +
             (g.ganancia_nominal >= 0 ? "+" : "") + ent(g.ganancia_nominal) +
@@ -3688,15 +3644,33 @@ function pintarEstrategias(){
              'Sin especies asignadas</div>') +
       '</div>' + detalleEstrategia(e, m);
   }).join("");
-  /* Los grupos que ya tienen estrategia se ven adentro de ella. */
-  const conEstr = new Set(estrDatos.map(e => e.grupo_id).filter(Boolean));
-  const sueltos = (grupos || []).filter(g => !conEstr.has(g.id));
+  pintarSueltos();
+}
+
+/* Los grupos que ya tienen estrategia se ven adentro de ella; el
+   desplegable queda para los que no. Se dibuja siempre, aunque no haya
+   ninguno: un panel en blanco parece un error. */
+function pintarSueltos(){
   const cont = $("#pos-out");
-  if(cont && grupos && grupos.length){
-    cont.hidden = false;
-    cont.innerHTML = sueltos.length
-      ? sueltos.map(tarjetaGrupo).join("")
-      : '<div class="vacio">Todos los grupos tienen estrategia.</div>';
+  if(!cont) return;
+  cont.hidden = false;
+  if(!grupos || !grupos.length){
+    cont.innerHTML = '<div class="vacio">Todavía no hay grupos. ' +
+      'Creá uno con los tickers entre los que rotás.</div>';
+    return;
+  }
+  const conEstr = new Set(estrDatos.map(e => e.grupo_id).filter(Boolean));
+  const sueltos = grupos.filter(g => !conEstr.has(g.id));
+  if(!sueltos.length){
+    cont.innerHTML = '<div class="vacio">Los ' + grupos.length +
+      ' grupos ya tienen estrategia: se ven adentro de cada una.</div>';
+    return;
+  }
+  try{
+    cont.innerHTML = sueltos.map(tarjetaGrupo).join("");
+  }catch(err){
+    cont.innerHTML = '<div class="msg error">No se pudo dibujar: ' +
+      esc(err.message) + '</div>';
   }
 }
 
@@ -4033,8 +4007,9 @@ function agrupar(filas, val){
        posicion chica con +80% no puede pesar igual que una grande. */
     s.resultado_pct = (s.costo && s.valor != null)
       ? (s.valor / s.costo - 1) * 100 : null;
-    g.broker = g.brokers.length === 1 ? g.brokers[0]
-      : g.brokers.length + " brokers";
+    /* Los nombres y no la cuenta: saber que esta en Veta y en IOL-SOL
+       es justamente el dato que se pierde al agrupar. */
+    g.broker = g.brokers.join(" · ");
     g.estrategia = g.estrategias.size === 1 ? [...g.estrategias][0]
       : (g.estrategias.size ? g.estrategias.size + " estrategias" : null);
     return g;
@@ -4352,7 +4327,29 @@ $("#estr-form").addEventListener("click", async ev => {
   finally{ b.disabled = false; }
 });
 
+async function sembrarGrupo(gid, boton){
+  boton.disabled = true;
+  try{
+    const r = await (await fetch(base + "api/grupos/" + gid + "/sembrar",
+      {method:"POST"})).json();
+    if(r.error){ alert(r.error); boton.disabled = false; return; }
+    alert("Cargado como aporte inicial:\n" + (r.sembrados || []).join("\n"));
+    await cargarPosicion();
+    cargarEstrategias();
+  }catch(e){ alert("No se pudo."); boton.disabled = false; }
+}
+
+$("#pos-out").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-sembrar]");
+  if(b) sembrarGrupo(parseInt(b.dataset.sembrar, 10), b);
+});
+
 $("#estr-out").addEventListener("click", async ev => {
+  const sem = ev.target.closest("[data-sembrar]");
+  if(sem){
+    sembrarGrupo(parseInt(sem.dataset.sembrar, 10), sem);
+    return;
+  }
   const fila = ev.target.closest(".estr-fila");
   if(fila){
     const id = parseInt(fila.dataset.estr, 10);

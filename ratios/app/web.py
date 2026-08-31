@@ -424,6 +424,38 @@ def crear_app(monitor):
                         "equivalente": r["equivalente"],
                         "rendimiento_pct": r["rendimiento_pct"]})
 
+    @app.post("/api/grupos/<int:gid>/sembrar")
+    def sembrar_grupo(gid):
+        """Carga como aporte inicial lo que ya figura en la tenencia.
+
+        La contabilidad por cuotapartes necesita un punto de partida. Sin
+        esto hay que tipear a mano lo que la app ya sabe, y las
+        estrategias creadas desde los grupos arrancan todas sin poder
+        medirse.
+        """
+        g = db.grupo_por_id(gid)
+        if not g:
+            return jsonify({"error": "grupo desconocido"}), 404
+        if db.movimientos_de(gid):
+            return jsonify({"error": "el grupo ya tiene movimientos"}), 400
+        # Se suman los brokers: el grupo mide nominales, no en donde estan.
+        por_ticker = {}
+        for t in db.tenencias():
+            sim = t["simbolo"]
+            if sim in (g.get("tickers") or []) and t.get("cantidad"):
+                por_ticker[sim] = por_ticker.get(sim, 0) + float(t["cantidad"])
+        if not por_ticker:
+            return jsonify({"error": "ninguno de los tickers del grupo "
+                                     "está en la tenencia"}), 400
+        hechos = []
+        for sim, cant in sorted(por_ticker.items()):
+            db.registrar_movimiento(
+                gid, tipo="aporte", ticker_a=sim, cant_a=cant,
+                nota="tenencia inicial")
+            hechos.append("%s %s" % (sim, cant))
+        return jsonify({"sembrados": hechos,
+                        "resumen": P.resumen(g, _precios_para(g))})
+
     @app.delete("/api/movimientos/<int:mid>")
     def eliminar_movimiento(mid):
         db.borrar_movimiento(mid)

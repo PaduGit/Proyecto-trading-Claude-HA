@@ -1,5 +1,27 @@
 # Registro de cambios
 
+## 0.27.1
+
+**Los brokers por nombre al agrupar.** Decia "2 brokers"; ahora dice
+"Veta · IOL-SOL", que es justamente el dato que se perdia al juntar las
+lineas.
+
+**Ratios pierde la tenencia y los movimientos.** El panel de pares
+seguia mostrando lo que se tiene, el rendimiento y el boton de
+movimientos. Queda el ratio, el grafico, "Opere" y la edicion del par:
+lo que se tiene y como viene rindiendo esta en la estrategia.
+
+**"Usar la tenencia actual".** Un grupo sin movimientos no tiene contra
+que medir la rotacion y pedia cargar el aporte inicial a mano, en todas
+las estrategias creadas desde los grupos. El boton lo siembra con lo que
+ya figura en la tenencia, sumando los brokers, porque el grupo mide
+nominales y no donde estan.
+
+**El desplegable de grupos no quedaba en blanco.** Se dibujaba solo si
+los grupos ya estaban cargados, asi que segun el orden en que llegaban
+las respuestas podia no mostrar nada. Ahora se dibuja siempre y dice
+cuando todos los grupos ya tienen estrategia.
+
 ## 0.27.0
 
 **La barra de peso salia siempre al 100%.** El ancho se armaba con
