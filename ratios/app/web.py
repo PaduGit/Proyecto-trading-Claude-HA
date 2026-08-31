@@ -1123,24 +1123,6 @@ def crear_app(monitor):
         fuera = monitor.brokers_extranjeros()
         for f in filas:
             f["extranjero"] = f["broker"].upper() in fuera
-        # Los mismos filtros que la tabla de abajo: al mirar solo un
-        # broker o un tipo, el total y los pesos tienen que ser de eso y
-        # no de la cartera entera.
-        # La medicion de estrategias va siempre sobre la cartera
-        # entera: filtrada por broker daria el rendimiento de media
-        # estrategia, que no significa nada.
-        completa = CA.valuar(filas, precios, mep, bonos_cfg)
-        br = (request.args.get("broker") or "").strip()
-        tp = (request.args.get("tipo") or "").strip().lower()
-        fa = (request.args.get("familia") or "").strip().lower()
-        if br:
-            filas = [f for f in filas if f["broker"] == br]
-        if tp:
-            filas = [f for f in filas if (f.get("tipo") or "otros") == tp]
-        if fa == "_sin":
-            filas = [f for f in filas if not f.get("estrategia_id")]
-        elif fa:
-            filas = [f for f in filas if f.get("familia") == fa]
         # Solo lo que ya esta en cache: valuar no justifica una rueda de
         # requests por cada visita a la pestania.
         cache = monitor.cotizaciones_vigentes()
@@ -1158,6 +1140,25 @@ def crear_app(monitor):
             ).get("medio") or 0) or None
         except Exception as e:
             log.debug("mep para la cartera: %s", e)
+
+        # La medicion de estrategias va siempre sobre la cartera entera:
+        # filtrada por broker daria el rendimiento de media estrategia,
+        # que no significa nada.
+        completa = CA.valuar(filas, precios, mep, bonos_cfg)
+
+        # Los mismos filtros que la lista: al mirar un solo broker o un
+        # solo tipo, el total y los pesos tienen que ser de eso.
+        br = (request.args.get("broker") or "").strip()
+        tp = (request.args.get("tipo") or "").strip().lower()
+        fa = (request.args.get("familia") or "").strip().lower()
+        if br:
+            filas = [f for f in filas if f["broker"] == br]
+        if tp:
+            filas = [f for f in filas if (f.get("tipo") or "otros") == tp]
+        if fa == "_sin":
+            filas = [f for f in filas if not f.get("estrategia_id")]
+        elif fa:
+            filas = [f for f in filas if f.get("familia") == fa]
         r = (completa if not (br or tp or fa)
              else CA.valuar(filas, precios, mep, bonos_cfg))
         try:

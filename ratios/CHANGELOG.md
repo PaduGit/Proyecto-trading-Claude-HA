@@ -1,5 +1,18 @@
 # Registro de cambios
 
+## 0.26.1
+
+**La pestania Posicion no cargaba.** Al agregar los filtros quedo
+`completa = CA.valuar(filas, precios, mep, bonos_cfg)` arriba de las
+lineas que definen esas tres variables, asi que `/api/cartera` moria con
+`UnboundLocalError` en cada request. El AST compila igual y el add-on
+arranca sin quejarse: el error aparece recien al pedir la pestania.
+
+Se agrega al control previo un chequeo de variables usadas antes de su
+primera asignacion, que respeta el scope propio de comprehensions y
+funciones anidadas para no llenarse de falsos positivos. Sobre el codigo
+roto marca las tres variables; sobre el corregido no marca nada.
+
 ## 0.26.0
 
 **El `<br>` se veia escrito en las notificaciones.** `_sin_html` limpiaba
