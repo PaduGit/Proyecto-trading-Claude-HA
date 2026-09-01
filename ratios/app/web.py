@@ -889,7 +889,8 @@ def crear_app(monitor):
                 incluir_cerradas=request.args.get("cerradas") == "1",
                 familia=request.args.get("familia") or None),
             "familias": [{"id": k, "nombre": v["nombre"],
-                          "patron": v["patron"], "precio": v["precio"]}
+                          "patron": v["patron"],
+                          "campos": list(v["campos"])}
                          for k, v in db.FAMILIAS.items()],
             "patrones": list(db.PATRONES),
             "grupos": [{"id": g["id"], "nombre": g["nombre"]}

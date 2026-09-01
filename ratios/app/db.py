@@ -891,16 +891,26 @@ CREATE INDEX IF NOT EXISTS ix_mp_estado ON mov_propuesto(estado, detectado);
 # adorno: una reserva de valor que sube 40% en pesos con el dolar 60%
 # arriba es una estrategia que fallo, y sin declarar contra que se mide
 # eso se lee como ganancia.
+# `campos` es lo que se carga en cada titulo y no en la estrategia: el
+# stop de MIRG es de MIRG, y el ticker contra el que se rota tambien. La
+# estrategia agrupa y mide; los parametros son de la posicion.
 FAMILIAS = {
-    "rotacion":   {"nombre": "Rotación", "patron": False, "precio": False},
-    "intradiaria": {"nombre": "Intradiaria", "patron": False, "precio": False},
-    "tecnica":    {"nombre": "Trading", "patron": False, "precio": True},
-    "opciones":   {"nombre": "Opciones", "patron": False, "precio": True},
+    "rotacion":   {"nombre": "Rotación", "patron": False,
+                   "campos": ("par_ticker", "ratio_min", "ratio_max")},
+    "intradiaria": {"nombre": "Intradiaria", "patron": False,
+                    "campos": ("par_ticker",)},
+    "tecnica":    {"nombre": "Trading", "patron": False,
+                   "campos": ("stop", "objetivo")},
+    "opciones":   {"nombre": "Opciones", "patron": False,
+                   "campos": ("stop", "objetivo")},
     "reserva":    {"nombre": "Reserva de valor", "patron": True,
-                   "precio": False},
+                   "campos": ()},
     "cambiaria":  {"nombre": "Oportunidad cambiaria", "patron": True,
-                   "precio": False},
+                   "campos": ()},
 }
+# La fecha de revision aplica a cualquier familia.
+CAMPOS_POSICION = ("stop", "objetivo", "par_ticker", "ratio_min",
+                   "ratio_max", "revisar")
 PATRONES = ("dolar", "cer", "badlar", "tc_entrada")
 
 
@@ -929,10 +939,43 @@ def init_alertas():
         if hay and "estrategia_id" not in hay:
             c.execute("ALTER TABLE %s ADD COLUMN estrategia_id INTEGER" % tabla)
     for col in ("ppc REAL", "fecha_alta TEXT", "precision TEXT",
-                "ppc_base REAL"):
+                "ppc_base REAL", "stop REAL", "objetivo REAL",
+                "par_ticker TEXT", "ratio_min REAL", "ratio_max REAL",
+                "revisar TEXT"):
         if col.split()[0] not in cols:
             c.execute("ALTER TABLE tenencia ADD COLUMN " + col)
+    _migrar_parametros(c)
     c.commit()
+
+
+def _migrar_parametros(c):
+    """Baja stop, objetivo y revisar de la estrategia a sus especies.
+
+    Estaban en la estrategia, lo que obligaba a crear una por accion para
+    poder ponerle su propio stop. Son de la posicion: el stop de MIRG es
+    de MIRG. Se copia una sola vez y respeta lo que la tenencia ya tenga.
+    """
+    try:
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(estrategia)")}
+    except Exception:
+        return
+    if not {"stop", "objetivo"} <= cols:
+        return
+    if c.execute("SELECT 1 FROM tenencia WHERE stop IS NOT NULL "
+                 "OR objetivo IS NOT NULL LIMIT 1").fetchone():
+        return          # ya se hizo
+    for e in c.execute("SELECT id, stop, objetivo, revisar FROM estrategia "
+                       "WHERE stop IS NOT NULL OR objetivo IS NOT NULL "
+                       "OR revisar IS NOT NULL"):
+        for esp in c.execute("SELECT broker, simbolo FROM estrategia_especie "
+                             "WHERE estrategia_id = ?", (e["id"],)):
+            c.execute(
+                "UPDATE tenencia SET stop = COALESCE(stop, ?), "
+                "objetivo = COALESCE(objetivo, ?), "
+                "revisar = COALESCE(revisar, ?) "
+                "WHERE broker = ? AND simbolo = ?",
+                (e["stop"], e["objetivo"], e["revisar"],
+                 esp["broker"], esp["simbolo"]))
 
 
 def alertas_fecha(solo_activas=False):
@@ -1179,7 +1222,7 @@ def actualizar_tenencia(broker, simbolo, campos):
     corregir un dato. Aca se cambia lo que se pasa y nada mas.
     """
     permitidos = ("cantidad", "tipo", "ppc", "ppc_base", "fecha_alta",
-                  "precision")
+                  "precision") + CAMPOS_POSICION
     sets, args = [], []
     for k in permitidos:
         if k not in campos:
@@ -1193,8 +1236,10 @@ def actualizar_tenencia(broker, simbolo, campos):
             v = (v or "").strip().lower() or None
             if v and v not in ("exacta", "mes", "antes"):
                 raise ValueError("precisión inválida: %s" % v)
-        elif k == "fecha_alta":
+        elif k in ("fecha_alta", "revisar"):
             v = (v or "").strip() or None
+        elif k == "par_ticker":
+            v = (v or "").strip().upper() or None
         else:
             v = float(v) if v not in (None, "") else None
             if k == "cantidad" and v is None:
@@ -1244,9 +1289,9 @@ def guardar_estrategia(datos, eid=None):
     familia = (datos.get("familia") or "").strip().lower()
     if familia not in FAMILIAS:
         raise ValueError("familia inválida: %s" % familia)
-    nombre = (datos.get("nombre") or "").strip()
-    if not nombre:
-        raise ValueError("falta el nombre")
+    # Sin nombre se usa el de la familia: obligar a inventar uno por cada
+    # posicion era lo que hacia crecer la lista sin motivo.
+    nombre = (datos.get("nombre") or "").strip() or FAMILIAS[familia]["nombre"]
     patron = (datos.get("patron") or "").strip().lower() or None
     if patron and patron not in PATRONES:
         raise ValueError("patrón inválido: %s" % patron)

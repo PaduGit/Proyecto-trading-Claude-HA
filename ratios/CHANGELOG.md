@@ -1,5 +1,30 @@
 # Registro de cambios
 
+## 0.29.0
+
+**El stop y el objetivo pasan al titulo.** Estaban en la estrategia, lo
+que obligaba a crear una estrategia por accion para poder ponerle su
+propio stop, y a completar tres pantallas distintas para la misma
+posicion. El stop de MIRG es de MIRG: se carga y se ve en el mismo
+desplegable que el PPC.
+
+**Los campos dependen de la familia.** Trading pide stop y take profit;
+rotacion, contra que ticker se rota y el rango de ratio; reserva de valor
+y oportunidad cambiaria no piden nada propio, porque se miden contra el
+patron. La fecha de revision aparece en todas.
+
+**Una estrategia engloba varias posiciones.** Una sola "Trading" cubre
+todas las acciones, cada una con su stop. El nombre pasa a ser opcional:
+sin nombre se usa el de la familia, asi que crear una es elegir la
+familia y guardar.
+
+**Los parametros se ven en la lista** sin abrir nada: bajo el broker
+aparece "SL 1600 · TP 2400", o "↔ PARP 1,2–1,8" en rotacion.
+
+**Migracion.** Al arrancar, lo que ya estaba cargado en una estrategia
+baja a sus especies y respeta lo que la tenencia ya tenga. Corre una sola
+vez.
+
 ## 0.28.0
 
 **La pestania empezaba con seis filas de controles.** Antes del primer

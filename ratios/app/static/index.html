@@ -3624,9 +3624,7 @@ function pintarEstrategias(){
     let meta = famNombre(e.familia);
     if(e.patron) meta += " · contra " + (NOM_PATRON[e.patron] || e.patron) +
       (e.patron_valor ? " " + num(e.patron_valor, 6) : "");
-    if(e.objetivo) meta += " · objetivo " + num(e.objetivo, 6);
-    if(e.stop) meta += " · stop " + num(e.stop, 6);
-    if(e.revisar) meta += " · revisar " + esc(e.revisar);
+    meta += " · " + (e.especies || []).length + " especies";
     /* La medicion viene del tablero de valuacion: la estrategia no
        guarda cantidades ni valores, los toma de la tenencia. */
     const m = estrMedidas.find(x => x.id === e.id);
@@ -3773,12 +3771,7 @@ function formEstrategia(e){
     '<label>Valor del patrón<input data-e="patron_valor" type="number" ' +
       'step="any" placeholder="según la fecha de alta" value="' +
       v("patron_valor") + '"></label>' +
-    '<label>Objetivo<input data-e="objetivo" type="number" step="any" value="' +
-      v("objetivo") + '"></label>' +
-    '<label>Stop<input data-e="stop" type="number" step="any" value="' +
-      v("stop") + '"></label>' +
-    '<label>Revisar el<input data-e="revisar" type="date" value="' +
-      esc(v("revisar")) + '"></label>' +
+
     '<label>Grupo de rotación<select data-e="grupo_id">' + gr +
       '</select></label>' +
     '<label style="grid-column:1/-1">Tesis<textarea data-e="tesis" rows="2">' +
@@ -4030,7 +4023,7 @@ function tenPintar(){
       '<div class="pos-pie"><span>' +
         (t.estrategia ? esc(t.estrategia)
           : '<span style="color:var(--amber)">sin asignar</span>') +
-        ' · ' + esc(t.broker) +
+        ' · ' + esc(t.broker) + paramsPos(t) +
       '</span><span style="color:' + tono + '">' +
         (p.resultado_pct == null ? "sin PPC"
           : (p.resultado_pct >= 0 ? "+" : "") + num(p.resultado_pct, 3) + "%") +
@@ -4040,6 +4033,21 @@ function tenPintar(){
       (tenModo === "especie" ? ' especies de ' + tenDatos.length +
         ' posiciones. Para editar una, volvé a "Por broker".'
        : ' de ' + tenDatos.length + ' posiciones.') + '</div>';
+}
+
+/* Lo que hay que ver sin abrir nada: el stop y el objetivo de trading,
+   la otra punta y el rango en rotacion. */
+function paramsPos(t){
+  const p = [];
+  if(t.stop != null) p.push("SL " + num(t.stop, 6));
+  if(t.objetivo != null) p.push("TP " + num(t.objetivo, 6));
+  if(t.par_ticker) p.push("↔ " + esc(t.par_ticker) +
+    (t.ratio_min != null || t.ratio_max != null
+      ? " " + (t.ratio_min == null ? "" : num(t.ratio_min, 4)) + "–" +
+        (t.ratio_max == null ? "" : num(t.ratio_max, 4)) : ""));
+  if(t.revisar) p.push("revisar " + esc(t.revisar));
+  return p.length ? '<br><span style="color:var(--muted)">' +
+    p.join(" · ") + '</span>' : "";
 }
 
 function agrupar(filas, val){
@@ -4078,6 +4086,27 @@ function agrupar(filas, val){
 /* Fila de edicion, oculta hasta que se toca la posicion. Sin ids: las
    filas se redibujan y dos brokers pueden tener la misma especie, asi
    que todo se ubica por data-atributos y closest(). */
+/* Que campos pide cada familia. El stop es del titulo y no de la
+   estrategia: por eso se cargan aca y no en otra pantalla. */
+const CAMPO_POS = {
+  stop:       {etq: "Stop loss", tipo: "number"},
+  objetivo:   {etq: "Take profit", tipo: "number"},
+  par_ticker: {etq: "Rota contra", tipo: "text", ph: "la otra punta"},
+  ratio_min:  {etq: "Ratio mínimo", tipo: "number"},
+  ratio_max:  {etq: "Ratio máximo", tipo: "number"},
+  revisar:    {etq: "Revisar el", tipo: "date"},
+};
+
+function campoPos(k, t){
+  const c = CAMPO_POS[k];
+  if(!c) return "";
+  const v = t[k] == null ? "" : t[k];
+  return '<label>' + esc(c.etq) + '<input data-c="' + k + '" type="' +
+    c.tipo + '"' + (c.tipo === "number" ? ' step="any"' : "") +
+    (c.ph ? ' placeholder="' + esc(c.ph) + '"' : "") +
+    ' value="' + esc(String(v)) + '"></label>';
+}
+
 function tenEditor(t){
   const clave = t.broker + "|" + t.simbolo;
   if(tenAbierta !== clave) return "";
@@ -4089,6 +4118,12 @@ function tenEditor(t){
     '<option value="' + p + '"' + ((t.precision || "") === p ? " selected" : "") +
     '>' + (p ? {exacta:"Exacta", mes:"Solo el mes", antes:"Antes de"}[p]
              : "Sin precisar") + '</option>').join("");
+  /* Depende de la familia de la estrategia asignada: trading pide stop y
+     objetivo, rotacion pide contra que se rota y el rango de ratio. */
+  const fam = estrFamilias.find(f => f.id === t.familia) || {};
+  const propios = (fam.campos || []).map(k => campoPos(k, t)).join("") +
+    (t.familia ? campoPos("revisar", t) : "");
+
   return '<div class="ten-edit" data-br="' + esc(t.broker) + '" data-sim="' +
     esc(t.simbolo) + '">' +
     '<div class="form" style="margin-bottom:8px">' +
@@ -4111,30 +4146,27 @@ function tenEditor(t){
           esc(x.nombre) + ' · ' + esc(famNombre(x.familia)) + '</option>'),
         ['<option value="_nueva">+ Crear una nueva</option>']
       ).join("") + '</select></label>' +
+    propios +
     '</div>' +
-    /* Se despliega al elegir "crear una nueva": cargar el costo y la
-       tesis son el mismo momento, y obligaba a ir y volver. */
     '<div class="form" data-estr-nueva hidden style="margin-bottom:8px">' +
-    '<label style="grid-column:1/-1">Nombre<input data-n="nombre" ' +
-      'placeholder="Trading ' + esc(t.simbolo) + '"></label>' +
     '<label>Familia<select data-n="familia">' +
       estrFamilias.map(f => '<option value="' + f.id + '"' +
         (f.id === "tecnica" ? " selected" : "") + '>' + esc(f.nombre) +
         '</option>').join("") + '</select></label>' +
+    '<label>Nombre<input data-n="nombre" ' +
+      'placeholder="opcional: si no, el de la familia"></label>' +
     '<label>Se mide contra<select data-n="patron">' +
       ['<option value="">Sin patrón</option>'].concat(
         estrPatrones.map(p => '<option value="' + p + '">' +
           esc(NOM_PATRON[p] || p) + '</option>')).join("") +
       '</select></label>' +
-    '<label>Take profit<input data-n="objetivo" type="number" step="any">' +
-      '</label>' +
-    '<label>Stop loss<input data-n="stop" type="number" step="any"></label>' +
     '<label style="grid-column:1/-1">Tesis<textarea data-n="tesis" rows="2">' +
       '</textarea></label></div>' +
-    '<div class="nota" style="margin:0 0 8px">Alta ' + tenAlta(t) +
-      ' · PPC ' + tenPpc(t) + '. La base es 100 para títulos de deuda y 1 ' +
-      'para el resto: si el PPC vino de una planilla que cotiza por ' +
-      'unidad, va en 1.</div>' +
+    '<div class="nota" style="margin:0 0 8px">' +
+      (t.estrategia ? esc(t.estrategia) + ' · ' : "") +
+      'Los parámetros de arriba son de este título; la estrategia agrupa ' +
+      'y mide. Guardá para que aparezcan los campos de una familia recién ' +
+      'elegida.</div>' +
     '<div class="acciones"><button class="primario" data-guardar>Guardar' +
       '</button><button data-borrar-ten>Borrar</button>' +
       '<button data-cerrar>Cerrar</button></div></div>';
