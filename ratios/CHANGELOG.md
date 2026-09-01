@@ -1,5 +1,42 @@
 # Registro de cambios
 
+## 0.30.0
+
+**El bloque de crear estrategia se veia siempre.** `.form` declara
+`display:grid` y eso pisa el `hidden` del navegador, que solo estaba
+forzado para `section`. Ahora vale para todo.
+
+**Al desplegar un titulo se lee, no se edita.** Dos fichas: los datos
+—cantidad, PPC, valor, costo, resultado, alta, exposicion— y la
+estrategia con su stop, su take profit, contra que rota, el rango, la
+revision, como viene contra el patron y la tesis. El formulario aparece
+recien al tocar "Editar datos".
+
+"Editar estrategia" lleva al formulario del bloque de estrategias, con
+scroll. No se duplica: dos formularios del mismo dato es la trampa de
+siempre.
+
+**Estrategias agrupadas por familia.** Con una estrategia por par la
+lista se hacia larguisima, y la pregunta de todos los dias es como viene
+cada forma de operar y no cada nombre. Cada familia muestra sus
+estrategias, sus especies y el resultado del conjunto, y se despliega.
+
+**"Crear desde los grupos" solo arma las de pares que estan en
+cartera.** Un par sin ninguna punta se mira desde Ratios, que es donde se
+buscan oportunidades; como estrategia no aportaba nada y alargaba la
+lista. Se suma un boton para borrar las que quedaron sin especies, que no
+toca las cerradas por venta: esas tienen historia.
+
+**El archivo.** Una estrategia cerrada ya no tiene tenencia, asi que el
+rendimiento no se puede recalcular y se perdia. Ahora se guarda una
+medicion por dia y al cerrar se congela la ultima: queda el rendimiento,
+el resultado contra el patron, el valor y los dias que duro. El archivo
+va al final de las familias, con cuantas salieron en verde y el promedio.
+
+**Evolucion.** Un boton dibuja la estrategia contra su patron, las dos
+como variacion acumulada desde el alta, que es lo unico que las hace
+comparables. La serie arranca el dia que se instala esta version.
+
 ## 0.29.0
 
 **El stop y el objetivo pasan al titulo.** Estaban en la estrategia, lo

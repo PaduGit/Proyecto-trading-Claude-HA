@@ -63,6 +63,10 @@ nav button:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
 
 main{padding:14px;max-width:720px;margin:0 auto}
 section[hidden]{display:none}
+/* .form y .pos declaran display propio y ganaban sobre el
+   hidden del navegador: el bloque de crear estrategia se veia
+   siempre. */
+[hidden]{display:none !important}
 .op-acc{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .op-acc button{width:auto;padding:0 12px;font-size:11px}
 .op-hist{margin-top:10px}
@@ -221,9 +225,11 @@ table.tabla tr.dolar td:first-child{color:var(--amber)}
   gap:10px;font-family:var(--mono);font-size:13px}
 .pos-bar{height:3px;background:var(--panel-2);margin-top:5px;border-radius:2px}
 .pos-bar span{display:block;height:100%;background:var(--muted);border-radius:2px}
-.ten-fila,.estr-fila{cursor:pointer}
-.ten-fila:active,.estr-fila:active{background:var(--panel-2)}
+.ten-fila,.estr-fila,.fam-fila{cursor:pointer}
+.ten-fila:active,.estr-fila:active,.fam-fila:active{background:var(--panel-2)}
 .ten-edit{border-bottom:1px solid var(--rule);padding:10px 0 12px;background:var(--panel)}
+.ficha{display:grid;grid-template-columns:1fr 1fr;gap:2px 14px}
+.ficha .pos-pie{font-size:11px;margin-top:2px}
 .pos-pie{display:flex;justify-content:space-between;font-family:var(--mono);
   font-size:10px;color:var(--muted);margin-top:4px}
 .avanzado summary{font-family:var(--mono);font-size:10px;color:var(--muted);
@@ -454,14 +460,16 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       <summary>Estrategias</summary>
       <div class="nota" style="margin-top:8px">Por qué tenés cada cosa.
         No guarda cantidades: las toma de la tenencia. Se cierra sola
-        cuando todas sus especies quedan en cero.</div>
+        cuando todas sus especies quedan en cero. "Crear desde los
+        grupos" solo arma las de pares que tenés en cartera: los demás se
+        miran desde Ratios.</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">
         <button class="secundario" id="estr-nueva"
           style="width:auto;padding:0 14px">Nueva</button>
         <button class="secundario" id="estr-auto"
           style="width:auto;padding:0 14px">Crear desde los grupos</button>
-        <button class="secundario" id="estr-cerradas"
-          style="width:auto;padding:0 14px">Ver cerradas</button>
+        <button class="secundario" id="estr-limpiar"
+          style="width:auto;padding:0 14px">Borrar sin especies</button>
       </div>
       <div id="estr-form" hidden></div>
       <div id="estr-out"></div>
@@ -3583,9 +3591,10 @@ $("#canje-caja").addEventListener("toggle", e => {
 
 /* ---------- estrategias ---------- */
 let estrDatos = [], estrFamilias = [], estrPatrones = [], estrGrupos = [];
-let estrCerradas = false, estrEditando = null;
+let estrEditando = null;
 let estrMedidas = [];
 let estrAbierta = null;
+let famAbierta = null;   // familia desplegada
 
 const NOM_PATRON = {dolar:"Dólar", cer:"CER", badlar:"BADLAR",
                     tc_entrada:"Tipo de cambio de entrada"};
@@ -3593,8 +3602,9 @@ const famNombre = f => (estrFamilias.find(x => x.id === f) || {}).nombre || f;
 
 async function cargarEstrategias(){
   try{
-    const d = await (await fetch(base + "api/estrategias" +
-      (estrCerradas ? "?cerradas=1" : ""))).json();
+    /* Siempre se traen las cerradas: van al archivo, que es donde se
+       repasa que funciono. */
+    const d = await (await fetch(base + "api/estrategias?cerradas=1")).json();
     estrDatos = d.estrategias || [];
     estrFamilias = d.familias || [];
     estrPatrones = d.patrones || [];
@@ -3616,84 +3626,176 @@ function pintarEstrategias(){
   if(!estrDatos.length){
     out.innerHTML = '<div class="vacio">Ninguna cargada. ' +
       '"Crear desde los grupos" arma una por cada grupo de rotación.</div>';
+    pintarSueltos();
     return;
   }
-  out.innerHTML = estrDatos.map(e => {
-    const esp = (e.especies || []).map(x =>
-      esc(x.simbolo) + " (" + esc(x.broker) + ")").join(" · ");
-    let meta = famNombre(e.familia);
-    if(e.patron) meta += " · contra " + (NOM_PATRON[e.patron] || e.patron) +
-      (e.patron_valor ? " " + num(e.patron_valor, 6) : "");
-    meta += " · " + (e.especies || []).length + " especies";
-    /* La medicion viene del tablero de valuacion: la estrategia no
-       guarda cantidades ni valores, los toma de la tenencia. */
+  /* Agrupadas por familia: con una estrategia por par la lista se hacia
+     larguisima y la pregunta de todos los dias es como viene cada forma
+     de operar, no cada nombre. */
+  const fams = new Map();
+  const cerradas = estrDatos.filter(e => e.cierre);
+  estrDatos.filter(e => !e.cierre).forEach(e => {
+    let f = fams.get(e.familia);
+    if(!f){ f = {id: e.familia, estr: [], especies: 0, valor: 0, costo: 0}; }
+    f.estr.push(e);
+    f.especies += (e.especies || []).length;
     const m = estrMedidas.find(x => x.id === e.id);
-    let linea = "";
-    if(m && m.contra_patron_pct != null){
-      const t = m.contra_patron_pct >= 0 ? "var(--sage)" : "var(--coral)";
-      linea = '<div class="pos-pie" style="display:block;color:' + t + '">' +
-        (m.contra_patron_pct >= 0 ? "+" : "") +
-        num(m.contra_patron_pct, 3) + '% contra ' +
-        esc(NOM_PATRON[m.patron] || m.patron) +
-        '<span class="tocar">rindió ' + num(m.rendimiento_pct, 3) +
-        '% · el patrón ' + num(m.patron_pct, 3) + '%</span></div>';
-    } else if(m && m.nota){
-      linea = '<div class="pos-pie" style="display:block;color:var(--muted)">' +
-        esc(m.nota) + '</div>';
-    } else if(m && m.rendimiento_pct != null){
-      const t = m.rendimiento_pct >= 0 ? "var(--sage)" : "var(--coral)";
-      linea = '<div class="pos-pie" style="display:block;color:' + t + '">' +
-        (m.rendimiento_pct >= 0 ? "+" : "") + num(m.rendimiento_pct, 3) +
-        '%</div>';
-    }
-    return '<div class="pos estr-fila" data-estr="' + e.id + '">' +
-      '<div class="pos-top">' +
-      '<span>' + esc(e.nombre) + (e.cierre
-        ? ' <span class="tocar">cerrada ' + esc(e.cierre) + '</span>' : "") +
-      '</span><span style="color:var(--muted)">' +
-        (m && m.valor ? (cartTotal ? plata(m.valor) : (e.especies || []).length +
-          (((e.especies || []).length === 1) ? " especie" : " especies"))
-         : "") + '</span></div>' +
-      '<div class="pos-pie" style="display:block">' + esc(meta) + '</div>' +
-      linea +
-      (esp ? '<div class="pos-pie" style="display:block">' + esp + '</div>'
-           : '<div class="pos-pie" style="display:block;color:var(--amber)">' +
-             'Sin especies asignadas</div>') +
-      '</div>' + detalleEstrategia(e, m);
-  }).join("");
+    if(m){ f.valor += (m.valor || 0); f.costo += (m.costo || 0); }
+    fams.set(e.familia, f);
+  });
+
+  out.innerHTML = [...fams.values()].map(f => {
+    const res = f.costo ? (f.valor / f.costo - 1) * 100 : null;
+    const tono = res == null ? "var(--muted)"
+               : (res >= 0 ? "var(--sage)" : "var(--coral)");
+    const abierta = famAbierta === f.id;
+    return '<div class="pos fam-fila" data-fam-abrir="' + f.id + '">' +
+      '<div class="pos-top"><span>' + (abierta ? "▾ " : "▸ ") +
+        esc(famNombre(f.id)) + '</span><span>' +
+        (cartTotal && f.valor ? plata(f.valor)
+          : f.estr.length + (f.estr.length === 1 ? " estrategia"
+                                                 : " estrategias")) +
+      '</span></div><div class="pos-pie"><span>' + f.especies +
+        (f.especies === 1 ? " especie" : " especies") +
+      '</span><span style="color:' + tono + '">' +
+        (res == null ? "sin PPC" : (res >= 0 ? "+" : "") + num(res, 3) + "%") +
+      '</span></div></div>' +
+      (abierta ? f.estr.map(e => tarjetaEstrategia(e)).join("") : "");
+  }).join("") +
+    /* El archivo: cerradas con su resultado congelado, para repasar que
+       funciono y que no. */
+    (cerradas.length
+      ? '<div class="pos fam-fila" data-fam-abrir="_archivo">' +
+        '<div class="pos-top"><span>' +
+          (famAbierta === "_archivo" ? "▾ " : "▸ ") + 'Archivo</span>' +
+        '<span>' + cerradas.length + (cerradas.length === 1
+          ? " cerrada" : " cerradas") + '</span></div>' +
+        '<div class="pos-pie"><span>' + resumenArchivo(cerradas) +
+        '</span></div></div>' +
+        (famAbierta === "_archivo"
+          ? cerradas.map(e => tarjetaEstrategia(e)).join("") : "")
+      : "");
   pintarSueltos();
 }
 
-/* Los grupos que ya tienen estrategia se ven adentro de ella; el
-   desplegable queda para los que no. Se dibuja siempre, aunque no haya
-   ninguno: un panel en blanco parece un error. */
-function pintarSueltos(){
-  const cont = $("#pos-out");
-  if(!cont) return;
-  cont.hidden = false;
-  if(!grupos || !grupos.length){
-    cont.innerHTML = '<div class="vacio">Todavía no hay grupos. ' +
-      'Creá uno con los tickers entre los que rotás.</div>';
-    return;
+/* Cuantas salieron bien y cuanto rindieron en promedio. */
+function resumenArchivo(cerradas){
+  const con = cerradas.filter(e => e.res_final != null);
+  if(!con.length) return "sin resultado medido";
+  const ok = con.filter(e => e.res_final >= 0).length;
+  const prom = con.reduce((a, e) => a + e.res_final, 0) / con.length;
+  return ok + " de " + con.length + " en verde · promedio " +
+    (prom >= 0 ? "+" : "") + num(prom, 3) + "%";
+}
+
+function tarjetaEstrategia(e){
+  const m = estrMedidas.find(x => x.id === e.id);
+  const esp = (e.especies || []).map(x =>
+    esc(x.simbolo) + " (" + esc(x.broker) + ")").join(" · ");
+  let meta = "";
+  if(e.patron) meta = "contra " + (NOM_PATRON[e.patron] || e.patron);
+  let linea = "";
+  if(m && m.contra_patron_pct != null){
+    const t = m.contra_patron_pct >= 0 ? "var(--sage)" : "var(--coral)";
+    linea = '<div class="pos-pie" style="display:block;color:' + t + '">' +
+      (m.contra_patron_pct >= 0 ? "+" : "") + num(m.contra_patron_pct, 3) +
+      '% contra ' + esc(NOM_PATRON[m.patron] || m.patron) +
+      '<span class="tocar">rindió ' + num(m.rendimiento_pct, 3) +
+      '% · el patrón ' + num(m.patron_pct, 3) + '%</span></div>';
+  } else if(m && m.rendimiento_pct != null){
+    const t = m.rendimiento_pct >= 0 ? "var(--sage)" : "var(--coral)";
+    linea = '<div class="pos-pie" style="display:block;color:' + t + '">' +
+      (m.rendimiento_pct >= 0 ? "+" : "") + num(m.rendimiento_pct, 3) +
+      '%</div>';
   }
-  const conEstr = new Set(estrDatos.map(e => e.grupo_id).filter(Boolean));
-  const sueltos = grupos.filter(g => !conEstr.has(g.id));
-  if(!sueltos.length){
-    cont.innerHTML = '<div class="vacio">Los ' + grupos.length +
-      ' grupos ya tienen estrategia: se ven adentro de cada una.</div>';
-    return;
+  /* Una estrategia cerrada no tiene tenencia con que medirse: lo que se
+     muestra es el resultado que quedo congelado al cerrarla. */
+  if(e.cierre && e.res_final != null){
+    const t = e.res_final >= 0 ? "var(--sage)" : "var(--coral)";
+    linea = '<div class="pos-pie" style="display:block;color:' + t + '">' +
+      (e.res_final >= 0 ? "+" : "") + num(e.res_final, 3) + '%' +
+      (e.res_patron_final != null
+        ? ' · ' + (e.res_patron_final >= 0 ? "+" : "") +
+          num(e.res_patron_final, 3) + '% contra el patrón' : "") +
+      (e.dias_final ? ' · ' + e.dias_final + ' días' : "") +
+      '</div>';
   }
-  try{
-    cont.innerHTML = sueltos.map(tarjetaGrupo).join("");
-  }catch(err){
-    cont.innerHTML = '<div class="msg error">No se pudo dibujar: ' +
-      esc(err.message) + '</div>';
-  }
+  return '<div class="pos estr-fila" data-estr="' + e.id +
+    '" style="margin-left:12px' + (e.cierre ? ";opacity:.75" : "") + '">' +
+    '<div class="pos-top"><span>' + esc(e.nombre) + (e.cierre
+      ? ' <span class="tocar">' + esc(e.motivo_cierre || "cerrada") + " " +
+        esc(e.cierre) + '</span>' : "") +
+    '</span><span style="color:var(--muted)">' +
+      (cartTotal && e.cierre && e.valor_final ? plata(e.valor_final)
+       : (cartTotal && m && m.valor ? plata(m.valor) : "")) +
+      '</span></div>' +
+    (meta ? '<div class="pos-pie" style="display:block">' + esc(meta) +
+      '</div>' : "") + linea +
+    (esp ? '<div class="pos-pie" style="display:block">' + esp + '</div>'
+         : '<div class="pos-pie" style="display:block;color:var(--amber)">' +
+           'Sin especies asignadas</div>') +
+    '</div>' + detalleEstrategia(e, m);
 }
 
 /* Todo lo de una estrategia junto: como va, contra que se mide, que
    especies la componen, la contabilidad de su grupo y si hay un canje
    esperando en alguna de sus puntas. */
+/* Dos trazos comparables: la estrategia y su patron, ambos como
+   variacion acumulada desde el alta. Sin normalizar, un indice de 800 y
+   un rendimiento de 3% no entran en el mismo eje. */
+function graficoEvolucion(serie){
+  const p = (serie || []).filter(x => x.rendimiento_pct != null);
+  if(p.length < 2)
+    return '<div class="vacio" style="padding:10px">Con una sola medición ' +
+      'no hay evolución. Se guarda una por día.</div>';
+  const W = 320, H = 110, ml = 6, mr = 40, mt = 10, mb = 16;
+  const vals = p.map(x => x.rendimiento_pct)
+    .concat(p.filter(x => x.patron_pct != null).map(x => x.patron_pct));
+  let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
+  const pad = (hi - lo) * 0.1 || 1;
+  lo -= pad; hi += pad;
+  const px = i => ml + i * (W - ml - mr) / (p.length - 1);
+  const py = v => mt + (hi - v) / (hi - lo) * (H - mt - mb);
+  const traza = (campo, color, guion) => {
+    const pts = p.map((x, i) => x[campo] == null ? null :
+      px(i).toFixed(1) + " " + py(x[campo]).toFixed(1)).filter(Boolean);
+    if(pts.length < 2) return "";
+    return '<path d="M' + pts.join(" L") + '" fill="none" stroke="' + color +
+      '" stroke-width="1.5"' + (guion ? ' stroke-dasharray="3 2"' : "") + '/>';
+  };
+  const ult = p[p.length - 1];
+  const corto = f => f.slice(5);
+  return '<svg class="chart" viewBox="0 0 ' + W + ' ' + H +
+    '" preserveAspectRatio="none" role="img">' +
+    '<line x1="' + ml + '" y1="' + py(0) + '" x2="' + (W - mr) + '" y2="' +
+      py(0) + '" stroke="var(--rule)" stroke-width=".5"/>' +
+    '<text x="' + (W - mr + 4) + '" y="' + (py(0) + 3) +
+      '" style="font-size:8px;opacity:.6">0%</text>' +
+    traza("patron_pct", "var(--muted)", true) +
+    traza("rendimiento_pct", ult.rendimiento_pct >= 0 ? "var(--sage)"
+                                                      : "var(--coral)") +
+    '<text x="' + ml + '" y="' + (H - 3) + '" style="font-size:8px;opacity:.7">' +
+      corto(p[0].fecha) + '</text>' +
+    '<text x="' + (W - mr) + '" y="' + (H - 3) + '" text-anchor="end" ' +
+      'style="font-size:8px;opacity:.7">' + corto(ult.fecha) + '</text>' +
+    '</svg>' +
+    '<div class="pos-pie"><span>' + p.length + ' mediciones</span><span>' +
+      'línea llena: la estrategia' +
+      (ult.patron_pct != null ? " · punteada: el patrón" : "") +
+    '</span></div>';
+}
+
+async function verEvolucion(eid, cont){
+  cont.innerHTML = '<div class="nota">Cargando…</div>';
+  try{
+    const d = await (await fetch(base + "api/estrategias/" + eid +
+      "/evolucion")).json();
+    cont.innerHTML = graficoEvolucion(d.evolucion);
+  }catch(e){
+    cont.innerHTML = '<div class="msg error">No se pudo leer.</div>';
+  }
+}
+
 function detalleEstrategia(e, m){
   if(estrAbierta !== e.id) return "";
   let h = '<div class="ten-edit" data-estr="' + e.id + '">';
@@ -3741,7 +3843,9 @@ function detalleEstrategia(e, m){
     }
   }
 
-  h += '<div class="acciones" style="margin-top:10px">' +
+  h += '<div data-evol="' + e.id + '" style="margin-top:10px"></div>' +
+    '<div class="acciones" style="margin-top:10px">' +
+    '<button data-ver-evol="' + e.id + '">Evolución</button>' +
     '<button data-editar-estr="' + e.id + '">Editar</button>' +
     '<button data-cerrar-estr="' + e.id + '">' +
       (e.cierre ? "Reabrir" : "Cerrar") + '</button>' +
@@ -3946,6 +4050,7 @@ let tenFiltro = {broker: "", tipo: "", familia: "", exposicion: ""};
 let tenOrden = {col: "valor", asc: false};
 let tenAbierta = "";      // broker|simbolo de la fila desplegada
 let tenModo = "broker";   // broker | especie
+let tenEditando = "";     // clave de la fila en modo edicion
 
 const ORDENES = [["valor","Valor"],["resultado","Resultado"],
                  ["simbolo","Especie"],["estrategia","Estrategia"]];
@@ -4027,7 +4132,7 @@ function tenPintar(){
       '</span><span style="color:' + tono + '">' +
         (p.resultado_pct == null ? "sin PPC"
           : (p.resultado_pct >= 0 ? "+" : "") + num(p.resultado_pct, 3) + "%") +
-      '</span></div></div>' + (t._suma ? "" : tenEditor(t));
+      '</span></div></div>' + (t._suma ? "" : tenFicha(t, p));
   }).join("") +
     '<div class="nota">' + filas.length +
       (tenModo === "especie" ? ' especies de ' + tenDatos.length +
@@ -4107,9 +4212,66 @@ function campoPos(k, t){
     ' value="' + esc(String(v)) + '"></label>';
 }
 
-function tenEditor(t){
+/* Al desplegar se lee, no se edita: los datos y la estrategia como
+   tarjetas, y el formulario solo cuando se pide. */
+function tenFicha(t, p){
   const clave = t.broker + "|" + t.simbolo;
   if(tenAbierta !== clave) return "";
+  if(tenEditando === clave) return tenEditor(t);
+  p = p || {};
+  const dato = (e, v) => v == null || v === "" ? "" :
+    '<div class="pos-pie"><span>' + esc(e) + '</span><span>' + v +
+    '</span></div>';
+  let h = '<div class="ten-edit" data-br="' + esc(t.broker) + '" data-sim="' +
+    esc(t.simbolo) + '"><div class="ficha">' +
+    dato("Cantidad", ent(t.cantidad)) +
+    dato("PPC", tenPpc(t)) +
+    dato("Valor", p.valor == null ? null : plata(p.valor)) +
+    dato("Costo", p.costo == null ? null : plata(p.costo)) +
+    dato("Resultado", p.resultado_pct == null ? null :
+      '<span style="color:' + (p.resultado_pct >= 0 ? "var(--sage)"
+        : "var(--coral)") + '">' + (p.resultado_pct >= 0 ? "+" : "") +
+      num(p.resultado_pct, 3) + '%</span>') +
+    dato("Alta", tenAlta(t)) +
+    dato("Exposición", p.exposicion ? esc(p.exposicion) : null) +
+    '</div><div class="acciones" style="margin-top:8px">' +
+    '<button data-editar-ten>Editar datos</button></div>';
+
+  const e = estrDatos.find(x => x.id === t.estrategia_id);
+  if(e){
+    const m = estrMedidas.find(x => x.id === e.id);
+    h += '<div class="ficha" style="margin-top:12px">' +
+      '<div class="pos-pie"><span><b>' + esc(e.nombre) + '</b></span>' +
+      '<span>' + esc(famNombre(e.familia)) + '</span></div>' +
+      dato("Stop loss", t.stop == null ? null : num(t.stop, 6)) +
+      dato("Take profit", t.objetivo == null ? null : num(t.objetivo, 6)) +
+      dato("Rota contra", t.par_ticker ? esc(t.par_ticker) : null) +
+      dato("Rango de ratio", (t.ratio_min == null && t.ratio_max == null)
+        ? null : (t.ratio_min == null ? "" : num(t.ratio_min, 4)) + " – " +
+          (t.ratio_max == null ? "" : num(t.ratio_max, 4))) +
+      dato("Revisar", t.revisar ? esc(t.revisar) : null) +
+      (m && m.contra_patron_pct != null
+        ? dato("Contra " + esc(NOM_PATRON[m.patron] || m.patron),
+            '<span style="color:' + (m.contra_patron_pct >= 0
+              ? "var(--sage)" : "var(--coral)") + '">' +
+            (m.contra_patron_pct >= 0 ? "+" : "") +
+            num(m.contra_patron_pct, 3) + '%</span>')
+        : "") +
+      (e.tesis ? '<div class="nota" style="grid-column:1/-1;margin:4px 0 0">' +
+        esc(e.tesis) + '</div>' : "") +
+      '</div><div class="acciones" style="margin-top:8px">' +
+      '<button data-editar-estr="' + e.id + '">Editar estrategia</button>' +
+      '<button data-editar-ten>Cambiar parámetros</button></div>';
+  } else {
+    h += '<div class="nota" style="margin-top:10px;color:var(--amber)">' +
+      'Sin estrategia asignada.</div>';
+  }
+  return h + '<div class="acciones" style="margin-top:8px">' +
+    '<button data-cerrar>Cerrar</button></div></div>';
+}
+
+function tenEditor(t){
+  const clave = t.broker + "|" + t.simbolo;
   const opc = TIPOS_TEN.filter(x => x[0] !== "todos").map(x =>
     '<option value="' + x[0] + '"' +
     ((t.tipo || "otros") === x[0] ? " selected" : "") + '>' + esc(x[1]) +
@@ -4339,6 +4501,7 @@ $("#ten-out").addEventListener("click", async ev => {
   if(fila){
     const clave = fila.dataset.br + "|" + fila.dataset.sim;
     tenAbierta = tenAbierta === clave ? "" : clave;
+    tenEditando = "";
     tenPintar();
     return;
   }
@@ -4347,7 +4510,22 @@ $("#ten-out").addEventListener("click", async ev => {
   const br = caja.dataset.br, sim = caja.dataset.sim;
 
   if(ev.target.closest("[data-cerrar]")){
-    tenAbierta = ""; tenPintar(); return;
+    tenAbierta = ""; tenEditando = ""; tenPintar(); return;
+  }
+  if(ev.target.closest("[data-editar-ten]")){
+    tenEditando = br + "|" + sim; tenPintar(); return;
+  }
+  const ee = ev.target.closest("[data-editar-estr]");
+  if(ee){
+    /* Se edita en el bloque de estrategias, que es donde vive el
+       formulario: abrirlo dos veces seria la misma trampa de antes. */
+    estrEditando = parseInt(ee.dataset.editarEstr, 10);
+    $("#estr-form").innerHTML = formEstrategia(
+      estrDatos.find(x => x.id === estrEditando));
+    $("#estr-form").hidden = false;
+    $("#estr-caja").open = true;
+    $("#estr-form").scrollIntoView({behavior: "smooth", block: "center"});
+    return;
   }
   if(ev.target.closest("[data-borrar-ten]")){
     if(!confirm("¿Borrar " + sim + " de " + br + "?")) return;
@@ -4355,7 +4533,7 @@ $("#ten-out").addEventListener("click", async ev => {
       await fetch(base + "api/tenencias/una?broker=" +
         encodeURIComponent(br) + "&simbolo=" + encodeURIComponent(sim),
         {method:"DELETE"});
-      tenAbierta = ""; cargarTenencias();
+      tenAbierta = ""; tenEditando = ""; cargarTenencias();
     }catch(e){ alert("No se pudo borrar."); }
     return;
   }
@@ -4387,7 +4565,7 @@ $("#ten-out").addEventListener("click", async ev => {
         body: JSON.stringify({broker: br, simbolo: sim,
           estrategia_id: sel.value ? parseInt(sel.value, 10) : null})});
     }
-    tenAbierta = ""; cargarTenencias(); cargarEstrategias();
+    tenEditando = ""; cargarTenencias(); cargarEstrategias();
   }catch(e){ alert("No se pudo guardar."); }
   finally{ b.disabled = false; }
 });
@@ -4465,10 +4643,20 @@ $("#estr-nueva").addEventListener("click", () => {
   $("#estr-form").hidden = false;
 });
 
-$("#estr-cerradas").addEventListener("click", e => {
-  estrCerradas = !estrCerradas;
-  e.target.textContent = estrCerradas ? "Ocultar cerradas" : "Ver cerradas";
-  cargarEstrategias();
+
+$("#estr-limpiar").addEventListener("click", async e => {
+  if(!confirm("¿Borrar las estrategias que no tienen ninguna especie " +
+              "asignada? Las cerradas por venta no se tocan.")) return;
+  e.target.disabled = true;
+  try{
+    const d = await (await fetch(base + "api/estrategias/limpiar",
+      {method:"POST"})).json();
+    const b = d.borradas || [];
+    alert(b.length ? "Borradas:\n" + b.join("\n")
+                   : "Todas tienen al menos una especie.");
+    cargarEstrategias();
+  }catch(err){ alert("No se pudo."); }
+  finally{ e.target.disabled = false; }
 });
 
 $("#estr-auto").addEventListener("click", async e => {
@@ -4526,6 +4714,20 @@ $("#pos-out").addEventListener("click", ev => {
 });
 
 $("#estr-out").addEventListener("click", async ev => {
+  const fam = ev.target.closest("[data-fam-abrir]");
+  if(fam){
+    const id = fam.dataset.famAbrir;
+    famAbierta = famAbierta === id ? null : id;
+    pintarEstrategias();
+    return;
+  }
+  const ve = ev.target.closest("[data-ver-evol]");
+  if(ve){
+    const id = ve.dataset.verEvol;
+    const cont = ve.closest(".ten-edit").querySelector('[data-evol="' + id + '"]');
+    if(cont) verEvolucion(parseInt(id, 10), cont);
+    return;
+  }
   const sem = ev.target.closest("[data-sembrar]");
   if(sem){
     sembrarGrupo(parseInt(sem.dataset.sembrar, 10), sem);

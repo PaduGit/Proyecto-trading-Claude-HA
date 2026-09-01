@@ -906,6 +906,10 @@ def crear_app(monitor):
             return jsonify({"error": str(e)}), 400
         return jsonify({"id": eid})
 
+    @app.get("/api/estrategias/<int:eid>/evolucion")
+    def estrategias_evolucion(eid):
+        return jsonify({"evolucion": db.evolucion(eid)})
+
     @app.delete("/api/estrategias/<int:eid>")
     def estrategias_borrar(eid):
         return jsonify({"borradas": db.borrar_estrategia(eid)})
@@ -927,6 +931,10 @@ def crear_app(monitor):
             return jsonify({"error": "faltan el broker o el símbolo"}), 400
         db.asignar(br, sim, d.get("estrategia_id") or None)
         return jsonify({"ok": True})
+
+    @app.post("/api/estrategias/limpiar")
+    def estrategias_limpiar():
+        return jsonify({"borradas": db.borrar_vacias()})
 
     @app.post("/api/estrategias/auto")
     def estrategias_auto():
@@ -1221,6 +1229,9 @@ def crear_app(monitor):
         try:
             r["estrategias"] = CA.medir(db.estrategias(),
                                         completa["posiciones"])
+            # Se guarda antes de que la estrategia pueda cerrarse: es el
+            # unico momento en que todavia hay tenencia con que medir.
+            db.guardar_medicion(r["estrategias"])
         except Exception as e:
             log.warning("medición de estrategias: %s", e)
             r["estrategias"] = []

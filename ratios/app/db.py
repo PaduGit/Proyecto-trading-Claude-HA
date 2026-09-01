@@ -852,7 +852,12 @@ CREATE TABLE IF NOT EXISTS estrategia (
   grupo_id INTEGER,
   alta     TEXT NOT NULL,
   cierre   TEXT,
-  motivo_cierre TEXT
+  motivo_cierre TEXT,
+  -- Copiados de la ultima medicion al cerrar.
+  res_final REAL,
+  res_patron_final REAL,
+  valor_final REAL,
+  dias_final INTEGER
 );
 CREATE INDEX IF NOT EXISTS ix_estr_familia ON estrategia(familia, cierre);
 
@@ -864,6 +869,20 @@ CREATE TABLE IF NOT EXISTS estrategia_especie (
   PRIMARY KEY (broker, simbolo)
 );
 CREATE INDEX IF NOT EXISTS ix_ee_estr ON estrategia_especie(estrategia_id);
+
+-- Como venia cada estrategia dia a dia. Sirve para ver la evolucion y,
+-- sobre todo, para congelar el resultado al cerrarla: cuando se cierra
+-- ya no hay tenencia y no habria con que calcularlo.
+CREATE TABLE IF NOT EXISTS estrategia_hist (
+  estrategia_id INTEGER NOT NULL,
+  fecha         TEXT NOT NULL,
+  valor         REAL,
+  costo         REAL,
+  rendimiento_pct REAL,
+  patron_pct    REAL,
+  contra_patron_pct REAL,
+  PRIMARY KEY (estrategia_id, fecha)
+);
 
 -- Lo que el diff entre dos fotos deduce que paso. No se aplica solo:
 -- queda pendiente hasta que se confirma, porque una foto no distingue
@@ -944,6 +963,14 @@ def init_alertas():
                 "revisar TEXT"):
         if col.split()[0] not in cols:
             c.execute("ALTER TABLE tenencia ADD COLUMN " + col)
+    try:
+        ce = {r["name"] for r in c.execute("PRAGMA table_info(estrategia)")}
+        for col in ("res_final REAL", "res_patron_final REAL",
+                    "valor_final REAL", "dias_final INTEGER"):
+            if col.split()[0] not in ce:
+                c.execute("ALTER TABLE estrategia ADD COLUMN " + col)
+    except Exception as e:
+        log.warning("migrar estrategia: %s", e)
     _migrar_parametros(c)
     c.commit()
 
@@ -1339,10 +1366,32 @@ def fijar_alta(eid, fecha):
 
 
 def cerrar_estrategia(eid, motivo="manual"):
+    """Cierra y congela el resultado.
+
+    Al cerrar ya no queda tenencia, asi que el rendimiento no se puede
+    recalcular despues: se copia de la ultima medicion guardada. Sin
+    esto, una estrategia archivada no se puede evaluar.
+    """
     c = conn()
-    c.execute("UPDATE estrategia SET cierre=?, motivo_cierre=? "
-              "WHERE id=? AND cierre IS NULL",
-              (datetime.now().date().isoformat(), motivo, eid))
+    hoy = datetime.now().date().isoformat()
+    e = c.execute("SELECT alta FROM estrategia WHERE id=?", (eid,)).fetchone()
+    ult = c.execute("SELECT * FROM estrategia_hist WHERE estrategia_id=? "
+                    "ORDER BY fecha DESC LIMIT 1", (eid,)).fetchone()
+    dias = None
+    if e and e["alta"]:
+        try:
+            dias = (datetime.now().date()
+                    - datetime.fromisoformat(e["alta"]).date()).days
+        except ValueError:
+            dias = None
+    c.execute(
+        "UPDATE estrategia SET cierre=?, motivo_cierre=?, res_final=?, "
+        "res_patron_final=?, valor_final=?, dias_final=? "
+        "WHERE id=? AND cierre IS NULL",
+        (hoy, motivo,
+         ult["rendimiento_pct"] if ult else None,
+         ult["contra_patron_pct"] if ult else None,
+         ult["valor"] if ult else None, dias, eid))
     c.commit()
 
 
@@ -1395,6 +1444,18 @@ def asignar_por_grupos():
     ya = asignaciones()
     hechas = []
     for g in c.execute("SELECT * FROM grupos"):
+        try:
+            tk_todos = [(t or "").strip().upper()
+                        for t in _json.loads(g["tickers"] or "[]")]
+        except ValueError:
+            tk_todos = []
+        # Sin ninguna de sus puntas en cartera no hay nada que seguir: el
+        # par se mira desde Ratios, que es donde se buscan oportunidades.
+        hay = any(c.execute("SELECT 1 FROM tenencia WHERE simbolo=? "
+                            "AND cantidad <> 0 LIMIT 1", (t,)).fetchone()
+                  for t in tk_todos if t)
+        if not hay:
+            continue
         est = c.execute("SELECT id FROM estrategia WHERE grupo_id=? "
                         "AND cierre IS NULL", (g["id"],)).fetchone()
         if est:
@@ -1425,6 +1486,59 @@ def asignar_por_grupos():
                 ya[clave] = eid
                 hechas.append("%s · %s → %s" % (r["broker"], sim, g["nombre"]))
     return hechas
+
+
+def guardar_medicion(mediciones):
+    """Una foto por dia de como viene cada estrategia.
+
+    Se pisa dentro del mismo dia: la ultima del dia es la que vale. De
+    aca sale el resultado que se congela al cerrar.
+    """
+    c = conn()
+    hoy = datetime.now().date().isoformat()
+    for m in mediciones or []:
+        if m.get("rendimiento_pct") is None:
+            continue
+        c.execute(
+            "INSERT OR REPLACE INTO estrategia_hist (estrategia_id, fecha, "
+            "valor, costo, rendimiento_pct, patron_pct, contra_patron_pct) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (m["id"], hoy, m.get("valor"), m.get("costo"),
+             m.get("rendimiento_pct"), m.get("patron_pct"),
+             m.get("contra_patron_pct")))
+    c.commit()
+
+
+def evolucion(eid, desde=None):
+    q = "SELECT * FROM estrategia_hist WHERE estrategia_id = ?"
+    args = [eid]
+    if desde:
+        q += " AND fecha >= ?"
+        args.append(desde)
+    return [dict(r) for r in conn().execute(q + " ORDER BY fecha", args)]
+
+
+def borrar_vacias():
+    """Borra las estrategias que nunca tuvieron especies asignadas.
+
+    Salen del alta automatica por grupos cuando el par existe pero no se
+    tiene ninguna de sus puntas. No toca las que quedaron sin especies
+    despues de vender: esas se cierran, que conserva la historia.
+    """
+    c = conn()
+    ids = [r["id"] for r in c.execute(
+        "SELECT e.id FROM estrategia e LEFT JOIN estrategia_especie s "
+        "ON s.estrategia_id = e.id WHERE s.estrategia_id IS NULL "
+        "AND e.cierre IS NULL")]
+    nombres = []
+    for eid in ids:
+        r = c.execute("SELECT nombre FROM estrategia WHERE id=?",
+                      (eid,)).fetchone()
+        if r:
+            nombres.append(r["nombre"])
+        c.execute("DELETE FROM estrategia WHERE id=?", (eid,))
+    c.commit()
+    return nombres
 
 
 def cerrar_sin_tenencia():
