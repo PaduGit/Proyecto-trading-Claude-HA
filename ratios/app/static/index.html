@@ -208,7 +208,9 @@ table.tabla tr.dolar td:first-child{color:var(--amber)}
   padding-top:8px;border-top:1px solid var(--rule)}
 .expo{display:flex;height:16px;border-radius:3px;overflow:hidden;
   background:var(--panel-2);margin:10px 0 8px}
-.expo span{display:block;height:100%}
+.expo span{display:block;height:100%;cursor:pointer;min-width:6px}
+.expo-ley div[data-expo]{cursor:pointer;padding:2px 4px;border-radius:3px}
+.expo-ley div[aria-pressed="true"]{background:var(--panel-2)}
 .expo-ley{display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;
   font-family:var(--mono);font-size:11px}
 .expo-ley div{display:flex;align-items:center;gap:6px;
@@ -428,40 +430,26 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
   </section>
 
   <section id="v-pos" hidden>
+    <div id="cart-out"></div>
+    <div id="filtro-resumen" class="filtro-fila"
+      style="margin-bottom:10px;cursor:pointer">
+      <span class="filtro-etq">Filtros</span>
+      <div class="periodos" style="margin:0">
+        <button id="filtro-abrir" aria-pressed="false">Todas</button>
+      </div></div>
+    <div id="filtro-caja" hidden>
     <div class="filtro-fila"><span class="filtro-etq">Broker</span>
       <div class="periodos" id="ten-broker" style="margin:0"></div></div>
     <div class="filtro-fila" style="margin-bottom:10px">
       <span class="filtro-etq">Tipo</span>
       <div class="periodos" id="ten-tipo" style="margin:0"></div></div>
     <div class="filtro-fila" style="margin-bottom:10px">
+      <span class="filtro-etq">Exposición</span>
+      <div class="periodos" id="ten-expo" style="margin:0"></div></div>
+    <div class="filtro-fila" style="margin-bottom:10px">
       <span class="filtro-etq">Estrategia</span>
       <div class="periodos" id="ten-fam" style="margin:0"></div></div>
-    <div id="cart-out"></div>
-    <div class="filtro-fila" style="margin:14px 0 10px">
-      <span class="filtro-etq">Orden</span>
-      <div class="periodos" id="ten-orden" style="margin:0"></div></div>
-    <div class="filtro-fila" style="margin-bottom:10px">
-      <span class="filtro-etq">Ver</span>
-      <div class="periodos" id="ten-modo" style="margin:0">
-        <button data-modo="broker" aria-pressed="true">Por broker</button>
-        <button data-modo="especie" aria-pressed="false">Agrupadas</button>
-      </div></div>
-    <button class="primario" id="ten-traer" style="margin-bottom:12px">
-      Traer tenencia de IOL</button>
-    <div class="nota" style="margin:-6px 0 12px">Baja las cuentas de IOL
-      configuradas. Cada una reemplaza solo su propio broker; el PPC y la
-      fecha de alta se conservan.</div>
-    <div id="ten-out"></div>
-    <details style="margin-top:12px" id="prop-caja">
-      <summary>Movimientos detectados</summary>
-      <div class="nota" style="margin-top:8px">Lo que cambió entre las dos
-        últimas fotos de cada broker. Una rotación solo se propone si las
-        dos especies están en el mismo grupo y se movieron en sentido
-        contrario; el ratio sale de la relación de nominales. Confirmar
-        una rotación mueve la estrategia de la especie que sale a la que
-        entra.</div>
-      <div id="prop-out" style="margin-top:8px"></div>
-    </details>
+    </div>
     <details style="margin-top:12px" id="estr-caja">
       <summary>Estrategias</summary>
       <div class="nota" style="margin-top:8px">Por qué tenés cada cosa.
@@ -477,6 +465,40 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       </div>
       <div id="estr-form" hidden></div>
       <div id="estr-out"></div>
+    </details>
+    <div class="filtro-fila" style="margin:14px 0 10px">
+      <span class="filtro-etq">Orden</span>
+      <div class="periodos" id="ten-orden" style="margin:0"></div></div>
+    <div class="filtro-fila" style="margin-bottom:10px">
+      <span class="filtro-etq">Ver</span>
+      <div class="periodos" id="ten-modo" style="margin:0">
+        <button data-modo="broker" aria-pressed="true">Por broker</button>
+        <button data-modo="especie" aria-pressed="false">Agrupadas</button>
+      </div></div>
+    <div id="ten-out"></div>
+    <details style="margin-top:12px" id="prop-caja">
+      <summary>Movimientos detectados</summary>
+      <div class="nota" style="margin-top:8px">Lo que cambió entre las dos
+        últimas fotos de cada broker. Una rotación solo se propone si las
+        dos especies están en el mismo grupo y se movieron en sentido
+        contrario; el ratio sale de la relación de nominales. Confirmar
+        una rotación mueve la estrategia de la especie que sale a la que
+        entra.</div>
+      <div id="prop-out" style="margin-top:8px"></div>
+    </details>
+    <details style="margin-top:12px">
+      <summary>Próximos cobros</summary>
+    <div class="periodos" id="cob-rango" style="margin-bottom:8px">
+      <button aria-pressed="true" data-dias="90">90 días</button>
+      <button aria-pressed="false" data-dias="180">6 meses</button>
+      <button aria-pressed="false" data-dias="365">1 año</button>
+      <button aria-pressed="false" data-dias="3650">Todo</button>
+    </div>
+    <div id="cob-out"></div>
+    <p class="nota">Título y cantidad por broker. Los bonos de brokers
+      locales son los que el Rulo usa como punto de partida; los del
+      exterior se guardan pero no participan, porque no liquidan contra el
+      mercado local.</p>
     </details>
     <details style="margin-top:12px">
       <summary>Grupos de rotación</summary>
@@ -500,18 +522,15 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       <div id="pos-msg"></div>
     </details>
     </details>
-    <h3 style="margin:22px 0 6px">Próximos cobros</h3>
-    <div class="periodos" id="cob-rango" style="margin-bottom:8px">
-      <button aria-pressed="true" data-dias="90">90 días</button>
-      <button aria-pressed="false" data-dias="180">6 meses</button>
-      <button aria-pressed="false" data-dias="365">1 año</button>
-      <button aria-pressed="false" data-dias="3650">Todo</button>
-    </div>
-    <div id="cob-out"></div>
-    <p class="nota">Título y cantidad por broker. Los bonos de brokers
-      locales son los que el Rulo usa como punto de partida; los del
-      exterior se guardan pero no participan, porque no liquidan contra el
-      mercado local.</p>
+    <details style="margin-top:12px">
+      <summary>Administrar</summary>
+      <div class="nota" style="margin-top:8px">Traer de IOL, pegar
+        una carga, ver el historial y registrar splits.</div>
+    <button class="primario" id="ten-traer" style="margin-bottom:12px">
+      Traer tenencia de IOL</button>
+    <div class="nota" style="margin:-6px 0 12px">Baja las cuentas de IOL
+      configuradas. Cada una reemplaza solo su propio broker; el PPC y la
+      fecha de alta se conservan.</div>
     <details style="margin-top:12px">
       <summary>Cargar pegando JSON</summary>
       <textarea id="ten-json" rows="8" style="width:100%;margin-top:8px"
@@ -550,7 +569,8 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       </div>
       <div id="ev-out" style="margin-top:10px"></div>
     </details>
-</section>
+    </details>
+  </section>
 
   <section id="v-plazos" hidden>
     <p class="nota">Vender en t0 y recomprar en t1 es cobrar hoy y pagar
@@ -931,7 +951,6 @@ function tarjeta(p){
        Lo que se tiene y como viene rindiendo esta en la estrategia. */
     '<div class="acciones">' +
       '<button onclick="alternar(\'' + esc(p.alias) + '\')">Gráfico</button>' +
-      '<button class="op" onclick="abrirOp(\'' + esc(p.alias) + '\')">Operé</button>' +
       '<button onclick="editarPar(' + (p.posicion ? p.posicion.id : 0) +
         ')">Editar</button>' +
     '</div>' +
@@ -1271,7 +1290,7 @@ async function cargarRegistro(){
       '<button onclick="borrarOperacion(' + o.id + ')" style="background:none;' +
       'border:none;color:var(--muted);cursor:pointer">×</button></span></div>').join("")
       : '<div class="vacio" style="padding:12px">Nada registrado todavía. ' +
-        'Usá el botón "Operé" en el panel.</div>';
+        'Se registran desde la estrategia.</div>';
     h += '</div><div class="hallazgo"><h3>Alertas</h3>';
     h += al.length ? al.map(a =>
       '<div class="fila ' + esc(iconoAlerta(a.tipo).clase) + '">' +
@@ -3752,7 +3771,7 @@ function formEstrategia(e){
     '<label>Familia<select data-e="familia">' + fam + '</select></label>' +
     '<label>Se mide contra<select data-e="patron">' + pat + '</select></label>' +
     '<label>Valor del patrón<input data-e="patron_valor" type="number" ' +
-      'step="any" placeholder="tipo de cambio de entrada" value="' +
+      'step="any" placeholder="según la fecha de alta" value="' +
       v("patron_valor") + '"></label>' +
     '<label>Objetivo<input data-e="objetivo" type="number" step="any" value="' +
       v("objetivo") + '"></label>' +
@@ -3769,9 +3788,25 @@ function formEstrategia(e){
     '<div class="nota" style="margin-bottom:8px">Reserva de valor y ' +
       'oportunidad cambiaria necesitan declarar contra qué se miden: sin ' +
       'eso, un activo que sube en pesos menos que el dólar se lee como ' +
-      'ganancia.</div>' +
+      'ganancia. El valor del patrón se busca solo en la fecha de alta; ' +
+      'cargalo únicamente si el tipo de cambio al que entraste no fue el ' +
+      'de mercado de ese día.</div>' +
     '<div class="acciones"><button class="primario" data-estr-guardar>' +
       'Guardar</button><button data-estr-cancelar>Cancelar</button></div>';
+}
+
+/* Se arman con las exposiciones que hay en cartera, no con la lista
+   completa: mostrar "Dólar linked" cuando no se tiene ninguno es ruido. */
+function expoChips(){
+  const cont = $("#ten-expo");
+  if(!cont) return;
+  const todas = (cartUlt && cartUlt.exposiciones) || [];
+  cont.innerHTML = [["", "Todas"]].concat(todas.map(n => [n, n]))
+    .map(([k, t]) => '<button aria-pressed="' +
+      (tenFiltro.exposicion === k) + '" data-expo="' + esc(k) + '">' +
+      (k ? '<i class="punto" style="background:' + colorExpo(k) +
+           ';display:inline-block;margin-right:5px"></i>' : "") +
+      esc(t) + '</button>').join("");
 }
 
 function famChips(){
@@ -3796,6 +3831,12 @@ const COLOR_EXPO = {
   "FCI": "#5E9AA8", "Otros": "#7B8794", "Sin clasificar": "#4A5462",
 };
 const colorExpo = n => COLOR_EXPO[n] || "#7B8794";
+/* Solo los tipos con una exposicion univoca. */
+const COLOR_TIPO = {
+  cedears: COLOR_EXPO["CEDEARs"], acciones: COLOR_EXPO["Acciones"],
+  fci: COLOR_EXPO["FCI"], moneda: COLOR_EXPO["Hard dollar"],
+  otros: COLOR_EXPO["Otros"],
+};
 const plata = v => v == null ? "—" :
   (v < 0 ? "-$" : "$") + ent(Math.abs(v));
 
@@ -3809,6 +3850,7 @@ function pintarCartera(d){
   cartUlt = d;
   /* La medicion de cada estrategia viaja con la valuacion. */
   estrMedidas = d.estrategias || [];
+  expoChips();
   if(estrDatos.length) pintarEstrategias();
   if(tenDatos.length) tenPintar();
   if(!d.total){
@@ -3846,11 +3888,16 @@ function pintarCartera(d){
   /* barra apilada por moneda de rendimiento */
   const ex = d.por_exposicion || [];
   if(ex.length){
+    /* La barra es el filtro: tocar un tramo deja solo esa exposicion.
+       Ahorra una fila de chips y convierte un adorno en un control. */
     h += '<div class="expo">' + ex.map(e =>
-      '<span style="width:' + e.pct.toFixed(2) + '%;background:' +
-      colorExpo(e.nombre) + '" title="' + esc(e.nombre) + '"></span>'
+      '<span data-expo="' + esc(e.nombre) + '" style="width:' +
+      e.pct.toFixed(2) + '%;background:' + colorExpo(e.nombre) +
+      '" title="' + esc(e.nombre) + '"></span>'
     ).join("") + '</div><div class="expo-ley">' + ex.map(e =>
-      '<div><span style="display:flex;align-items:center;gap:6px">' +
+      '<div data-expo="' + esc(e.nombre) + '" aria-pressed="' +
+      (tenFiltro.exposicion === e.nombre) +
+      '"><span style="display:flex;align-items:center;gap:6px">' +
       '<i class="punto" style="background:' + colorExpo(e.nombre) +
       '"></i>' + esc(e.nombre) + '</span><b>' + e.pct.toFixed(1) +
       '%</b></div>').join("") + '</div>';
@@ -3866,6 +3913,14 @@ function pintarCartera(d){
 /* Los dos botones se redibujan en cada pintada, asi que el listener va
    en el contenedor y no en cada boton. */
 $("#cart-out").addEventListener("click", e => {
+  const seg = e.target.closest("[data-expo]");
+  if(seg){
+    const n = seg.dataset.expo;
+    tenFiltro.exposicion = tenFiltro.exposicion === n ? "" : n;
+    tenAbierta = "";
+    expoChips(); resumenFiltros(); tenPintar(); cargarCartera();
+    return;
+  }
   if(e.target.id !== "cart-ojo") return;
   cartTotal = !cartTotal;
   /* Con el total tapado la lista muestra pesos en vez de montos. */
@@ -3880,6 +3935,7 @@ async function cargarCartera(){
   if(tenFiltro.broker) q.set("broker", tenFiltro.broker);
   if(tenFiltro.tipo) q.set("tipo", tenFiltro.tipo);
   if(tenFiltro.familia) q.set("familia", tenFiltro.familia);
+  if(tenFiltro.exposicion) q.set("exposicion", tenFiltro.exposicion);
   try{
     pintarCartera(await (await fetch(base + "api/cartera?" + q)).json());
   }catch(e){
@@ -3893,7 +3949,7 @@ const TIPOS_TEN = [["", "Todos"], ["moneda", "Efectivo"], ["bonos", "Bonos"],
   ["cedears", "CEDEARs"], ["acciones", "Acciones"], ["fci", "FCI"],
   ["otros", "Otros"]];
 let tenDatos = [];
-let tenFiltro = {broker: "", tipo: "", familia: ""};
+let tenFiltro = {broker: "", tipo: "", familia: "", exposicion: ""};
 let tenOrden = {col: "valor", asc: false};
 let tenAbierta = "";      // broker|simbolo de la fila desplegada
 let tenModo = "broker";   // broker | especie
@@ -3924,7 +3980,10 @@ function tenPintar(){
     (!tenFiltro.tipo || (t.tipo || "otros") === tenFiltro.tipo) &&
     (!tenFiltro.familia ||
       (tenFiltro.familia === "_sin" ? !t.estrategia_id
-                                    : t.familia === tenFiltro.familia)));
+                                    : t.familia === tenFiltro.familia)) &&
+    (!tenFiltro.exposicion ||
+      (val[t.broker + "|" + t.simbolo] || {}).exposicion ===
+        tenFiltro.exposicion));
   const signo = tenOrden.asc ? 1 : -1;
   const clave = t => {
     const p = val[t.broker + "|" + t.simbolo] || {};
@@ -4049,9 +4108,29 @@ function tenEditor(t){
         estrDatos.filter(x => !x.cierre).map(x =>
           '<option value="' + x.id + '"' +
           (t.estrategia_id === x.id ? " selected" : "") + '>' +
-          esc(x.nombre) + ' · ' + esc(famNombre(x.familia)) + '</option>')
+          esc(x.nombre) + ' · ' + esc(famNombre(x.familia)) + '</option>'),
+        ['<option value="_nueva">+ Crear una nueva</option>']
       ).join("") + '</select></label>' +
     '</div>' +
+    /* Se despliega al elegir "crear una nueva": cargar el costo y la
+       tesis son el mismo momento, y obligaba a ir y volver. */
+    '<div class="form" data-estr-nueva hidden style="margin-bottom:8px">' +
+    '<label style="grid-column:1/-1">Nombre<input data-n="nombre" ' +
+      'placeholder="Trading ' + esc(t.simbolo) + '"></label>' +
+    '<label>Familia<select data-n="familia">' +
+      estrFamilias.map(f => '<option value="' + f.id + '"' +
+        (f.id === "tecnica" ? " selected" : "") + '>' + esc(f.nombre) +
+        '</option>').join("") + '</select></label>' +
+    '<label>Se mide contra<select data-n="patron">' +
+      ['<option value="">Sin patrón</option>'].concat(
+        estrPatrones.map(p => '<option value="' + p + '">' +
+          esc(NOM_PATRON[p] || p) + '</option>')).join("") +
+      '</select></label>' +
+    '<label>Take profit<input data-n="objetivo" type="number" step="any">' +
+      '</label>' +
+    '<label>Stop loss<input data-n="stop" type="number" step="any"></label>' +
+    '<label style="grid-column:1/-1">Tesis<textarea data-n="tesis" rows="2">' +
+      '</textarea></label></div>' +
     '<div class="nota" style="margin:0 0 8px">Alta ' + tenAlta(t) +
       ' · PPC ' + tenPpc(t) + '. La base es 100 para títulos de deuda y 1 ' +
       'para el resto: si el PPC vino de una planilla que cotiza por ' +
@@ -4162,11 +4241,20 @@ function tenChips(){
       (tenFiltro.broker === k) + '" data-broker="' + esc(k) +
       '">' + esc(t) + '</button>').join("");
   const presentes = new Set(tenDatos.map(t => t.tipo || "otros"));
+  /* Los tipos que caen siempre en la misma exposicion llevan su color
+     del tablero. Los titulos de deuda no: un bono puede ser CER, hard
+     dollar, dolar linked o tasa segun cual sea, y pintarlos todos de un
+     color diria algo falso. */
   $("#ten-tipo").innerHTML = TIPOS_TEN
     .filter(([k]) => !k || presentes.has(k))
-    .map(([k, t]) => '<button aria-pressed="' +
-      (tenFiltro.tipo === k) + '" data-tipo="' + k + '">' +
-      t + '</button>').join("");
+    .map(([k, t]) => {
+      const c = COLOR_TIPO[k];
+      return '<button aria-pressed="' + (tenFiltro.tipo === k) +
+        '" data-tipo="' + k + '">' +
+        (c ? '<i class="punto" style="background:' + c +
+             ';display:inline-block;margin-right:5px"></i>' : "") +
+        t + '</button>';
+    }).join("");
 }
 
 async function cargarTenencias(){
@@ -4185,6 +4273,7 @@ async function cargarTenencias(){
       return;
     }
     tenChips();
+    resumenFiltros();
     ordChips();
     tenPintar();
     histChips();
@@ -4205,6 +4294,14 @@ async function cargarTenencias(){
 
 /* Todo por delegacion en el contenedor: la tabla se redibuja entera en
    cada pintada y los listeners por fila se perderian. */
+$("#ten-out").addEventListener("change", ev => {
+  const sel = ev.target.closest("[data-estr-sel]");
+  if(!sel) return;
+  const caja = sel.closest(".ten-edit");
+  const form = caja && caja.querySelector("[data-estr-nueva]");
+  if(form) form.hidden = sel.value !== "_nueva";
+});
+
 $("#ten-out").addEventListener("click", async ev => {
   const fila = ev.target.closest(".ten-fila");
   if(fila){
@@ -4237,13 +4334,22 @@ $("#ten-out").addEventListener("click", async ev => {
   });
   const b = ev.target.closest("[data-guardar]");
   const sel = caja.querySelector("[data-estr-sel]");
+  const cuerpo = {broker: br, simbolo: sim, campos};
+  if(sel && sel.value === "_nueva"){
+    const n = {};
+    caja.querySelectorAll("[data-n]").forEach(i => {
+      n[i.dataset.n] = i.value === "" ? null : i.value;
+    });
+    if(!n.nombre){ alert("Falta el nombre de la estrategia."); return; }
+    cuerpo.estrategia_nueva = n;
+  }
   b.disabled = true;
   try{
     const r = await (await fetch(base + "api/tenencias/una", {method:"POST",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({broker: br, simbolo: sim, campos})})).json();
+      body: JSON.stringify(cuerpo)})).json();
     if(r.error){ alert(r.error); return; }
-    if(sel){
+    if(sel && sel.value !== "_nueva"){
       await fetch(base + "api/estrategias/asignar", {method:"POST",
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({broker: br, simbolo: sim,
@@ -4269,12 +4375,55 @@ $("#ten-orden").addEventListener("click", ev => {
   if(b) tenOrdenar(b.dataset.ord);
 });
 
+/* Los filtros ocupaban cuatro filas fijas antes del primer dato. Ahora
+   la linea de arriba dice que hay puesto y se abren al tocarla. */
+function resumenFiltros(){
+  const b = $("#filtro-abrir");
+  if(!b) return;
+  const partes = [tenFiltro.broker, tenFiltro.exposicion,
+                  (TIPOS_TEN.find(x => x[0] === tenFiltro.tipo) || [])[1],
+                  tenFiltro.familia === "_sin" ? "Sin asignar"
+                    : (tenFiltro.familia ? famNombre(tenFiltro.familia) : "")]
+                 .filter(Boolean);
+  b.textContent = partes.length ? partes.join(" · ") : "Todas";
+  b.setAttribute("aria-pressed", partes.length > 0);
+}
+
+/* La preferencia de dejar Estrategias abierto o cerrado sobrevive a la
+   recarga: es lo primero que se ve y no da lo mismo. */
+function recordar(clave, valor){
+  try{ localStorage.setItem(clave, valor ? "1" : "0"); }catch(e){}
+}
+function recordado(clave, porDefecto){
+  try{
+    const v = localStorage.getItem(clave);
+    return v == null ? porDefecto : v === "1";
+  }catch(e){ return porDefecto; }
+}
+
+$("#estr-caja").open = recordado("estr-abierto", true);
+$("#estr-caja").addEventListener("toggle", e =>
+  recordar("estr-abierto", e.target.open));
+
+$("#filtro-resumen").addEventListener("click", () => {
+  const c = $("#filtro-caja");
+  c.hidden = !c.hidden;
+});
+
+$("#ten-expo").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-expo]");
+  if(!b) return;
+  tenFiltro.exposicion = b.dataset.expo;
+  tenAbierta = "";
+  expoChips(); resumenFiltros(); tenPintar(); cargarCartera();
+});
+
 $("#ten-fam").addEventListener("click", ev => {
   const b = ev.target.closest("[data-fam]");
   if(!b) return;
   tenFiltro.familia = b.dataset.fam;
   tenAbierta = "";
-  famChips(); tenPintar(); cargarCartera();
+  famChips(); resumenFiltros(); tenPintar(); cargarCartera();
 });
 
 /* Alta, edicion, cierre y borrado de estrategias, todo por delegacion. */
@@ -4431,7 +4580,7 @@ $("#ten-broker").addEventListener("click", ev => {
   tenFiltro.broker = b.dataset.broker;
   /* La fila abierta puede quedar fuera del filtro nuevo. */
   tenAbierta = "";
-  tenChips(); tenPintar(); cargarCartera();
+  tenChips(); resumenFiltros(); tenPintar(); cargarCartera();
 });
 $("#ten-tipo").addEventListener("click", ev => {
   const b = ev.target.closest("[data-tipo]");
@@ -4439,7 +4588,7 @@ $("#ten-tipo").addEventListener("click", ev => {
   tenFiltro.tipo = b.dataset.tipo;
   /* La fila abierta puede quedar fuera del filtro nuevo. */
   tenAbierta = "";
-  tenChips(); tenPintar(); cargarCartera();
+  tenChips(); resumenFiltros(); tenPintar(); cargarCartera();
 });
 
 

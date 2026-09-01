@@ -834,13 +834,31 @@ def crear_app(monitor):
         br, sim = (d.get("broker") or "").strip(), (d.get("simbolo") or "").strip()
         if not br or not sim:
             return jsonify({"error": "faltan el broker o el símbolo"}), 400
+        campos = d.get("campos") or {}
         try:
-            n = db.actualizar_tenencia(br, sim, d.get("campos") or {})
+            n = db.actualizar_tenencia(br, sim, campos)
         except (TypeError, ValueError) as e:
             return jsonify({"error": str(e)}), 400
         if not n:
             return jsonify({"error": "no se encontró esa posición"}), 404
-        return jsonify({"actualizadas": n, "en_rulo": monitor.tengo_actual()})
+
+        # Alta de estrategia en el mismo paso. La fecha de alta es la de
+        # la compra y no la de hoy: de ahi sale el valor del patron
+        # contra el que se va a medir.
+        nueva = d.get("estrategia_nueva")
+        eid = None
+        if nueva and (nueva.get("nombre") or "").strip():
+            datos = dict(nueva)
+            datos.setdefault("origen", "cargada desde %s" % sim)
+            try:
+                eid = db.guardar_estrategia(datos)
+            except (TypeError, ValueError) as e:
+                return jsonify({"error": str(e), "guardada": True}), 400
+            if campos.get("fecha_alta"):
+                db.fijar_alta(eid, campos["fecha_alta"])
+            db.asignar(br, sim, eid)
+        return jsonify({"actualizadas": n, "estrategia_id": eid,
+                        "en_rulo": monitor.tengo_actual()})
 
     @app.delete("/api/tenencias/una")
     def tenencia_borrar():
@@ -1183,15 +1201,21 @@ def crear_app(monitor):
         br = (request.args.get("broker") or "").strip()
         tp = (request.args.get("tipo") or "").strip().lower()
         fa = (request.args.get("familia") or "").strip().lower()
+        ex = (request.args.get("exposicion") or "").strip()
         if br:
             filas = [f for f in filas if f["broker"] == br]
         if tp:
             filas = [f for f in filas if (f.get("tipo") or "otros") == tp]
+        if ex:
+            # La exposición no está en la tenencia: sale de bonos.yaml,
+            # así que hay que calcularla para poder filtrar por ella.
+            filas = [f for f in filas
+                     if CA.exposicion(f, bonos_cfg) == ex]
         if fa == "_sin":
             filas = [f for f in filas if not f.get("estrategia_id")]
         elif fa:
             filas = [f for f in filas if f.get("familia") == fa]
-        r = (completa if not (br or tp or fa)
+        r = (completa if not (br or tp or fa or ex)
              else CA.valuar(filas, precios, mep, bonos_cfg))
         try:
             r["estrategias"] = CA.medir(db.estrategias(),
@@ -1199,6 +1223,10 @@ def crear_app(monitor):
         except Exception as e:
             log.warning("medición de estrategias: %s", e)
             r["estrategias"] = []
+        # Las exposiciones de la cartera entera: los chips no se pueden
+        # armar con las del subconjunto o al filtrar quedaria una sola y
+        # no habria como volver.
+        r["exposiciones"] = [e["nombre"] for e in completa["por_exposicion"]]
         return jsonify(r)
 
     @app.get("/api/cobros")

@@ -894,7 +894,7 @@ CREATE INDEX IF NOT EXISTS ix_mp_estado ON mov_propuesto(estado, detectado);
 FAMILIAS = {
     "rotacion":   {"nombre": "Rotación", "patron": False, "precio": False},
     "intradiaria": {"nombre": "Intradiaria", "patron": False, "precio": False},
-    "tecnica":    {"nombre": "Técnica", "patron": False, "precio": True},
+    "tecnica":    {"nombre": "Trading", "patron": False, "precio": True},
     "opciones":   {"nombre": "Opciones", "patron": False, "precio": True},
     "reserva":    {"nombre": "Reserva de valor", "patron": True,
                    "precio": False},
@@ -1280,6 +1280,17 @@ def guardar_estrategia(datos, eid=None):
         eid = cur.lastrowid
     c.commit()
     return eid
+
+
+def fijar_alta(eid, fecha):
+    """La estrategia empieza cuando se compró, no cuando se la cargó.
+
+    Importa porque el valor del patrón contra el que se mide sale de esa
+    fecha: con la de hoy, el rendimiento contra el CER daría cero.
+    """
+    c = conn()
+    c.execute("UPDATE estrategia SET alta=? WHERE id=?", (fecha, eid))
+    c.commit()
 
 
 def cerrar_estrategia(eid, motivo="manual"):

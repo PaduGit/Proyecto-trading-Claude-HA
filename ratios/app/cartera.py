@@ -85,11 +85,15 @@ def medir(estrategias_, posiciones):
         pat = e.get("patron")
         if pat and costo:
             if pat == "tc_entrada":
-                # Cargado a mano: es el tipo de cambio al que se entro.
-                base = e.get("patron_valor")
+                # El tipo de cambio al que se entró. Si no se cargó a
+                # mano, se busca el del día del alta: es el dato que la
+                # app ya tiene y tipearlo era pedir dos veces lo mismo.
+                base = e.get("patron_valor") or patron_valor("dolar",
+                                                             e.get("alta"))
                 hoy = patron_valor("dolar")
             else:
-                base = patron_valor(pat, e.get("alta"))
+                base = e.get("patron_valor") or patron_valor(pat,
+                                                             e.get("alta"))
                 hoy = patron_valor(pat)
             if base and hoy:
                 d["patron_pct"] = (hoy / base - 1) * 100
@@ -108,7 +112,7 @@ def base_de(tipo):
     return 100.0 if (tipo or "") in BASE_100 else 1.0
 
 
-def _exposicion(t, bonos_cfg):
+def exposicion(t, bonos_cfg):
     """La moneda en la que rinde la posicion."""
     tipo = (t.get("tipo") or "otros").lower()
     if tipo == "moneda":
@@ -168,7 +172,7 @@ def valuar(tenencias, precios, mep=None, bonos_cfg=None):
             "ppc": ppc, "costo": costo, "resultado": res,
             "resultado_pct": (res / costo * 100) if (res is not None and costo)
                              else None,
-            "exposicion": _exposicion(t, bonos_cfg),
+            "exposicion": exposicion(t, bonos_cfg),
             "estrategia_id": t.get("estrategia_id"),
             "estrategia": t.get("estrategia"),
             "extranjero": t.get("extranjero"),

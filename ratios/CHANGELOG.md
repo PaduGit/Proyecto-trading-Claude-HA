@@ -1,5 +1,52 @@
 # Registro de cambios
 
+## 0.28.0
+
+**La pestania empezaba con seis filas de controles.** Antes del primer
+dato habia cuatro filas de filtros, una de orden y una de modo: casi una
+pantalla de chips en el celular.
+
+Ahora arranca con el total y la barra de exposicion, despues una linea de
+filtros que dice lo que hay puesto —"Veta · CER · Trading"— y se abre al
+tocarla, y enseguida las estrategias. La lista de posiciones queda abajo.
+
+**La barra de exposicion es el filtro.** Tocar un tramo deja solo esa
+exposicion y tocarlo de nuevo la saca; la leyenda hace lo mismo y marca
+cual esta activa. Un adorno pasa a ser un control y se ahorra una fila.
+Los tramos llevan seis pixeles de ancho minimo: uno del 1% no se veia ni
+se podia tocar.
+
+**"Administrar"** junta traer de IOL, cargar pegando JSON, el historial
+de cantidades y los splits. Son tareas de mantenimiento y competian por
+espacio con lo que se mira todos los dias.
+
+**Proximos cobros** pasa a desplegable.
+
+**Estrategias recuerda si se dejo cerrado**, incluso despues de
+recargar. Arranca abierto la primera vez.
+
+**Chips de exposicion con su color**, el mismo de la barra y el de cada
+posicion. Los chips de tipo lo llevan solo donde la exposicion es
+univoca: un bono puede ser CER, hard dollar, dolar linked o tasa segun
+cual sea, y pintarlos todos igual diria algo falso.
+
+**"Tecnica" pasa a llamarse "Trading".** La clave interna no cambia, asi
+que lo ya asignado sigue igual.
+
+**El boton "Opere" sale de Ratios.** Registrar una operacion es
+seguimiento, no analisis.
+
+**Alta de estrategia desde la tenencia.** El selector del editor suma
+"+ Crear una nueva": nombre, familia, patron, take profit, stop loss y
+tesis. Se guarda una sola vez y quedan el PPC, la cantidad, la fecha y la
+estrategia ya asociada. La estrategia hereda la fecha de alta de la
+tenencia y no la de hoy: con la de hoy, el rendimiento contra el CER
+daria siempre cero.
+
+**El valor del patron se busca solo** en la fecha de alta, para los
+cuatro patrones. El campo queda por si el tipo de cambio al que se entro
+no fue el de mercado de ese dia.
+
 ## 0.27.1
 
 **Los brokers por nombre al agrupar.** Decia "2 brokers"; ahora dice
