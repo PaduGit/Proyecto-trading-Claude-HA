@@ -16,7 +16,11 @@ log = logging.getLogger("iol")
 
 
 class IOLError(Exception):
-    pass
+    """El status queda accesible: un 429 no se trata igual que un 500."""
+
+    def __init__(self, mensaje, status=None):
+        super().__init__(mensaje)
+        self.status = status
 
 
 def _clasificar(path):
@@ -159,9 +163,10 @@ class IOL:
                              int((time.monotonic() - t0) * 1000),
                              self.origen)
         if r.status_code == 429:
-            raise IOLError("429: la API pidio frenar (limite de requests)")
+            raise IOLError("429: la API pidio frenar (limite de requests)", 429)
         if r.status_code != 200:
-            raise IOLError("%s -> %s: %s" % (path, r.status_code, r.text[:180]))
+            raise IOLError("%s -> %s: %s" % (path, r.status_code, r.text[:180]),
+                           r.status_code)
         return r.json()
 
     @contextmanager
@@ -189,7 +194,9 @@ class IOL:
                 % (mercado, simbolo, plazo))
         try:
             d = self._get(path)
-        except IOLError:
+        except IOLError as e:
+            if e.status == 429:
+                raise      # reintentar con otra ruta gastaria otra llamada
             d = self._get("/api/v2/%s/Titulos/%s/Cotizacion" % (mercado, simbolo))
         return normalizar(d, simbolo)
 

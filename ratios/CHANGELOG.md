@@ -1,5 +1,50 @@
 # Registro de cambios
 
+## 0.31.0
+
+**El panel Orleans devuelve 500 en los siete instrumentos**, con los dos
+filtros. La API de IOL esta bien: la cotizacion por especie responde
+normal. Lo que sigue es para poder trabajar mientras ese endpoint no
+vuelva, y conviene reportarlo igual.
+
+**Open BYMA Data como fuente alternativa** (`byma.py`). Trae paneles
+enteros en una llamada, con puntas, volumen y cantidad de ordenes, sin
+credenciales y sin gastar cupo de IOL. Entra sola cuando el panel de IOL
+falla del todo y se apaga cuando vuelve. Se apaga con `usar_byma`.
+
+Los precios llegan con veinte minutos de retraso, asi que alcanzan para
+valuar y para la curva. En Rulo y Pases el ratio que se ve puede no
+existir cuando se manda la orden.
+
+**El `settlementType` de BYMA no es el numero de dias.** Verificado
+contra IOL: AL30D con `settlementType` 2 coincide en punta compradora,
+vendedora, cierre, volumen y hora con el t1 de IOL. Entonces 1 es contado
+inmediato y 2 es 24 horas. Con el mapeo al reves, toda la curva se habria
+calculado sobre contado inmediato.
+
+Los dos plazos vienen en la misma respuesta, asi que la pantalla de
+plazos toma de ahi el t0 en vez de pedirlo por especie.
+
+**Segundo respaldo, especie por especie.** Si BYMA tampoco responde, se
+piden las cotizaciones de a una hasta que la API contesta 429, y se
+retoma en el ciclo siguiente desde donde quedo: el limite lo pone la API
+y no un numero adivinado. Los pares van primero, que no toleran precios
+viejos; la cartera despues, rotando.
+
+**Cartel en el encabezado** cuando los precios no son de IOL. Va arriba
+de todo y se ve en cualquier pestania.
+
+**`IOLError` lleva el status.** Un 429 y un 500 no se tratan igual: antes
+una cotizacion que fallaba se reintentaba por la ruta alternativa, lo que
+ante un 429 gastaba otra llamada al pedo.
+
+**API de BYMA en Explorar**, al lado de la de IOL: panel, plazo y especie
+opcional, con la lista de campos y las primeras filas crudas.
+
+**Los canjes se muestran sin recalcular.** El ciclo ya los calcula y ya
+los avisa: el titulo trae la cantidad y el desplegable aparece abierto si
+hay alguno. Recalcular quedo en un boton.
+
 ## 0.30.0
 
 **El bloque de crear estrategia se veia siempre.** `.form` declara

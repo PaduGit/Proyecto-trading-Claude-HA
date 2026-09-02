@@ -95,6 +95,9 @@ def crear_app(monitor):
             "sin_cotizacion": getattr(monitor, "sin_cotizacion", []),
             "orleans_fallas": getattr(monitor, "orleans_fallas", []),
             "orleans_descartados": getattr(monitor, "orleans_descartados", []),
+            "fuente": getattr(monitor, "fuente", "iol"),
+            "canjes": len(getattr(monitor, "canjes", [])),
+            "byma_fallas": getattr(monitor, "byma_fallas", []),
         })
 
     @app.post("/api/refrescar")
@@ -1165,14 +1168,56 @@ def crear_app(monitor):
 
     @app.get("/api/canjes")
     def canjes_listar():
-        """Contra que conviene rotar cada bono que se tiene."""
-        try:
-            filas = monitor.canjes_curva()
-        except Exception as e:
-            log.warning("canjes: %s", e)
-            return jsonify({"error": str(e)}), 500
+        """Contra que conviene rotar cada bono que se tiene.
+
+        Por defecto devuelve lo que dejo el ultimo ciclo, que es lo mismo
+        que ya se aviso por notificacion. Recalcular la curva entera en
+        cada visita seria repetir un trabajo hecho.
+        """
+        if request.args.get("recalcular") == "1":
+            try:
+                filas = monitor.canjes_curva()
+            except Exception as e:
+                log.warning("canjes: %s", e)
+                return jsonify({"error": str(e)}), 500
+        else:
+            filas = getattr(monitor, "canjes", [])
         return jsonify({"canjes": filas,
+                        "calculado": monitor.ultimo_ciclo.isoformat(
+                            timespec="seconds") if monitor.ultimo_ciclo else None,
                         "minimo": float(monitor.cfg.get("canje_min_pct") or 1)})
+
+    @app.post("/api/byma/panel")
+    def byma_panel():
+        """Respuesta cruda de un panel, sin interpretar.
+
+        Mismo criterio que el estado de cuenta de IOL: cuando un numero
+        no cierra hace falta ver de que campo salio, y el registro de
+        llamadas guarda ruta y estado pero nunca el cuerpo.
+        """
+        import byma as BY
+        d = request.get_json(silent=True) or {}
+        inst = (d.get("panel") or "titulosPublicos").strip()
+        if inst not in BY.PANELES:
+            return jsonify({"error": "panel desconocido",
+                            "paneles": sorted(BY.PANELES)}), 400
+        cli = BY.Byma(verificar_ssl=bool(monitor.cfg.get("byma_verificar_ssl")))
+        try:
+            filas = cli.panel(inst, d.get("plazo") or None)
+        except BY.BymaError as e:
+            return jsonify({"error": str(e)}), 502
+        n = int(d.get("filas") or 3)
+        simbolo = (d.get("simbolo") or "").strip().upper()
+        if simbolo:
+            filas = [f for f in filas
+                     if (f.get("symbol") or "").upper() == simbolo]
+        return jsonify({
+            "panel": inst, "total": len(filas),
+            "plazos": sorted({str(f.get("settlementType") or "")
+                              for f in filas}),
+            "campos": sorted(filas[0].keys()) if filas else [],
+            "filas": filas[:max(1, min(n, 25))],
+        })
 
     @app.get("/api/cartera")
     def cartera_valuada():
@@ -1239,6 +1284,9 @@ def crear_app(monitor):
         # armar con las del subconjunto o al filtrar quedaria una sola y
         # no habria como volver.
         r["exposiciones"] = [e["nombre"] for e in completa["por_exposicion"]]
+        # Sin precios, decir por que: si los paneles estan caidos no es
+        # que falte esperar el proximo ciclo.
+        r["fallas"] = list(getattr(monitor, "orleans_fallas", []) or [])
         return jsonify(r)
 
     @app.get("/api/cobros")

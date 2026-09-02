@@ -201,6 +201,7 @@ table.tabla tr.dolar td:first-child{color:var(--amber)}
 .barras i{flex:1;background:var(--panel-2);border-top:2px solid var(--muted);
   min-height:2px}
 
+.cartel{background:var(--amber);color:var(--ink);font-family:var(--mono);font-size:11px;padding:5px 12px;text-align:center;line-height:1.35}
 .avanzado{margin-top:18px;border-top:1px solid var(--rule);padding-top:12px}
 /* -- cartera -- */
 .cart-tot{background:var(--panel);border:1px solid var(--rule);border-radius:4px;
@@ -324,6 +325,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
 <body>
 
 <header>
+  <div id="cartel-fuente" class="cartel" hidden></div>
   <div class="hrow">
     <h1>Ratios <span class="ver-app" id="ver-app"></span></h1>
     <div class="reloj">
@@ -398,7 +400,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
 
   <section id="v-bonos" hidden>
     <details style="margin-top:12px" id="canje-caja">
-      <summary>Canjes convenientes</summary>
+      <summary id="canje-tit">Canjes convenientes</summary>
       <div class="nota" style="margin-top:8px">Contra qué bono conviene
         rotar cada uno de los que tenés, dentro de la misma familia y con
         duration parecida. La ganancia es lo que se espera que recorra
@@ -630,6 +632,31 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       configurada, sin interpretarla. Es para ver de qué campo sale cada
       número cuando un saldo no cierra.</p>
     <div id="ec-out"></div>
+    <h3 style="margin:16px 0 6px">API de BYMA</h3>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+      <select id="by-panel" style="flex:1 1 150px">
+        <option value="titulosPublicos">Títulos públicos</option>
+        <option value="letras">Letras</option>
+        <option value="obligacionesNegociables">ON</option>
+        <option value="acciones">Acciones</option>
+        <option value="panelGeneral">Panel general</option>
+        <option value="cedears">CEDEARs</option>
+      </select>
+      <select id="by-plazo" style="flex:0 1 110px">
+        <option value="">Los dos plazos</option>
+        <option value="t1">Solo t1</option>
+        <option value="t0">Solo t0</option>
+      </select>
+      <input id="by-simbolo" placeholder="Especie (opcional)"
+        style="flex:1 1 120px">
+      <button class="secundario" id="probar-byma"
+        style="width:auto;padding:0 14px">Consultar</button>
+    </div>
+    <p class="nota">Respuesta cruda de Open BYMA Data, con la lista de
+      campos y las primeras filas. Los precios llegan con veinte minutos
+      de retraso y el <b>settlementType</b> no es el número de días: 1 es
+      contado inmediato y 2 es 24 horas.</p>
+    <div id="by-out"></div>
     <div style="display:flex;gap:6px;margin:10px 0">
       <button class="secundario" id="log-ver" style="width:auto;padding:0 14px">
         Ver llamadas</button>
@@ -895,6 +922,28 @@ $("#btn-refrescar").addEventListener("click", async () => {
   finally{ b.disabled = false; b.classList.remove("girando"); }
 });
 
+/* Que los precios no son de IOL tiene que verse en cualquier pestania,
+   no solo en el panel: con BYMA hay veinte minutos de retraso y un rulo
+   calculado con eso es una perdida. */
+function cartelFuente(d){
+  const c = $("#cartel-fuente");
+  if(!c) return;
+  const f = (d || {}).fuente || "iol";
+  if(f === "byma"){
+    c.textContent = "El panel de IOL no responde: los precios son de " +
+      "BYMA y llegan con 20 minutos de retraso. Alcanzan para valuar y " +
+      "para la curva. En Rulo y Pases, el ratio que ves puede no existir " +
+      "cuando mandes la orden.";
+    c.hidden = false;
+  } else if(f === "especie"){
+    c.textContent = "El panel de IOL no responde: los precios se piden de " +
+      "a una especie y se actualizan por turno. Puede haber datos viejos.";
+    c.hidden = false;
+  } else {
+    c.hidden = true;
+  }
+}
+
 /* ---------- panel ---------- */
 async function cargarPanel(){
   let d;
@@ -903,6 +952,17 @@ async function cargarPanel(){
 
   ultimoEstado = d;
   pintarReloj(d.hace_seg, d.poll_seconds);
+  cartelFuente(d);
+  /* Los canjes ya los calculo el ciclo y ya se avisaron: alcanza con que
+     el desplegable de Bonos aparezca abierto cuando hay alguno. */
+  const tit = $("#canje-tit");
+  if(tit && d.canjes != null){
+    tit.textContent = d.canjes
+      ? "Canjes convenientes · " + d.canjes : "Canjes convenientes";
+    if(d.canjes && !$("#canje-caja").open){
+      $("#canje-caja").open = true;
+    }
+  }
 
   const cont = $("#panel-out");
   let cab = "";
@@ -1978,6 +2038,35 @@ $("#probar-cer").addEventListener("click", async e => {
              d.respuesta.slice(0,300) : ""));
     }
   }catch(err){ alert("No se pudo probar."); }
+});
+
+$("#probar-byma").addEventListener("click", async e => {
+  e.preventDefault(); e.stopPropagation();
+  const out = $("#by-out"), b = e.target;
+  b.disabled = true;
+  out.innerHTML = '<div class="nota">Consultando…</div>';
+  try{
+    const d = await (await fetch(base + "api/byma/panel", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({panel: $("#by-panel").value,
+        plazo: $("#by-plazo").value, simbolo: $("#by-simbolo").value.trim(),
+        filas: 3})})).json();
+    if(d.error){
+      out.innerHTML = '<div class="msg error">' + esc(d.error) + '</div>';
+      return;
+    }
+    out.innerHTML = '<div class="nota">' + d.total + ' filas · plazos ' +
+      (d.plazos || []).join(", ") + '</div>' +
+      '<div class="nota" style="margin-top:4px"><b>Campos:</b> ' +
+      (d.campos || []).map(esc).join(", ") + '</div>' +
+      '<pre style="font-family:var(--mono);font-size:10px;white-space:pre-wrap;' +
+      'word-break:break-all;background:var(--panel);border:1px solid ' +
+      'var(--rule);padding:8px;border-radius:4px;max-height:50vh;' +
+      'overflow:auto;margin-top:8px">' +
+      esc(JSON.stringify(d.filas, null, 1)) + '</pre>';
+  }catch(err){
+    out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
+  }finally{ b.disabled = false; }
 });
 
 $("#probar-ec").addEventListener("click", async e => {
@@ -3546,12 +3635,14 @@ $("#prop-out").addEventListener("click", async ev => {
 /* ---------- canjes por curva ---------- */
 let canjesCache = [];
 
-async function cargarCanjes(){
+async function cargarCanjes(recalcular){
   const out = $("#canje-out");
   if(!out) return;
-  out.innerHTML = '<div class="nota">Calculando…</div>';
+  out.innerHTML = '<div class="nota">' +
+    (recalcular ? "Recalculando…" : "Leyendo el último ciclo…") + '</div>';
   try{
-    const d = await (await fetch(base + "api/canjes")).json();
+    const d = await (await fetch(base + "api/canjes" +
+      (recalcular ? "?recalcular=1" : ""))).json();
     if(d.error){
       out.innerHTML = '<div class="msg error">' + esc(d.error) + '</div>';
       return;
@@ -3559,9 +3650,18 @@ async function cargarCanjes(){
     const c = d.canjes || [];
     canjesCache = c;
     if(estrDatos.length) pintarEstrategias();
+    /* Si hay alguno se abre solo: un canje que rinde y queda escondido
+       detras de un desplegable es lo mismo que no tenerlo. */
+    const tit = $("#canje-tit");
+    if(tit) tit.textContent = c.length
+      ? "Canjes convenientes · " + c.length
+      : "Canjes convenientes";
+    if(c.length) $("#canje-caja").open = true;
     if(!c.length){
       out.innerHTML = '<div class="vacio">Ningún canje supera ' +
-        num(d.minimo, 3) + '% neto. Es lo normal la mayoría de los días.</div>';
+        num(d.minimo, 3) + '% neto. Es lo normal la mayoría de los días.' +
+        '</div><div class="acciones" style="margin-top:8px">' +
+        '<button id="canje-recalc">Recalcular ahora</button></div>';
       return;
     }
     out.innerHTML = c.map(f =>
@@ -3578,15 +3678,23 @@ async function cargarCanjes(){
         ' · recorrido ' + num(f.recorrido_hacia, 3) + '%' +
       '</div><div class="pos-pie" style="display:block">' +
       esc(f.familia) + ' · costo de ida y vuelta ' + num(f.costo_pct, 3) + '%' +
-      '</div></div>').join("");
+      '</div></div>').join("") +
+      '<div class="nota" style="margin-top:8px">Del ciclo de ' +
+      esc((d.calculado || "").replace("T", " ").slice(0, 16) || "—") +
+      '. Ya te llegó como aviso.</div>' +
+      '<div class="acciones" style="margin-top:6px">' +
+      '<button id="canje-recalc">Recalcular ahora</button></div>';
   }catch(e){
     out.innerHTML = '<div class="msg error">No se pudo calcular.</div>';
   }
 }
 
 $("#canje-caja").addEventListener("toggle", e => {
-  /* Recalcula toda la curva, asi que solo cuando se abre. */
-  if(e.target.open) cargarCanjes();
+  if(e.target.open) cargarCanjes(false);
+});
+
+$("#canje-out").addEventListener("click", e => {
+  if(e.target.id === "canje-recalc") cargarCanjes(true);
 });
 
 /* ---------- estrategias ---------- */
@@ -4033,10 +4141,29 @@ async function cargarCartera(){
   if(tenFiltro.tipo) q.set("tipo", tenFiltro.tipo);
   if(tenFiltro.familia) q.set("familia", tenFiltro.familia);
   if(tenFiltro.exposicion) q.set("exposicion", tenFiltro.exposicion);
+  /* El pedido y el dibujo van por separado: antes cualquier error de
+     JavaScript se informaba como si la valuacion hubiera fallado, y no
+     habia forma de saber cual de los dos era. */
+  let d;
   try{
-    pintarCartera(await (await fetch(base + "api/cartera?" + q)).json());
+    const r = await fetch(base + "api/cartera?" + q);
+    if(!r.ok){
+      out.innerHTML = '<div class="msg error">La valuación devolvió ' +
+        r.status + '. Está en el registro del add-on.</div>';
+      return;
+    }
+    d = await r.json();
   }catch(e){
-    out.innerHTML = '<div class="msg error">No se pudo valuar.</div>';
+    out.innerHTML = '<div class="msg error">No se pudo pedir la ' +
+      'valuación: ' + esc(e.message) + '</div>';
+    return;
+  }
+  try{
+    pintarCartera(d);
+  }catch(e){
+    out.innerHTML = '<div class="msg error">Error al dibujar: ' +
+      esc(e.message) + '</div>';
+    console.error(e);
   }
 }
 

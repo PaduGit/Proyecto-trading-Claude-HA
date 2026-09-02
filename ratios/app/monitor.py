@@ -43,6 +43,10 @@ class Monitor:
         self._zona_actual = self._cargar_zonas()
         self._zonas_curva = self._cargar_zonas_curva()
         self._canjes_avisado = set()
+        self._cursor_especie = 0
+        self.fuente = "iol"
+        self.byma_fallas = []
+        self.cot_t0 = {}
         self.canjes = []
         self._pidiendo = threading.Lock()
         self._ultimo_manual = datetime.min
@@ -204,6 +208,62 @@ class Monitor:
             log.info("sin cotizacion: %s", ", ".join(self.sin_cotizacion))
         return self.rellenar_puntas(mapa)
 
+    def repuesto_por_especie(self):
+        """Pide especie por especie cuando el panel entero falla.
+
+        Avanza hasta que la API contesta 429 y retoma en el ciclo
+        siguiente desde donde quedo: el limite real lo pone la API y no
+        un numero adivinado. Los pares van primero, que son los que
+        generan senal de Rulo y no toleran precios viejos; la cartera
+        despues, rotando.
+
+        Es un respaldo, no un reemplazo: con la lista rotando, el
+        screening trabaja con datos desparejos y algunas senales van a
+        ser peores. Sirve para seguir viendo la cartera y los pares
+        mientras Orleans este caido.
+        """
+        pares, cartera = [], []
+        for p in db.pares_guardados():
+            for s in (p.get("num"), p.get("den")):
+                s = (s or "").strip().upper()
+                if s and s not in pares:
+                    pares.append(s)
+        for t in db.tenencias():
+            s = t["simbolo"]
+            if (t.get("tipo") or "") != "moneda" and s not in pares \
+                    and s not in cartera:
+                cartera.append(s)
+        lista = pares + cartera
+        if not lista:
+            return 0
+
+        # El cursor solo recorre la cartera: los pares se piden siempre.
+        pedidos, nuevos, frenado = 0, 0, False
+        orden = pares + cartera[self._cursor_especie:] + \
+            cartera[:self._cursor_especie]
+        for sim in orden:
+            try:
+                cot = self.iol.cotizacion("bCBA", sim, "t1")
+            except IOLError as e:
+                if e.status == 429:
+                    frenado = True
+                    break
+                continue
+            finally:
+                pedidos += 1
+            if cot:
+                with self.lock:
+                    self.cotizaciones[sim] = cot
+                    self.origen[sim] = "especie"
+                nuevos += 1
+                self.fuente = "especie"
+        if cartera:
+            avance = max(0, pedidos - len(pares))
+            self._cursor_especie = (self._cursor_especie + avance) % len(cartera)
+        log.info("respaldo por especie: %d precios%s", nuevos,
+                 ", frenado por 429" if frenado else "")
+        return nuevos
+
     # -- panel orleans ------------------------------------------------
 
     # Un instrumento por request, con puntas. Reemplaza a los paneles
@@ -278,6 +338,55 @@ class Monitor:
             self.hay_rueda = planos < total
         self.orleans_fallas = fallas
         self.orleans_descartados = sorted(set(descartados))
+        # Si no vino ni un precio, el panel esta caido. Primero BYMA, que
+        # trae paneles enteros en una llamada y no gasta cupo de IOL;
+        # recien si eso tampoco anda, especie por especie.
+        if not mapa and fallas:
+            if self.cfg.get("usar_byma", True):
+                try:
+                    mapa = self.bajar_byma()
+                except Exception as e:
+                    log.warning("byma: %s", e)
+            if not mapa:
+                try:
+                    self.repuesto_por_especie()
+                    with self.lock:
+                        mapa = dict(self.cotizaciones)
+                except Exception as e:
+                    log.warning("respaldo por especie: %s", e)
+        else:
+            self.fuente = "iol"
+        return mapa
+
+    def bajar_byma(self):
+        """Paneles de Open BYMA Data, con veinte minutos de retraso.
+
+        Alcanza para valuar y para la curva, que necesita todos los bonos
+        de la misma tanda. No para un rulo: veinte minutos es una
+        eternidad para un ratio.
+        """
+        import byma as BY
+        por_plazo, fallas = BY.mapa(
+            [i for i in self.instrumentos_orleans() if i in BY.PANELES],
+            verificar_ssl=bool(self.cfg.get("byma_verificar_ssl")))
+        principal = self.cfg.get("byma_plazo") or "t1"
+        cot = por_plazo.get(principal) or {}
+        if not cot:
+            self.byma_fallas = fallas
+            return {}
+        # El contado inmediato viene en la misma respuesta: la pantalla
+        # de plazos lo necesita y asi no hay que pedirlo aparte.
+        self.cot_t0 = por_plazo.get("t0") or {}
+        with self.lock:
+            for sim, c in cot.items():
+                self.cotizaciones[sim] = c
+                self.origen[sim] = "byma"
+            mapa = dict(self.cotizaciones)
+        self.fuente = "byma"
+        self.byma_fallas = fallas
+        log.info("byma: %d precios en %s, %d en t0%s", len(cot), principal,
+                 len(self.cot_t0),
+                 " (%d paneles fallaron)" % len(fallas) if fallas else "")
         return mapa
 
     def tasa_caucion(self, mapa=None):
@@ -762,7 +871,14 @@ class Monitor:
             fila = {"ticker": sim, "tipo": tipo, "dias": dias,
                     "tasa_origen": origen_tasa, "tasa_anual": tasa_anual}
             try:
-                c0 = self.iol.cotizacion(mercado, sim, "t0")
+                # Con IOL caido el t0 sale de la misma bajada de BYMA:
+                # pedirlo por especie serian dos llamadas por ticker.
+                if self.fuente == "byma" and getattr(self, "cot_t0", None):
+                    c0 = self.cot_t0.get(sim)
+                    if not c0:
+                        raise IOLError("%s: sin t0 en BYMA" % sim)
+                else:
+                    c0 = self.iol.cotizacion(mercado, sim, "t0")
                 c1 = cot.get(sim)
                 if not c1 or not c1.get("venta"):
                     c1 = self.iol.cotizacion(mercado, sim, "t1")
