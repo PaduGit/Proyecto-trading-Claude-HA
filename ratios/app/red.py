@@ -26,22 +26,28 @@ def _anotar(url, tipo, status, desde, origen):
         pass       # el registro nunca debe romper una consulta
 
 
-def _pedir(metodo, url, tipo, origen, session, kw):
-    """`session` opcional: BYMA necesita conservar las cookies."""
+def _pedir(metodo, url, tipo, origen, session, etiqueta, kw):
+    """`session` opcional: BYMA necesita conservar las cookies.
+
+    `etiqueta` es lo que se guarda en el registro. Va aparte de la URL a
+    proposito: agregarle un parametro a la direccion para que el registro
+    quedara mas legible cambiaba el pedido de verdad.
+    """
     cliente = session or requests
     desde = time.time()
+    anotada = etiqueta or url
     try:
         r = getattr(cliente, metodo)(url, **kw)
     except requests.RequestException:
-        _anotar(url, tipo, None, desde, origen)
+        _anotar(anotada, tipo, None, desde, origen)
         raise
-    _anotar(url, tipo, r.status_code, desde, origen)
+    _anotar(anotada, tipo, r.status_code, desde, origen)
     return r
 
 
-def get(url, tipo, origen="ciclo", session=None, **kw):
-    return _pedir("get", url, tipo, origen, session, kw)
+def get(url, tipo, origen="ciclo", session=None, etiqueta=None, **kw):
+    return _pedir("get", url, tipo, origen, session, etiqueta, kw)
 
 
-def post(url, tipo, origen="ciclo", session=None, **kw):
-    return _pedir("post", url, tipo, origen, session, kw)
+def post(url, tipo, origen="ciclo", session=None, etiqueta=None, **kw):
+    return _pedir("post", url, tipo, origen, session, etiqueta, kw)

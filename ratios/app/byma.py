@@ -85,7 +85,8 @@ class Byma:
         filas, pagina = [], 1
         while pagina <= PAGINAS_MAX:
             try:
-                r = red.post(BASE + ruta + "?page=%s" % pagina, "byma",
+                r = red.post(BASE + ruta, "byma",
+                             etiqueta="byma%s (pág. %s)" % (ruta, pagina),
                              json={"page_number": pagina},
                              timeout=self.timeout, verify=self.verificar_ssl,
                              session=s)
@@ -106,8 +107,11 @@ class Byma:
                 raise BymaError("%s: respuesta no es JSON" % instrumento)
             lote = d.get("data") or []
             filas += lote
+            # Se corta con la primera pagina vacia y no solo por
+            # `page_count`: si ese campo viene en cero, confiar en el
+            # hacia terminar el recorrido en la primera vuelta.
             total = (d.get("content") or {}).get("page_count") or 0
-            if not lote or pagina >= total:
+            if not lote or (total and pagina >= total):
                 break
             pagina += 1
 

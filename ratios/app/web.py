@@ -1232,7 +1232,8 @@ def crear_app(monitor):
         try:
             filas = cli.panel(inst, d.get("plazo") or None)
         except BY.BymaError as e:
-            return jsonify({"error": str(e)}), 502
+            return jsonify({"error": str(e), "url": BY.BASE + BY.PANELES[inst],
+                            "metodo": "POST"}), 502
         n = int(d.get("filas") or 3)
         simbolo = (d.get("simbolo") or "").strip().upper()
         if simbolo:
@@ -1240,6 +1241,7 @@ def crear_app(monitor):
                      if (f.get("symbol") or "").upper() == simbolo]
         return jsonify({
             "panel": inst, "total": len(filas),
+            "url": BY.BASE + BY.PANELES[inst],
             "plazos": sorted({str(f.get("settlementType") or "")
                               for f in filas}),
             "campos": sorted(filas[0].keys()) if filas else [],

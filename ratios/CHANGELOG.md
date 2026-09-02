@@ -1,5 +1,24 @@
 # Registro de cambios
 
+## 0.31.3
+
+**La URL de BYMA iba sucia.** Se le pegaba `?page=1` solo para que el
+registro quedara legible, y eso cambia el pedido: Titulos publicos traia
+una fila donde debia traer mas de mil. La direccion va limpia y la
+etiqueta del registro por separado.
+
+**La paginacion ya no depende solo de `page_count`.** Si ese campo viene
+en cero se cortaba en la primera pagina; ahora corta con la primera
+pagina vacia.
+
+**Al fallar un panel se muestra la URL** y se aclara que pegada en el
+navegador da 405 porque el endpoint es POST.
+
+**Explorar ordenada** en cuatro bloques: consumo, registro de llamadas
+—que no tenia ni titulo—, "Probar las fuentes" con BCRA, IOL y BYMA
+juntos, y "Consultar la API de IOL" con el bajador de instrumentos y la
+ruta manual.
+
 ## 0.31.2
 
 **La pestania Tenencias no dibujaba: `pintarSueltos is not defined`.** La

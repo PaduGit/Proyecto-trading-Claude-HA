@@ -615,7 +615,26 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
 
   <section id="v-expl" hidden>
     <div id="e-consumo"></div>
-    <h3 style="margin:16px 0 6px">API del BCRA</h3>
+    <h3 style="margin:18px 0 6px">Registro de llamadas</h3>
+    <p class="nota">Todas las fuentes, con su tipo. Solo las de IOL
+      consumen su cupo.</p>
+    <div style="display:flex;gap:6px;margin:10px 0">
+      <button class="secundario" id="log-ver" style="width:auto;padding:0 14px">
+        Ver llamadas</button>
+      <button class="secundario" id="log-todo" style="width:auto;padding:0 14px">
+        Ver resumen</button>
+      <button class="secundario" id="log-copiar" style="width:auto;padding:0 14px">
+        Copiar</button>
+      <button class="secundario" id="log-borrar" style="width:auto;padding:0 14px">
+        Borrar</button>
+    </div>
+    <div id="log-out"></div>
+    <details style="margin-top:16px">
+      <summary>Probar las fuentes</summary>
+      <div class="nota" style="margin-top:8px">Cada botón fuerza una
+        consulta y muestra la respuesta cruda, para ver de qué campo
+        sale cada número cuando algo no cierra.</div>
+    <div class="filtro-etq" style="margin:14px 0 6px">API del BCRA</div>
     <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
       <button class="secundario" id="probar-cer" style="width:auto;padding:0 14px">
         Probar CER</button>
@@ -626,7 +645,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
     </div>
     <p class="nota">Cada botón fuerza una descarga, saltea la espera de cinco
       minutos que sigue a un fallo y muestra el error crudo del BCRA.</p>
-    <h3 style="margin:16px 0 6px">API de IOL</h3>
+    <div class="filtro-etq" style="margin:14px 0 6px">API de IOL</div>
     <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
       <button class="secundario" id="probar-ec" style="width:auto;padding:0 14px">
         Ver estado de cuenta</button>
@@ -635,7 +654,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       configurada, sin interpretarla. Es para ver de qué campo sale cada
       número cuando un saldo no cierra.</p>
     <div id="ec-out"></div>
-    <h3 style="margin:16px 0 6px">API de BYMA</h3>
+    <div class="filtro-etq" style="margin:14px 0 6px">API de BYMA</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
       <select id="by-panel" style="flex:1 1 150px">
         <option value="titulosPublicos">Títulos públicos</option>
@@ -660,17 +679,9 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       de retraso y el <b>settlementType</b> no es el número de días: 1 es
       contado inmediato y 2 es 24 horas.</p>
     <div id="by-out"></div>
-    <div style="display:flex;gap:6px;margin:10px 0">
-      <button class="secundario" id="log-ver" style="width:auto;padding:0 14px">
-        Ver llamadas</button>
-      <button class="secundario" id="log-todo" style="width:auto;padding:0 14px">
-        Ver resumen</button>
-      <button class="secundario" id="log-copiar" style="width:auto;padding:0 14px">
-        Copiar</button>
-      <button class="secundario" id="log-borrar" style="width:auto;padding:0 14px">
-        Borrar</button>
-    </div>
-    <div id="log-out"></div>
+    </details>
+    <details style="margin-top:12px">
+      <summary>Consultar la API de IOL</summary>
     <p class="nota">Consultá la API con la sesión que ya tiene la app. Solo lectura.</p>
     <div class="form">
       <div>
@@ -702,6 +713,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
         <div class="ancho"><button class="primario" id="e-path-btn">Consultar</button></div>
       </div>
       <div id="e-path-out"></div>
+    </details>
     </details>
   </section>
 </main>
@@ -2076,7 +2088,10 @@ $("#probar-byma").addEventListener("click", async e => {
         plazo: $("#by-plazo").value, simbolo: $("#by-simbolo").value.trim(),
         filas: 3})})).json();
     if(d.error){
-      out.innerHTML = '<div class="msg error">' + esc(d.error) + '</div>';
+      out.innerHTML = '<div class="msg error">' + esc(d.error) + '</div>' +
+        (d.url ? '<div class="nota" style="margin-top:6px">' +
+          esc(d.metodo || "POST") + ' ' + esc(d.url) +
+          '. Pegada en el navegador da 405: el endpoint es POST.</div>' : "");
       return;
     }
     out.innerHTML = '<div class="nota">' + d.total + ' filas · plazos ' +
