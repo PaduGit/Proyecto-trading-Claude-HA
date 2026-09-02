@@ -1,5 +1,30 @@
 # Registro de cambios
 
+## 0.31.2
+
+**La pestania Tenencias no dibujaba: `pintarSueltos is not defined`.** La
+funcion se perdio al reordenar el bloque de estrategias. El AST y
+`node --check` no ven esto: el archivo compila igual y revienta cuando
+alguien abre esa pantalla.
+
+Se suma al control previo un chequeo de funciones que se llaman y no
+estan definidas. Sobre el codigo roto marca `pintarSueltos`; sobre el
+corregido, nada.
+
+**Todas las fuentes quedan en el registro** (`red.py`): CER, BADLAR y
+A3500 del BCRA, y BYMA. Antes solo se anotaban las de IOL, asi que el
+registro mostraba una parte del consumo y no habia forma de saber si la
+fuente alternativa siquiera se habia usado.
+
+El resumen las separa por fuente, con llamadas, errores y demora, y
+aclara que solo las de IOL consumen su cupo. No toca el contador de
+requests de IOL, que es otra tabla.
+
+**"Sin precios" como estado propio.** Con Orleans caido y BYMA fallando,
+la fuente quedaba en "IOL" del ciclo anterior y el menu decia que la
+fuente andaba cuando no habia ni un precio. Ahora lo dice, y el cartel
+trae el error de BYMA.
+
 ## 0.31.1
 
 **Si Orleans cae, solo BYMA.** El pedido especie por especie ya no se

@@ -707,9 +707,21 @@ def api_log_resumen(dias=7):
     por_origen = c.execute(
         "SELECT COALESCE(origen,'?') origen, COUNT(*) n FROM api_log "
         "WHERE ts >= ? GROUP BY origen ORDER BY n DESC", (desde,)).fetchall()
+    # Por fuente: el cupo que hay que cuidar es el de IOL, y mezclarlo
+    # con el BCRA y BYMA hacia ilegible el total.
+    por_fuente = c.execute(
+        "SELECT CASE "
+        "         WHEN tipo LIKE 'bcra%' THEN 'BCRA' "
+        "         WHEN tipo = 'byma' THEN 'BYMA' "
+        "         ELSE 'IOL' END fuente, "
+        "       COUNT(*) n, SUM(status >= 400 OR status IS NULL) errores, "
+        "       CAST(AVG(ms) AS INTEGER) ms, MAX(ts) ultima "
+        "FROM api_log WHERE ts >= ? GROUP BY fuente ORDER BY n DESC",
+        (desde,)).fetchall()
     total = c.execute("SELECT COUNT(*) n FROM api_log WHERE ts >= ?",
                       (desde,)).fetchone()["n"]
     return {"dias": dias, "total": total,
+            "por_fuente": [dict(r) for r in por_fuente],
             "por_ruta": [dict(r) for r in por_ruta],
             "por_origen": [dict(r) for r in por_origen]}
 

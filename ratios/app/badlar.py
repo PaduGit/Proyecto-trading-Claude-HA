@@ -77,8 +77,9 @@ def descargar(desde, hasta, verificar_ssl=True):
 
     for url, verify in intentos:
         try:
-            r = requests.get(url, params=params, headers=CER.CABECERAS,
-                             timeout=30, verify=verify)
+            import red
+            r = red.get(url, "bcra_badlar", params=params,
+                        headers=CER.CABECERAS, timeout=30, verify=verify)
             if r.status_code == 200:
                 d = r.json() or {}
                 ultima_respuesta = str(r.text)[:400]

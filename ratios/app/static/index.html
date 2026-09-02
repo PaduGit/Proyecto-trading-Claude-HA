@@ -928,7 +928,8 @@ $("#btn-refrescar").addEventListener("click", async () => {
 /* Que los precios no son de IOL tiene que verse en cualquier pestania,
    no solo en el panel: con BYMA hay veinte minutos de retraso y un rulo
    calculado con eso es una perdida. */
-const NOM_FUENTE = {auto: "automática", iol: "IOL", byma: "BYMA"};
+const NOM_FUENTE = {auto: "automática", iol: "IOL", byma: "BYMA",
+                    especie: "por especie", ninguna: "sin precios"};
 
 function cartelFuente(d){
   const c = $("#cartel-fuente");
@@ -954,12 +955,13 @@ function cartelFuente(d){
     c.textContent = "Precios pedidos de a una especie, a mano. Los que no " +
       "entraron en la tanda siguen siendo los anteriores.";
     c.hidden = false;
-  } else if((d || {}).orleans_fallas && d.orleans_fallas.length &&
-            (d.byma_fallas || []).length){
+  } else if(f === "ninguna"){
     /* Los dos caidos: sin esto el tablero queda vacio sin decir por que. */
-    c.textContent = "Sin precios: el panel de IOL no responde y BYMA " +
-      "tampoco (" + esc(d.byma_fallas[0]) + "). Probá la consulta de BYMA " +
-      "en Explorar.";
+    c.textContent = "Sin precios: el panel de IOL no responde" +
+      ((d.byma_fallas || []).length
+        ? " y BYMA tampoco (" + esc(d.byma_fallas[0]) + ")"
+        : " y BYMA no devolvió nada") +
+      ". Mirá el registro de llamadas en Explorar.";
     c.hidden = false;
   } else {
     c.hidden = true;
@@ -3149,6 +3151,20 @@ async function logResumen(){
         (r.dias || 7) + ' días</h3><div class="datos">' +
         (r.por_origen || []).map(o => '<span>' + esc(o.origen) + ' <b>' +
           ent(o.n) + '</b></span>').join("") + '</div></div>' +
+      /* Por fuente y no todo junto: el cupo que hay que cuidar es el de
+         IOL, y el BCRA y BYMA no lo consumen. */
+      '<table class="tabla"><thead><tr><th>Fuente</th>' +
+      '<th class="num">Llamadas</th><th class="num">Errores</th>' +
+      '<th class="num">ms</th><th>Última</th></tr></thead><tbody>' +
+      (r.por_fuente || []).map(f =>
+        '<tr><td>' + esc(f.fuente) + '</td><td class="num">' + ent(f.n) +
+        '</td><td class="num"' + (f.errores ? ' style="color:var(--coral)"'
+          : "") + '>' + ent(f.errores) + '</td><td class="num">' +
+        ent(f.ms) + '</td><td style="font-size:11px">' +
+        esc((f.ultima || "").replace("T", " ").slice(5, 16)) +
+        '</td></tr>').join("") + '</tbody></table>' +
+      '<div class="nota" style="margin:8px 0 12px">Solo las de IOL ' +
+      'consumen su cupo.</div>' +
       '<table class="tabla"><thead><tr><th>Dirección</th><th>Tipo</th>' +
       '<th class="num">Veces</th></tr></thead><tbody>' +
       (r.por_ruta || []).map(x =>
@@ -3816,6 +3832,33 @@ function resumenArchivo(cerradas){
   const prom = con.reduce((a, e) => a + e.res_final, 0) / con.length;
   return ok + " de " + con.length + " en verde · promedio " +
     (prom >= 0 ? "+" : "") + num(prom, 3) + "%";
+}
+
+/* Los grupos que ya tienen estrategia se ven adentro de ella; el
+   desplegable queda para los que no. Se dibuja siempre, aunque no haya
+   ninguno: un panel en blanco parece un error. */
+function pintarSueltos(){
+  const cont = $("#pos-out");
+  if(!cont) return;
+  cont.hidden = false;
+  if(!grupos || !grupos.length){
+    cont.innerHTML = '<div class="vacio">Todavía no hay grupos. ' +
+      'Creá uno con los tickers entre los que rotás.</div>';
+    return;
+  }
+  const conEstr = new Set(estrDatos.map(e => e.grupo_id).filter(Boolean));
+  const sueltos = grupos.filter(g => !conEstr.has(g.id));
+  if(!sueltos.length){
+    cont.innerHTML = '<div class="vacio">Los ' + grupos.length +
+      ' grupos ya tienen estrategia: se ven adentro de cada una.</div>';
+    return;
+  }
+  try{
+    cont.innerHTML = sueltos.map(tarjetaGrupo).join("");
+  }catch(err){
+    cont.innerHTML = '<div class="msg error">No se pudo dibujar: ' +
+      esc(err.message) + '</div>';
+  }
 }
 
 function tarjetaEstrategia(e){

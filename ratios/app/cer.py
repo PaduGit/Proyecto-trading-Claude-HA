@@ -86,8 +86,9 @@ def _extraer(d):
 
 
 def _intentar(url, params, verify):
-    return requests.get(url, params=params, headers=CABECERAS,
-                        timeout=30, verify=verify)
+    import red
+    return red.get(url, "bcra_cer", params=params, headers=CABECERAS,
+                   timeout=30, verify=verify)
 
 
 def reintentar_ya():

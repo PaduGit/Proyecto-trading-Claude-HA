@@ -368,6 +368,11 @@ class Monitor:
                     mapa = self.bajar_byma()
                 except Exception as e:
                     log.warning("byma: %s", e)
+                    self.byma_fallas = [str(e)]
+            if not mapa:
+                # Sin esto quedaba "iol" del ciclo anterior y la pantalla
+                # decia que la fuente andaba cuando no habia precios.
+                self.fuente = "ninguna"
         else:
             self.fuente = "iol"
         return mapa

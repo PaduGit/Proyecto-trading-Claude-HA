@@ -13,6 +13,8 @@ import logging
 
 import requests
 
+import red
+
 log = logging.getLogger("ratios.byma")
 
 PORTAL = "https://open.bymadata.com.ar"
@@ -67,8 +69,8 @@ class Byma:
         })
         # La home deja las cookies; sin ellas la API contesta 401.
         try:
-            s.get(PORTAL + "/", timeout=self.timeout,
-                  verify=self.verificar_ssl)
+            red.get(PORTAL + "/", "byma", session=s, timeout=self.timeout,
+                    verify=self.verificar_ssl)
         except requests.RequestException as e:
             raise BymaError("no se pudo abrir el portal: %s" % e)
         self.ses = s
@@ -83,8 +85,10 @@ class Byma:
         filas, pagina = [], 1
         while pagina <= PAGINAS_MAX:
             try:
-                r = s.post(BASE + ruta, json={"page_number": pagina},
-                           timeout=self.timeout, verify=self.verificar_ssl)
+                r = red.post(BASE + ruta + "?page=%s" % pagina, "byma",
+                             json={"page_number": pagina},
+                             timeout=self.timeout, verify=self.verificar_ssl,
+                             session=s)
             except requests.RequestException as e:
                 raise BymaError("%s: %s" % (instrumento, e))
             if r.status_code == 401:

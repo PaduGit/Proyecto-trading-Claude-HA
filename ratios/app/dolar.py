@@ -135,8 +135,9 @@ def descargar(desde, hasta, verificar_ssl=True, serie=None):
     d = None
     for url, verify in intentos:
         try:
-            r = requests.get(url, params=params, headers=CABECERAS,
-                             timeout=30, verify=verify)
+            import red
+            r = red.get(url, "bcra_a3500", params=params, headers=CABECERAS,
+                        timeout=30, verify=verify)
             if r.status_code == 200:
                 d = r.json() or {}
                 ultima_respuesta = str(r.text)[:400]
@@ -173,7 +174,9 @@ def catalogo(verificar_ssl=True):
     global ultimo_error
     for url, verify in ((CATALOGO, verificar_ssl), (CATALOGO, False)):
         try:
-            r = requests.get(url, headers=CABECERAS, timeout=30, verify=verify)
+            import red
+            r = red.get(url, "bcra_a3500", headers=CABECERAS, timeout=30,
+                        verify=verify)
             if r.status_code != 200:
                 ultimo_error = "%s -> HTTP %s" % (url, r.status_code)
                 continue
