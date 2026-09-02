@@ -105,12 +105,26 @@ class Byma:
                 d = r.json()
             except ValueError:
                 raise BymaError("%s: respuesta no es JSON" % instrumento)
-            lote = d.get("data") or []
+            # Algunos paneles devuelven la lista pelada y otros la
+            # envuelven en {content, data}. Asumir una sola forma rompia
+            # con un `'list' object has no attribute 'get'`.
+            if isinstance(d, list):
+                lote, total = d, 0
+            elif isinstance(d, dict):
+                lote = d.get("data")
+                if lote is None:
+                    lote = d.get("content") if isinstance(
+                        d.get("content"), list) else []
+                total = (d.get("content") or {}).get("page_count") \
+                    if isinstance(d.get("content"), dict) else 0
+            else:
+                lote, total = [], 0
+            if not isinstance(lote, list):
+                lote = []
             filas += lote
             # Se corta con la primera pagina vacia y no solo por
             # `page_count`: si ese campo viene en cero, confiar en el
             # hacia terminar el recorrido en la primera vuelta.
-            total = (d.get("content") or {}).get("page_count") or 0
             if not lote or (total and pagina >= total):
                 break
             pagina += 1
@@ -172,11 +186,16 @@ def mapa(instrumentos, verificar_ssl=False):
     for inst in instrumentos:
         try:
             filas = cli.panel(inst)
-        except BymaError as e:
-            fallas.append(str(e))
+        except Exception as e:
+            # Cualquier error, no solo BymaError: un panel con una
+            # respuesta inesperada abortaba el recorrido entero y los
+            # otros cinco no se intentaban.
+            fallas.append("%s: %s" % (inst, e))
             log.warning("byma %s: %s", inst, e)
             continue
         for f in filas:
+            if not isinstance(f, dict):
+                continue
             plazo = PLAZO_INV.get(str(f.get("settlementType") or ""))
             if not plazo:
                 continue

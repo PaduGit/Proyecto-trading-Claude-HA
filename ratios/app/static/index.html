@@ -971,7 +971,9 @@ function cartelFuente(d){
     /* Los dos caidos: sin esto el tablero queda vacio sin decir por que. */
     c.textContent = "Sin precios: el panel de IOL no responde" +
       ((d.byma_fallas || []).length
-        ? " y BYMA tampoco (" + esc(d.byma_fallas[0]) + ")"
+        ? " y BYMA tampoco: " + d.byma_fallas.slice(0, 2).map(esc).join(" · ") +
+          (d.byma_fallas.length > 2
+            ? " y " + (d.byma_fallas.length - 2) + " más" : "")
         : " y BYMA no devolvió nada") +
       ". Mirá el registro de llamadas en Explorar.";
     c.hidden = false;

@@ -1,5 +1,19 @@
 # Registro de cambios
 
+## 0.31.4
+
+**BYMA respondia 200 y el parseo fallaba** con `'list' object has no
+attribute 'get'`. Algunos paneles devuelven la lista pelada y otros la
+envuelven en `{content, data}`; se aceptan las dos formas, y cualquier
+otra cosa se trata como vacia en vez de reventar.
+
+**Un panel roto abortaba los otros cinco.** Se capturaba solo
+`BymaError`, asi que un `AttributeError` subia y cortaba el recorrido.
+Ahora cada panel falla por su cuenta y el resto se intenta igual.
+
+**El cartel muestra hasta dos errores** en vez de solo el primero, y dice
+cuantos mas hubo.
+
 ## 0.31.3
 
 **La URL de BYMA iba sucia.** Se le pegaba `?page=1` solo para que el
