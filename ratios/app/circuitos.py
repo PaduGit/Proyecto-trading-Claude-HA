@@ -20,6 +20,7 @@ import logging
 log = logging.getLogger("circuitos")
 
 MONEDAS = ("ARS", "MEP", "CABLE")
+VN = 100.0          # los bonos cotizan por lámina de 100 nominales
 NOMBRE = {"ARS": "Pesos", "MEP": "MEP", "CABLE": "Cable"}
 
 
@@ -36,18 +37,49 @@ def _punta(cot, simbolo, lado):
     return (c.get("venta") or 0), (c.get("vol_venta") or 0)
 
 
-def _costo(comisiones, moneda):
+def _costo(comisiones):
     """Costo porcentual de una pata, en tanto por uno.
 
     Los circuitos saltan por bonos, que son valores publicos: pagan
     derecho de mercado bajo y estan exentos de IVA. Los derechos y el
     IVA viajan dentro del propio mapa para no arrastrar dos parametros
     mas por cada funcion interna.
+
+    No recibe la moneda: todas las patas son bonos y el costo es el
+    mismo. Lo recibia y lo ignoraba, que es peor que no tenerlo: el dia
+    que un circuito toque acciones el llamador va a creer que ya estaba
+    contemplado.
     """
     import costos
     c = comisiones or {}
     return costos.pct_circuito(c, "bonos", c.get("_derechos"),
                                c.get("_iva_pct"), c.get("_esquema"))
+
+
+def _monto(nominales, precio, moneda, mep):
+    """Plata de una punta llevada a pesos, para poder compararla."""
+    m = nominales * precio / VN
+    if moneda == "ARS":
+        return m
+    return m * mep if mep else None
+
+
+def _chico(comisiones, n1, p1, m1, n2, p2, m2):
+    """True si alguna de las dos puntas no llega al mínimo configurado.
+
+    Sin MEP no se puede pasar a pesos una punta en dólares: en ese caso
+    no se descarta. No saber cuánto hay no es lo mismo que saber que hay
+    poco.
+    """
+    minimo = (comisiones or {}).get("_min_monto") or 0
+    if not minimo:
+        return False
+    mep = (comisiones or {}).get("_mep")
+    for n, p, mon in ((n1, p1, m1), (n2, p2, m2)):
+        v = _monto(n, p, mon, mep)
+        if v is not None and v < minimo:
+            return True
+    return False
 
 
 def _saltar(cot, bono, desde, hacia, comisiones):
@@ -63,8 +95,12 @@ def _saltar(cot, bono, desde, hacia, comisiones):
     p_venta, q_venta = _punta(cot, venta, "compra")      # cobro el bid
     if not (p_compra and p_venta and q_compra and q_venta):
         return None
+    # Una punta de dos láminas da un ratio que no existe cuando se manda
+    # la orden. Es la fuente principal de rulos fantasma.
+    if _chico(comisiones, q_compra, p_compra, desde, q_venta, p_venta, hacia):
+        return None
 
-    costo = _costo(comisiones, desde) + _costo(comisiones, hacia)
+    costo = _costo(comisiones) * 2      # una pata de compra y una de venta
     # por cada unidad de la moneda de origen compro 1/p_compra nominales,
     # y cada nominal me da p_venta unidades de destino
     tasa = (p_venta / p_compra) * (1 - costo)
@@ -74,8 +110,6 @@ def _saltar(cot, bono, desde, hacia, comisiones):
             "tasa": tasa, "nominales": nominales,
             "limite": compra if q_compra <= q_venta else venta}
 
-
-VN = 100.0          # los bonos cotizan por lámina de 100 nominales
 
 
 def _efectivo(nominales, precio):
@@ -143,7 +177,7 @@ def desde_efectivo(cot, bonos, moneda, comisiones):
         e1 = e0 * ida["tasa"]
         n2 = int(e1 * VN / vuelta["p_compra"]) if vuelta["p_compra"] else 0
         e2 = _efectivo(n2, vuelta["p_venta"]) * (
-            1 - _costo(comisiones, medio) - _costo(comisiones, moneda))
+            1 - _costo(comisiones) * 2)
         pasos = [
             _paso("Comprar", ida["compra"], n1, ida["p_compra"], moneda),
             _paso("Vender", ida["venta"], n1, ida["p_venta"], medio),
@@ -188,6 +222,9 @@ def desde_bono(cot, bonos, bono, comisiones):
             p_compra, q_compra = _punta(cot, esp_compra, "venta")
             if not (p_venta and p_compra and q_venta and q_compra):
                 continue
+            if _chico(comisiones, q_venta, p_venta, vender_en,
+                      q_compra, p_compra, volver_en):
+                continue
 
             # Vender y recomprar en la misma moneda no es un circuito:
             # es liquidar el bono, hacer un rulo desde esa moneda y
@@ -203,7 +240,7 @@ def desde_bono(cot, bonos, bono, comisiones):
                 continue
             tasa_medio, patas_medio = s["tasa"], [s]
 
-            costo = _costo(comisiones, vender_en) + _costo(comisiones, volver_en)
+            costo = _costo(comisiones) * 2
             # 1 nominal -> p_venta de moneda -> intermedio -> recompra
             nominales_finales = (p_venta * tasa_medio / p_compra) * (1 - costo)
             ganancia = (nominales_finales - 1) * 100
@@ -235,7 +272,7 @@ def desde_bono(cot, bonos, bono, comisiones):
                 pasos.append(_paso("Vender", p["venta"], ni,
                                    p["p_venta"], mon))
                 efectivo = _efectivo(ni, p["p_venta"]) * (
-                    1 - _costo(comisiones, mon) * 2)
+                    1 - _costo(comisiones) * 2)
             n_final = int(efectivo * VN / p_compra) if p_compra else 0
             pasos.append(_paso("Comprar", esp_compra, n_final,
                                p_compra, volver_en))
@@ -263,15 +300,22 @@ def desde_bono(cot, bonos, bono, comisiones):
 
 
 def analizar(cot, bonos, tengo, comisiones, umbral_pct=0.0,
-             derechos=None, iva_pct=0, esquema=None):
+             derechos=None, iva_pct=0, esquema=None,
+             min_monto=0, mep=None):
     """Todos los circuitos ejecutables con lo que hay declarado.
 
     tengo: {"monedas": ["ARS", "MEP"], "bonos": ["AO29"]}
+
+    `min_monto` descarta los tramos cuya punta no llegue a esa plata en
+    pesos. Un circuito armado sobre una punta de dos láminas se ve en la
+    pantalla y no se puede mandar.
     """
     comisiones = dict(comisiones or {})
     comisiones["_derechos"] = derechos or {}
     comisiones["_iva_pct"] = iva_pct
     comisiones["_esquema"] = esquema
+    comisiones["_min_monto"] = min_monto or 0
+    comisiones["_mep"] = mep
 
     monedas = [m for m in (tengo or {}).get("monedas", []) if m in MONEDAS]
     # un bono propio entra aunque no tenga las tres especies: los saltos
@@ -294,4 +338,4 @@ def analizar(cot, bonos, tengo, comisiones, umbral_pct=0.0,
               for g in grupos for x in g["circuitos"])
     return {"grupos": grupos, "hay_oportunidad": hay,
             "umbral_pct": umbral_pct,
-            "sin_comisiones": not _costo(comisiones, "ARS")}
+            "sin_comisiones": not _costo(comisiones)}

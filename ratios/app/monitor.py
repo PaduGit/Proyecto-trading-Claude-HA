@@ -696,6 +696,25 @@ class Monitor:
             })
         return estado
 
+    def _min_monto(self):
+        """Plata minima que tiene que haber en una punta para creerle.
+
+        Cero apaga el filtro. En pesos: las especies en dolares se pasan
+        por el MEP antes de comparar.
+        """
+        try:
+            return float(self.cfg.get("monto_min_punta") or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _mep(self, cot):
+        """MEP del ciclo, para llevar a pesos las puntas en dolares."""
+        import bonos as BO
+        try:
+            return (BO.calcular_mep(cot).get("medio") or 0) or None
+        except Exception:
+            return None
+
     def canjes_curva(self, cot=None):
         """Los canjes que convienen hoy sobre lo que se tiene.
 
@@ -717,11 +736,19 @@ class Monitor:
             return []
         t = BO.tabla(cot, cer_actual=float(self.cfg.get("cer_actual") or 0))
         an = CU.analizar(t["filas"])
-        # Ida y vuelta: se vende una especie y se compra otra.
-        una = CO.pct(self.cfg.get("comisiones") or {}, "bonos")
+        mep = self._mep(cot)
+        # Ida y vuelta: se vende una especie y se compra otra. CO.pct
+        # devuelve tanto por uno y canjes() trabaja en puntos
+        # porcentuales, igual que el recorrido de cada punta: sin el x100
+        # el costo entraba como 0,003 en vez de 0,32 y todos los canjes
+        # salian sobreestimados en su propia comision.
+        una = CO.pct(self.cfg.get("comisiones") or {}, "bonos",
+                     self.cfg.get("derechos_mercado"),
+                     self.cfg.get("iva_pct") or 0)
         return CU.canjes(
-            t["filas"], an, tenidos, costo_pct=una * 2,
-            min_ganancia=float(self.cfg.get("canje_min_pct") or 1.0))
+            t["filas"], an, tenidos, costo_pct=una * 2 * 100,
+            min_ganancia=float(self.cfg.get("canje_min_pct") or 1.0),
+            min_monto=self._min_monto(), mep=mep)
 
     def revisar_canjes(self, cot=None):
         """Avisa cuando aparece un canje que antes no estaba."""
@@ -795,11 +822,24 @@ class Monitor:
         avisadas = self._zonas_curva
         enviadas = 0
 
+        minimo = self._min_monto()
+        mep = self._mep(cot)
+
         for sim, d in an.items():
             z = d.get("z")
             if z is None:
                 continue
             zona = "barato" if z >= umbral else "caro" if z <= -umbral else None
+            # Un desvio calculado sobre una punta suelta no se puede
+            # operar. El ajuste de la curva sigue usando a todos, que es
+            # lo que hace comparable el z-score contra su historia; lo
+            # que se filtra es a quien se le avisa. Barato se compra
+            # contra el ask y caro se vende contra el bid.
+            if zona and minimo:
+                m = CU.monto_punta(por_sim.get(sim) or {},
+                                   "ask" if zona == "barato" else "bid", mep)
+                if m is not None and m < minimo:
+                    continue
             previa = avisadas.get(sim)
             if zona != previa:
                 avisadas[sim] = zona
@@ -1516,7 +1556,9 @@ class Monitor:
                         float(self.cfg.get("rulo_umbral_pct") or 0),
                         self.cfg.get("derechos_mercado") or {},
                         self.cfg.get("iva_pct") or 0,
-                        CO.esquema(self.cfg))
+                        CO.esquema(self.cfg),
+                        min_monto=self._min_monto(),
+                        mep=self._mep(cot))
         with self.lock:
             self.circuitos = r
 

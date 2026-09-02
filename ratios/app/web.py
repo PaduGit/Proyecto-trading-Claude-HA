@@ -591,7 +591,9 @@ def crear_app(monitor):
                                 float(monitor.cfg.get("rulo_umbral_pct") or 0),
                                 monitor.cfg.get("derechos_mercado") or {},
                                 monitor.cfg.get("iva_pct") or 0,
-                                CO.esquema(monitor.cfg))
+                                CO.esquema(monitor.cfg),
+                                min_monto=monitor._min_monto(),
+                                mep=monitor._mep(cot))
             r["tengo"] = tengo
             r["candidatos"] = sorted(puentes)
             return jsonify(r)

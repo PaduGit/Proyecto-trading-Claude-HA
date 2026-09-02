@@ -4064,7 +4064,10 @@ function formEstrategia(e){
     '<label>Se mide contra<select data-e="patron">' + pat + '</select></label>' +
     '<label>Valor del patrón<input data-e="patron_valor" type="number" ' +
       'step="any" placeholder="según la fecha de alta" value="' +
-      v("patron_valor") + '"></label>' +
+      v("patron_valor") + '">' +
+      '<small class="nota">Solo CER y dólar. BADLAR es una tasa: se ' +
+      'devenga día por día desde el alta y este campo no se usa.</small>' +
+      '</label>' +
 
     '<label>Grupo de rotación<select data-e="grupo_id">' + gr +
       '</select></label>' +

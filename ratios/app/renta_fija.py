@@ -197,10 +197,20 @@ def flujo(esp, desde=None, tasa_var=None):
     anterior = _fecha(esp["emision"])
     filas = []
 
+    pagos_set = set(pagos_int)
+    # El interes se acumula por subperiodos y se paga entero en la fecha
+    # de cupon. Antes cada fecha de la lista cortaba el devengamiento, y
+    # una amortizacion que cae lejos de todo cupon dejaba el cupon
+    # siguiente devengado desde esa fecha y no desde el pago anterior:
+    # salia cobrado de menos. Cuando amortizacion y cupon coinciden -que
+    # es lo que pasa en los 42 bonos cargados hoy- el resultado es
+    # identico al de antes.
+    devengado = 0.0
     for f in todas:
         tasa = _tasa_para(esp, anterior, tasa_var)
-        frac = _frac(base, anterior, f)
-        renta = residual * tasa / 100.0 * frac if f in pagos_int else 0.0
+        devengado += residual * tasa / 100.0 * _frac(base, anterior, f)
+        es_cupon = f in pagos_set
+        renta = devengado if es_cupon else 0.0
         amort = amorts.get(f, 0.0)
 
         if f > desde:
@@ -210,6 +220,8 @@ def flujo(esp, desde=None, tasa_var=None):
                 "total": round(renta + amort, 6),
                 "residual_previo": round(residual, 6),
             })
+        if es_cupon:
+            devengado = 0.0
         residual -= amort
         anterior = f
 
@@ -250,15 +262,28 @@ def _vpn(tasa, filas, liq):
     return t
 
 
+TIR_MAX = 5.0        # 500% anual: arriba de esto el precio esta roto
+
+
 def tir(precio, esp, liq=None, filas=None):
-    """TIR efectiva anual. precio por cada 100 de VN, en la moneda del flujo."""
+    """TIR efectiva anual. precio por cada 100 de VN, en la moneda del flujo.
+
+    Devuelve None si el precio queda fuera del rango que la biseccion
+    puede resolver. Antes, con un precio muy bajo, la busqueda se
+    clavaba contra el techo y devolvia 5.0 exacto, que la tabla mostraba
+    como "TIR 500%" igual que si fuera una cuenta hecha.
+    """
     liq = liq or date.today()
     filas = filas if filas is not None else flujo(esp, liq)
     if not filas or precio <= 0:
         return None
 
-    lo, hi = -0.95, 5.0
+    lo, hi = -0.95, TIR_MAX
     if _vpn(lo, filas, liq) < precio:
+        return None
+    # si ni al techo el valor presente baja hasta el precio, la TIR esta
+    # por encima del rango: no hay numero que devolver
+    if _vpn(hi, filas, liq) > precio:
         return None
     for _ in range(200):
         m = (lo + hi) / 2

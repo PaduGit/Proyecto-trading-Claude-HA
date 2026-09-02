@@ -1,5 +1,71 @@
 # Registro de cambios
 
+## 0.32.0
+
+**El costo de los canjes entraba 100 veces chico.** `CO.pct()` devuelve
+tanto por uno y `curva.canjes()` trabaja en puntos porcentuales, igual
+que el recorrido de cada punta. Le llegaba 0,0032 donde iban 0,32: todos
+los canjes salian sobreestimados en su propia comision de ida y vuelta y
+pasaban el umbral algunos que no cerraban. Se veia en pantalla, el
+detalle decia "costo de ida y vuelta 0,003%". De paso ahora recibe
+`derechos_mercado` e `iva_pct`, que no le llegaban, asi que el arancel
+iba sin el derecho de mercado.
+
+**BADLAR se devengaba como si fuera un indice.** CER y tipo de cambio
+son niveles y el rendimiento es el cociente entre el de hoy y el del
+alta. BADLAR es una tasa nominal anual publicada dia por dia: el
+cociente de dos tasas no dice nada. Con la tasa plana en 30% durante un
+anio el patron informaba 0,00% cuando lo devengado son 34,97%. Nueva
+`badlar.devengado()`, que capitaliza diario sobre actual/365 arrastrando
+la ultima tasa publicada en los dias sin publicacion, como liquida un
+plazo fijo. `medir()` pasa a usar `_factor_patron()`, que separa los
+patrones de nivel de los de tasa. Sin fecha de alta o sin serie que
+cubra el periodo devuelve nota y no un numero. El campo "Valor del
+patron" no aplica a BADLAR y el formulario ahora lo aclara.
+
+**`devengado()` no le pega al BCRA en cada request.** `asegurar_rango()`
+controla por tramo anual completo, asi que un alta de hace tres meses
+nunca llegaba a los 200 dias que espera y bajaba la serie de nuevo cada
+vez que se abria la cartera. Ahora compara contra los habiles del
+periodo y solo baja si falta: un anio de serie resuelve en 2 ms sin
+salir a la red.
+
+**La TIR saturaba en 500% en silencio.** La biseccion se clavaba contra
+el techo y devolvia 5.0 exacto, que la tabla mostraba como "TIR 500%"
+igual que si fuera una cuenta hecha. Ahora, si al techo el valor
+presente sigue por encima del precio, devuelve `None`.
+
+**El devengamiento se corta solo en fecha de cupon.** Antes cada fecha
+de la lista movia el ancla, asi que una amortizacion que cayera lejos de
+todo cupon dejaba el cupon siguiente devengado desde esa fecha y no
+desde el pago anterior: salia cobrado de menos. Ahora el interes se
+acumula por subperiodos, sobre el residual que corresponde a cada uno, y
+se paga entero en la fecha de cupon. Cuando amortizacion y cupon
+coinciden -los 42 bonos cargados hoy- el resultado es identico.
+
+**Filtro de liquidez** (`monto_min_punta`, 300.000 pesos). Una punta de
+dos laminas da un precio que no se puede operar y con el una senal que
+no existe. `curva.monto_punta()` lleva la punta a pesos: cantidad x
+precio / 100, por MEP si es especie D o C. Se aplica en los canjes -bid
+del que sale, ask del que entra-, en el aviso de desvio de curva -ask si
+esta barato, bid si esta caro- y en los saltos del Rulo. Si falta el MEP
+no descarta: no saber cuanto hay no es lo mismo que saber que hay poco.
+Cero apaga el filtro.
+
+El ajuste de la curva **no** se filtra. `reconstruir` trabaja sobre
+`bono_hist`, que no guarda cantidades, y un filtro que valga hoy y no en
+la historia ensucia el z-score, que es justamente lo que decide el
+canje. Lo que se filtra es a quien se le avisa, no quien entra al ajuste.
+
+**`circuitos._costo()`** recibia `moneda` y la ignoraba, que es peor que
+no tenerla: el dia que un circuito toque acciones el llamador va a creer
+que ya estaba contemplado. Se saco, y las sumas `_costo + _costo`
+quedaron como `* 2`.
+
+Numeracion de aca en adelante: el segundo numero sube cuando cambian los
+numeros que se leen en pantalla o hay que tocar la configuracion; el
+tercero, cuando se arregla algo que no cambia ninguna de las dos cosas.
+
 ## 0.31.4
 
 **BYMA respondia 200 y el parseo fallaba** con `'list' object has no

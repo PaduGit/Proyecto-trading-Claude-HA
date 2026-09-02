@@ -162,6 +162,61 @@ def tasa(al=None, verificar_ssl=True):
     return None if v is None else v / 100.0
 
 
+def devengado(desde, hasta, verificar_ssl=True):
+    """Lo que rindió la BADLAR entre dos fechas, en tanto por uno.
+
+    BADLAR no es un índice: es una tasa nominal anual que se publica
+    todos los días hábiles. Comparar el nivel de hoy contra el del alta
+    —23,50% contra 23,18%— da un 1,4% que no significa nada. Lo que hay
+    que medir es lo que se hubiera devengado colocando a esa tasa día
+    por día.
+
+    Se capitaliza diario sobre actual/365, arrastrando la última tasa
+    publicada en los días sin publicación, que es como liquida un plazo
+    fijo. Devuelve None si no hay serie que cubra el período: es
+    preferible no mostrar el patrón a mostrarlo mal.
+    """
+    if isinstance(desde, str):
+        desde = date.fromisoformat(desde[:10])
+    if isinstance(hasta, str):
+        hasta = date.fromisoformat(hasta[:10])
+    if not desde or not hasta or hasta <= desde:
+        return 0.0
+
+    # Solo se baja si la serie local no cubre el periodo. `medir()` corre
+    # en cada request de la cartera: llamar a asegurar_rango siempre le
+    # pegaba al BCRA aunque el dato ya estuviera, porque su control es
+    # por tramo anual completo y un alta de hace tres meses nunca llega a
+    # los 200 dias que espera.
+    cob = db.conn().execute(
+        "SELECT MIN(fecha) AS d0, MAX(fecha) AS d1, COUNT(*) AS n "
+        "FROM badlar WHERE fecha BETWEEN ? AND ?",
+        (desde.isoformat(), hasta.isoformat())).fetchone()
+    habiles = sum(1 for i in range((hasta - desde).days)
+                  if (desde + timedelta(days=i)).weekday() < 5)
+    if not cob or (cob["n"] or 0) < habiles * 0.8:
+        asegurar_rango(desde, hasta, verificar_ssl)
+    filas = db.conn().execute(
+        "SELECT fecha, valor FROM badlar WHERE fecha BETWEEN ? AND ? "
+        "ORDER BY fecha", (desde.isoformat(), hasta.isoformat())).fetchall()
+    if not filas:
+        return None
+
+    tasas = {f["fecha"]: f["valor"] for f in filas}
+    # la tasa vigente al arrancar, por si el alta cayó en fin de semana
+    ultima = valor(desde, verificar_ssl)
+    if ultima is None:
+        return None
+
+    acum = 1.0
+    d = desde
+    while d < hasta:
+        ultima = tasas.get(d.isoformat(), ultima)
+        acum *= 1 + (ultima / 100.0) / 365.0
+        d += timedelta(days=1)
+    return acum - 1
+
+
 def asegurar_rango(desde, hasta, verificar_ssl=True):
     """Descarga lo que falte para cubrir un rango, por tramos anuales.
 

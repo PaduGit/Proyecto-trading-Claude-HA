@@ -53,6 +53,49 @@ def patron_valor(patron, f=None):
     return None
 
 
+def _factor_patron(pat, e):
+    """Cuánto rindió la vara desde el alta, como factor (1,12 = +12%).
+
+    Hay dos clases de patrón y no se miden igual:
+
+    - CER y tipo de cambio son **niveles**: el rendimiento es el
+      cociente entre el de hoy y el del alta.
+    - BADLAR es una **tasa nominal anual** publicada día por día. El
+      cociente de dos tasas no dice nada: si pasa de 23,18% a 23,50% el
+      cociente da +1,4% cuando lo que se devengó en el período es otra
+      cosa. Hay que capitalizarla día por día.
+
+    Devuelve (factor, nota). Con factor None la nota explica por qué.
+    """
+    if pat == "badlar":
+        alta = e.get("alta")
+        if not alta:
+            return None, "sin fecha de alta para devengar la BADLAR"
+        import badlar as B
+        from datetime import date as _date
+        try:
+            dev = B.devengado(str(alta)[:10], _date.today())
+        except Exception as ex:
+            log.debug("BADLAR devengada desde %s: %s", alta, ex)
+            dev = None
+        if dev is None:
+            return None, "sin serie BADLAR que cubra el período"
+        return 1 + dev, None
+
+    if pat == "tc_entrada":
+        # El tipo de cambio al que se entró. Si no se cargó a mano, se
+        # busca el del día del alta: es el dato que la app ya tiene y
+        # tipearlo era pedir dos veces lo mismo.
+        base = e.get("patron_valor") or patron_valor("dolar", e.get("alta"))
+        hoy = patron_valor("dolar")
+    else:
+        base = e.get("patron_valor") or patron_valor(pat, e.get("alta"))
+        hoy = patron_valor(pat)
+    if base and hoy:
+        return hoy / base, None
+    return None, "sin valor del patrón para esa fecha"
+
+
 def medir(estrategias_, posiciones):
     """Cuanto rindio cada estrategia y como le fue contra su patron.
 
@@ -84,23 +127,13 @@ def medir(estrategias_, posiciones):
 
         pat = e.get("patron")
         if pat and costo:
-            if pat == "tc_entrada":
-                # El tipo de cambio al que se entró. Si no se cargó a
-                # mano, se busca el del día del alta: es el dato que la
-                # app ya tiene y tipearlo era pedir dos veces lo mismo.
-                base = e.get("patron_valor") or patron_valor("dolar",
-                                                             e.get("alta"))
-                hoy = patron_valor("dolar")
-            else:
-                base = e.get("patron_valor") or patron_valor(pat,
-                                                             e.get("alta"))
-                hoy = patron_valor(pat)
-            if base and hoy:
-                d["patron_pct"] = (hoy / base - 1) * 100
+            factor, nota = _factor_patron(pat, e)
+            if factor:
+                d["patron_pct"] = (factor - 1) * 100
                 # Lo unico que importa: si le gano o le perdio a la vara.
-                d["contra_patron_pct"] = ((medido / costo) / (hoy / base) - 1) * 100
+                d["contra_patron_pct"] = ((medido / costo) / factor - 1) * 100
             else:
-                d["nota"] = "sin valor del patrón para esa fecha"
+                d["nota"] = nota
         elif pat:
             d["nota"] = "sin PPC cargado en las especies"
         salida.append(d)

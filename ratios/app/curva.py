@@ -148,8 +148,31 @@ def reconstruir(desde=None):
     return total
 
 
+def monto_punta(f, lado, mep=None):
+    """Plata que hay en una punta, llevada a pesos.
+
+    Los bonos cotizan por cada 100 nominales, asi que el monto es
+    cantidad x precio / 100. Las especies D y C liquidan en dolares y se
+    pasan a pesos por el MEP para poder compararlas con las de pesos con
+    un solo numero.
+
+    Devuelve None si no hay con que calcularlo: sin dato no se descarta
+    nada, porque no es lo mismo "no opero" que "no se cuanto opero".
+    """
+    q = f.get("q_ask") if lado == "ask" else f.get("q_bid")
+    p = f.get("ask") if lado == "ask" else f.get("bid")
+    if not q or not p:
+        return None
+    monto = q * p / 100.0
+    if (f.get("moneda_cotiza") or "ARS") != "ARS":
+        if not mep:
+            return None
+        monto *= mep
+    return monto
+
+
 def canjes(filas, an, tenidos, costo_pct=0.5, min_ganancia=1.0,
-           max_dif_md=0.35, min_z=1.0):
+           max_dif_md=0.35, min_z=1.0, min_monto=0, mep=None):
     """Contra que bono conviene rotar cada uno de los que se tienen.
 
     La cuenta no es "cual rinde mas" sino cuanto se espera que cada uno
@@ -166,6 +189,14 @@ def canjes(filas, an, tenidos, costo_pct=0.5, min_ganancia=1.0,
     Se compara solo dentro de la misma familia y con duration parecida:
     pasar de un tramo corto a uno largo puede dar mas nominales y dejar
     otra cartera, y eso ya no es la misma estrategia.
+
+    `min_monto` descarta las puntas que no alcanzan esa plata en pesos.
+    Una punta suelta de dos laminas da un precio que no se puede operar y
+    con el un canje que no existe. Se mide el bid del que sale y el ask
+    del que entra, que son las dos que se van a tocar. El ajuste de la
+    curva NO se filtra: `reconstruir` trabaja sobre `bono_hist`, que no
+    guarda cantidades, y un filtro que valga hoy y no en la historia
+    ensucia el z-score, que es justamente lo que decide el canje.
     """
     por_sim = {f["simbolo"]: f for f in filas}
 
@@ -185,6 +216,10 @@ def canjes(filas, an, tenidos, costo_pct=0.5, min_ganancia=1.0,
         rec_a = recorrido(sim)
         if rec_a is None:
             continue
+        if min_monto:
+            m = monto_punta(f, "bid", mep)
+            if m is not None and m < min_monto:
+                continue
         mejor = None
         for otro in filas:
             osim = otro["simbolo"]
@@ -192,6 +227,10 @@ def canjes(filas, an, tenidos, costo_pct=0.5, min_ganancia=1.0,
                 continue
             if otro.get("md") is None or not otro.get("ask"):
                 continue
+            if min_monto:
+                m = monto_punta(otro, "ask", mep)
+                if m is not None and m < min_monto:
+                    continue
             # Duration parecida, en proporcion: medio anio de diferencia
             # es mucho en un bono corto y poco en uno largo.
             if abs(otro["md"] - f["md"]) > max_dif_md * max(f["md"], 0.5):
@@ -211,6 +250,7 @@ def canjes(filas, an, tenidos, costo_pct=0.5, min_ganancia=1.0,
                     "z_hacia": od["z"], "residuo_hacia": od["residuo"],
                     "md_hacia": otro["md"], "tir_hacia": otro.get("tir_last"),
                     "recorrido_hacia": rec_b,
+                    "monto_hacia": monto_punta(otro, "ask", mep),
                 }
         if mejor:
             mejor.update({
@@ -218,6 +258,7 @@ def canjes(filas, an, tenidos, costo_pct=0.5, min_ganancia=1.0,
                 "residuo_desde": d["residuo"], "md_desde": f["md"],
                 "tir_desde": f.get("tir_last"), "recorrido_desde": rec_a,
                 "familia": f.get("familia"), "costo_pct": costo_pct,
+                "monto_desde": monto_punta(f, "bid", mep),
             })
             salida.append(mejor)
     salida.sort(key=lambda x: x["ganancia_pct"], reverse=True)
