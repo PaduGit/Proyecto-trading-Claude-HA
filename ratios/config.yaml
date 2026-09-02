@@ -1,5 +1,5 @@
 name: Ratios IOL
-version: "0.31.0"
+version: "0.31.1"
 slug: ratios_iol
 description: Monitor de ratios entre especies, arbitraje de plazos y screener
 url: https://github.com/PaduGit/Proyecto-trading-Claude-HA
@@ -41,7 +41,7 @@ options:
   rulo_umbral_pct: 0.6
   curva_umbral_z: 2.5
   canje_min_pct: 1.0
-  usar_byma: true
+  fuente_precios: auto
   byma_plazo: t1
   byma_verificar_ssl: false
   cer_actual: 0
@@ -157,7 +157,7 @@ schema:
   rulo_umbral_pct: float(0,20)
   curva_umbral_z: float(0,10)
   canje_min_pct: float(0,20)
-  usar_byma: bool?
+  fuente_precios: list(auto|iol|byma)?
   byma_plazo: list(t0|t1)?
   byma_verificar_ssl: bool?
   cer_actual: float(0,100000)

@@ -298,9 +298,26 @@ class Monitor:
                 habiles += 1
         return habiles > dias_habiles
 
+    def fuente_elegida(self):
+        """auto, iol o byma. Se puede cambiar sin reiniciar."""
+        f = getattr(self, "_fuente_forzada", None)
+        if f:
+            return f
+        v = (self.cfg.get("fuente_precios") or "auto").strip().lower()
+        return v if v in ("auto", "iol", "byma") else "auto"
+
     def bajar_orleans(self):
         """Todos los instrumentos configurados. Devuelve simbolo -> cotizacion."""
         from iol import normalizar
+        # Forzar BYMA sirve para cuando Orleans responde pero con datos
+        # malos: como no falla, el respaldo automatico no se dispara.
+        if self.fuente_elegida() == "byma":
+            try:
+                m = self.bajar_byma()
+                if m:
+                    return m
+            except Exception as e:
+                log.warning("byma forzado: %s", e)
         mapa, planos, total, fallas = {}, 0, 0, []
         dias = self.cfg.get("dias_sin_operar")
         dias = 7 if dias is None else int(dias)
@@ -342,18 +359,15 @@ class Monitor:
         # trae paneles enteros en una llamada y no gasta cupo de IOL;
         # recien si eso tampoco anda, especie por especie.
         if not mapa and fallas:
-            if self.cfg.get("usar_byma", True):
+            # Solo BYMA: trae todo en una llamada y no gasta cupo de IOL.
+            # El pedido especie por especie queda a mano, desde el menu,
+            # porque consume el cupo de la cuenta que hace el ciclo y
+            # para valuar no hace falta.
+            if self.fuente_elegida() != "iol":
                 try:
                     mapa = self.bajar_byma()
                 except Exception as e:
                     log.warning("byma: %s", e)
-            if not mapa:
-                try:
-                    self.repuesto_por_especie()
-                    with self.lock:
-                        mapa = dict(self.cotizaciones)
-                except Exception as e:
-                    log.warning("respaldo por especie: %s", e)
         else:
             self.fuente = "iol"
         return mapa

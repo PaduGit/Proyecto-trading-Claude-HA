@@ -335,6 +335,9 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       <button class="refrescar" id="btn-menu" title="Más"
               aria-label="Más opciones" aria-haspopup="true">⋮</button>
       <div class="menu" id="menu" hidden role="menu">
+        <a href="#" id="fuente-precios" role="menuitem">Fuente: IOL</a>
+        <a href="#" id="precios-especie" role="menuitem">Precios en vivo,
+          especie por especie</a>
         <a href="#" id="probar-notif" role="menuitem">Probar notificación</a>
         <a href="#" id="rehacer-hist" role="menuitem">Reconstruir histórico</a>
         <a href="#" id="rehacer-todo" role="menuitem">Recalcular histórico entero</a>
@@ -925,10 +928,22 @@ $("#btn-refrescar").addEventListener("click", async () => {
 /* Que los precios no son de IOL tiene que verse en cualquier pestania,
    no solo en el panel: con BYMA hay veinte minutos de retraso y un rulo
    calculado con eso es una perdida. */
+const NOM_FUENTE = {auto: "automática", iol: "IOL", byma: "BYMA"};
+
 function cartelFuente(d){
   const c = $("#cartel-fuente");
   if(!c) return;
   const f = (d || {}).fuente || "iol";
+  const eleg = (d || {}).fuente_elegida || "auto";
+  const m = $("#fuente-precios");
+  if(m) m.textContent = "Fuente: " + (NOM_FUENTE[eleg] || eleg) +
+    (eleg === "auto" ? " (" + (NOM_FUENTE[f] || f) + ")" : "");
+  if(eleg === "byma" && f === "byma"){
+    c.textContent = "Fuente forzada a BYMA: los precios llegan con 20 " +
+      "minutos de retraso. Volvé a automática cuando el panel de IOL ande.";
+    c.hidden = false;
+    return;
+  }
   if(f === "byma"){
     c.textContent = "El panel de IOL no responde: los precios son de " +
       "BYMA y llegan con 20 minutos de retraso. Alcanzan para valuar y " +
@@ -936,8 +951,15 @@ function cartelFuente(d){
       "cuando mandes la orden.";
     c.hidden = false;
   } else if(f === "especie"){
-    c.textContent = "El panel de IOL no responde: los precios se piden de " +
-      "a una especie y se actualizan por turno. Puede haber datos viejos.";
+    c.textContent = "Precios pedidos de a una especie, a mano. Los que no " +
+      "entraron en la tanda siguen siendo los anteriores.";
+    c.hidden = false;
+  } else if((d || {}).orleans_fallas && d.orleans_fallas.length &&
+            (d.byma_fallas || []).length){
+    /* Los dos caidos: sin esto el tablero queda vacio sin decir por que. */
+    c.textContent = "Sin precios: el panel de IOL no responde y BYMA " +
+      "tampoco (" + esc(d.byma_fallas[0]) + "). Probá la consulta de BYMA " +
+      "en Explorar.";
     c.hidden = false;
   } else {
     c.hidden = true;

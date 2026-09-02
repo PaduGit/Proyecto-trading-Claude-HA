@@ -1,5 +1,21 @@
 # Registro de cambios
 
+## 0.31.1
+
+**Si Orleans cae, solo BYMA.** El pedido especie por especie ya no se
+dispara solo: consume el cupo de la cuenta que hace el ciclo y para
+valuar alcanza con los paneles. Queda en el menu, como "Precios en vivo,
+especie por especie", con aviso de que gasta cupo. Es para cuando hay que
+operar y los veinte minutos de retraso no sirven.
+
+**Fuente de precios elegible.** `fuente_precios` en la configuracion
+—auto, iol o byma— y una entrada en el menu para cambiarla sin
+reiniciar. Forzar BYMA cubre el caso que el automatico no ve: Orleans
+respondiendo con datos malos en vez de fallar. Reemplaza a `usar_byma`.
+
+**Si los dos fallan, el cartel lo dice**, con el error de BYMA. Antes el
+tablero quedaba vacio sin explicar por que.
+
 ## 0.31.0
 
 **El panel Orleans devuelve 500 en los siete instrumentos**, con los dos

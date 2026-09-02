@@ -96,6 +96,7 @@ def crear_app(monitor):
             "orleans_fallas": getattr(monitor, "orleans_fallas", []),
             "orleans_descartados": getattr(monitor, "orleans_descartados", []),
             "fuente": getattr(monitor, "fuente", "iol"),
+            "fuente_elegida": monitor.fuente_elegida(),
             "canjes": len(getattr(monitor, "canjes", [])),
             "byma_fallas": getattr(monitor, "byma_fallas", []),
         })
@@ -1186,6 +1187,32 @@ def crear_app(monitor):
                         "calculado": monitor.ultimo_ciclo.isoformat(
                             timespec="seconds") if monitor.ultimo_ciclo else None,
                         "minimo": float(monitor.cfg.get("canje_min_pct") or 1)})
+
+    @app.post("/api/precios/por-especie")
+    def precios_por_especie():
+        """Pide las cotizaciones de a una, hasta que la API frena.
+
+        No corre solo: consume el cupo de la cuenta que hace el ciclo, y
+        para valuar alcanza con BYMA. Es para cuando hay que operar y los
+        veinte minutos de retraso no sirven.
+        """
+        try:
+            n = monitor.repuesto_por_especie()
+        except Exception as e:
+            log.warning("por especie: %s", e)
+            return jsonify({"error": str(e)}), 502
+        return jsonify({"precios": n, "fuente": getattr(monitor, "fuente", "")})
+
+    @app.post("/api/fuente")
+    def fijar_fuente():
+        """Cambia la fuente de precios sin reiniciar el add-on."""
+        d = request.get_json(silent=True) or {}
+        v = (d.get("fuente") or "").strip().lower()
+        if v not in ("auto", "iol", "byma"):
+            return jsonify({"error": "auto, iol o byma"}), 400
+        monitor._fuente_forzada = None if v == "auto" else v
+        return jsonify({"elegida": monitor.fuente_elegida(),
+                        "usando": getattr(monitor, "fuente", "iol")})
 
     @app.post("/api/byma/panel")
     def byma_panel():
