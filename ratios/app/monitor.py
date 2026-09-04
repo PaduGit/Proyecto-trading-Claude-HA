@@ -606,26 +606,30 @@ class Monitor:
         return "\n".join(L)
 
     def _tenencia_del_par(self, par, ratio):
-        """Si el par pertenece a un grupo, cuanto tenes y cuanto obtendrias."""
+        """Cuanto tenes de cada punta y cuanto obtendrias si rotas.
+
+        El saldo sale de `tenencia`, sumando los brokers. Antes salia de
+        los movimientos cargados del grupo, que quedaban viejos en cuanto
+        se operaba sin registrarlo.
+        """
         try:
-            import posicion as P
-            for g in db.listar_grupos():
-                tks = set(g["tickers"])
-                if par["num"] not in tks or par["den"] not in tks:
-                    continue
-                saldos = P.tenencia(g["id"])
-                lineas = []
-                cn = saldos.get(par["num"], 0)
-                cd = saldos.get(par["den"], 0)
-                if cn > 0:
-                    lineas.append("Tenés %s %s → %s %s si rotás"
-                                  % (_e(cn), par["num"],
-                                     _e(cn * ratio), par["den"]))
-                if cd > 0:
-                    lineas.append("Tenés %s %s → %s %s si rotás"
-                                  % (_e(cd), par["den"],
-                                     _e(cd / ratio if ratio else 0), par["num"]))
-                return lineas
+            saldos = {}
+            for t in db.tenencias():
+                if t["simbolo"] in (par["num"], par["den"]):
+                    saldos[t["simbolo"]] = (saldos.get(t["simbolo"], 0)
+                                            + (t["cantidad"] or 0))
+            lineas = []
+            cn = saldos.get(par["num"], 0)
+            cd = saldos.get(par["den"], 0)
+            if cn > 0:
+                lineas.append("Tenés %s %s → %s %s si rotás"
+                              % (_e(cn), par["num"],
+                                 _e(cn * ratio), par["den"]))
+            if cd > 0:
+                lineas.append("Tenés %s %s → %s %s si rotás"
+                              % (_e(cd), par["den"],
+                                 _e(cd / ratio if ratio else 0), par["num"]))
+            return lineas
         except Exception as e:
             log.debug("tenencia en alerta: %s", e)
         return []
@@ -668,6 +672,10 @@ class Monitor:
             log.info("alerta %s %s @ %.4f", par["alias"], zona, ratio)
 
         estado = {
+            # El id del grupo: la tarjeta lo usa para encontrar la
+            # estrategia del par y para el boton de editar, que antes lo
+            # sacaba de la posicion que ya no viaja en /api/estado.
+            "id": par.get("id"),
             "alias": par["alias"], "num": par["num"], "den": par["den"],
             "cerca": _cerca_del_borde(par, ratio, est),
             "factor": self._factor(par, num, den),

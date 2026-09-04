@@ -54,33 +54,14 @@ def crear_app(monitor):
         filas.sort(key=lambda f: (
             0 if f.get("zona") in ("alta", "baja") else 1, f.get("alias", "")))
 
-        # La posicion va en la misma tarjeta que el ratio: son la misma
-        # estrategia mirada de dos maneras, y tenerlas separadas obligaba
-        # a saltar entre dos listas para leer una sola cosa.
-        pos = {}
-        try:
-            for g in db.listar_grupos():
-                precios = _precios_para(g)
-                r = P.resumen(g, precios)
-                pos[g["nombre"]] = {
-                    "id": g["id"], "base": g["base"], "tickers": g["tickers"],
-                    "rendimiento_pct": r["rendimiento_pct"],
-                    "equivalente": r["equivalente"],
-                    "valor_cuota": r["valor_cuota"],
-                    "faltan_precios": r["faltan_precios"],
-                    "tenencia": [
-                        {"ticker": k, "cantidad": v["cantidad"]}
-                        for k, v in sorted(r["tenencia"].items())
-                        if v["cantidad"]],
-                }
-        except Exception as e:
-            log.debug("posicion en el panel: %s", e)
+        # La posicion NO va aca. Este panel es de alertas: un par puede
+        # tener sus dos puntas en estrategias distintas o en ninguna, y
+        # el mismo numero en dos pantallas se desincroniza. Vive en el
+        # panel de la estrategia y en ningun otro lado.
 
         salida = []
         for f in filas:
-            d = _limpiar(f)
-            d["posicion"] = pos.get(d.get("alias"))
-            salida.append(d)
+            salida.append(_limpiar(f))
 
         return jsonify({
             "pares": salida,
@@ -273,6 +254,15 @@ def crear_app(monitor):
 
     # -- posicion -----------------------------------------------------
 
+    def _precios_vigentes():
+        """Precio de referencia de todo lo que ya esta en cache.
+
+        No pide nada: se usa al guardar la tenencia, para que el diff
+        registre el precio del momento de la foto, y para valuar.
+        """
+        return {s: c["ref"] for s, c in monitor.cotizaciones_vigentes().items()
+                if c.get("ref")}
+
     def _precios_para(grupo):
         """Precio de referencia de cada ticker del grupo.
 
@@ -298,10 +288,10 @@ def crear_app(monitor):
 
     @app.get("/api/grupos")
     def listar_grupos():
+        # Un grupo es la definicion de un par para alertar: num, den y los
+        # umbrales. Nada de posicion, que es de la estrategia.
         salida = []
         for g in db.listar_grupos():
-            precios = _precios_para(g)
-            r = P.resumen(g, precios)
             salida.append({
                 "id": g["id"], "nombre": g["nombre"], "base": g["base"],
                 "tickers": g["tickers"], "mercado": g["mercado"],
@@ -309,17 +299,7 @@ def crear_app(monitor):
                 "plazo": g.get("plazo"), "resistencia": g.get("resistencia"),
                 "soporte": g.get("soporte"), "factor": g.get("factor"),
                 "alertas": bool(g.get("alertas", 1)),
-                "precios": precios,
-                "equivalente": r["equivalente"],
-                "base_ajustada": r["base_ajustada"],
-                "rendimiento_pct": r["rendimiento_pct"],
-                "ganancia_nominal": r["ganancia_nominal"],
-                "valor_cuota": r["valor_cuota"],
-                "faltan_precios": r["faltan_precios"],
-                "tenencia": [
-                    {"ticker": k, "cantidad": v["cantidad"],
-                     "equivalente": v["equivalente"], "precio": v["precio"]}
-                    for k, v in sorted(r["tenencia"].items())],
+                "precios": _precios_para(g),
             })
         return jsonify(salida)
 
@@ -390,79 +370,6 @@ def crear_app(monitor):
     @app.delete("/api/grupos/<int:gid>")
     def eliminar_grupo(gid):
         db.borrar_grupo(gid)
-        return jsonify({"ok": True})
-
-    @app.get("/api/grupos/<int:gid>/movimientos")
-    def listar_movimientos(gid):
-        g = db.grupo_por_id(gid)
-        if not g:
-            return jsonify({"error": "grupo desconocido"}), 404
-        filas = db.movimientos_de(gid)
-        return jsonify({
-            "movimientos": [{
-                "id": m["id"], "ts": m["ts"], "tipo": m["tipo"],
-                "ticker_de": m["ticker_de"], "cant_de": m["cant_de"],
-                "ticker_a": m["ticker_a"], "cant_a": m["cant_a"],
-                "ratio_base": m["ratio_base"], "nota": m["nota"],
-            } for m in reversed(filas)],
-            "curva": P.curva(g, _precios_para(g)),
-        })
-
-    @app.post("/api/grupos/<int:gid>/movimientos")
-    def nuevo_movimiento(gid):
-        g = db.grupo_por_id(gid)
-        if not g:
-            return jsonify({"error": "grupo desconocido"}), 404
-        d = request.get_json(silent=True) or {}
-        limpio, error = P.validar_movimiento(g, d)
-        if error:
-            return jsonify({"error": error}), 400
-
-        antes = None
-        if limpio["tipo"] in ("aporte", "retiro"):
-            antes, _, _ = P.equivalente(g, P.tenencia(gid), _precios_para(g))
-
-        mid = db.registrar_movimiento(gid, equiv_antes=antes, **limpio)
-        r = P.resumen(g, _precios_para(g))
-        return jsonify({"ok": True, "id": mid,
-                        "equivalente": r["equivalente"],
-                        "rendimiento_pct": r["rendimiento_pct"]})
-
-    @app.post("/api/grupos/<int:gid>/sembrar")
-    def sembrar_grupo(gid):
-        """Carga como aporte inicial lo que ya figura en la tenencia.
-
-        La contabilidad por cuotapartes necesita un punto de partida. Sin
-        esto hay que tipear a mano lo que la app ya sabe, y las
-        estrategias creadas desde los grupos arrancan todas sin poder
-        medirse.
-        """
-        g = db.grupo_por_id(gid)
-        if not g:
-            return jsonify({"error": "grupo desconocido"}), 404
-        if db.movimientos_de(gid):
-            return jsonify({"error": "el grupo ya tiene movimientos"}), 400
-        # Se suman los brokers: el grupo mide nominales, no en donde estan.
-        por_ticker = {}
-        for t in db.tenencias():
-            sim = t["simbolo"]
-            if sim in (g.get("tickers") or []) and t.get("cantidad"):
-                por_ticker[sim] = por_ticker.get(sim, 0) + float(t["cantidad"])
-        if not por_ticker:
-            return jsonify({"error": "ninguno de los tickers del grupo "
-                                     "está en la tenencia"}), 400
-        hechos = []
-        for sim, cant in sorted(por_ticker.items()):
-            db.registrar_movimiento(
-                gid, tipo="aporte", ticker_a=sim, cant_a=cant,
-                nota="tenencia inicial")
-            hechos.append("%s %s" % (sim, cant))
-        return jsonify({"sembrados": hechos,
-                        "resumen": P.resumen(g, _precios_para(g))})
-
-    @app.delete("/api/movimientos/<int:mid>")
-    def eliminar_movimiento(mid):
-        db.borrar_movimiento(mid)
         return jsonify({"ok": True})
 
     @app.delete("/api/operaciones/<int:oid>")
@@ -831,7 +738,8 @@ def crear_app(monitor):
         filas = d.get("tenencias")
         if not isinstance(filas, list):
             return jsonify({"error": "falta la lista 'tenencias'"}), 400
-        n = db.guardar_tenencias(filas, d.get("reemplazar") or "todo")
+        n = db.guardar_tenencias(filas, d.get("reemplazar") or "todo",
+                                 _precios_vigentes())
         return jsonify({"cargadas": n, "en_rulo": monitor.tengo_actual()})
 
     @app.post("/api/tenencias/una")
@@ -862,7 +770,7 @@ def crear_app(monitor):
                 return jsonify({"error": str(e), "guardada": True}), 400
             if campos.get("fecha_alta"):
                 db.fijar_alta(eid, campos["fecha_alta"])
-            db.asignar(br, sim, eid)
+            db.asignar(sim, eid)
         return jsonify({"actualizadas": n, "estrategia_id": eid,
                         "en_rulo": monitor.tengo_actual()})
 
@@ -877,25 +785,59 @@ def crear_app(monitor):
 
     @app.get("/api/movimientos-propuestos")
     def propuestos_listar():
+        eid = request.args.get("estrategia_id")
         return jsonify({"propuestos": db.movimientos_propuestos(
-            request.args.get("estado") or "pendiente")})
+            request.args.get("estado") or "pendiente",
+            int(eid) if (eid or "").isdigit() else None)})
+
+    @app.get("/api/movimientos-propuestos/<int:mid>/candidatos")
+    def propuestos_candidatos(mid):
+        """Con que otra propuesta se puede unir esta.
+
+        Una rotacion hecha en dos cuentas -vende en una, compra en la
+        otra- sale como un retiro y un aporte sueltos. Unirlas es lo que
+        evita que la cuota se mueva por una operacion que no cambio el
+        capital.
+        """
+        return jsonify({"candidatos": db.candidatos_a_unir(mid)})
 
     @app.post("/api/movimientos-propuestos/<int:mid>")
     def propuestos_resolver(mid):
         d = request.get_json(silent=True) or {}
-        r = db.resolver_propuesto(mid, d.get("accion") or "confirmar")
+        unir = d.get("unir_con")
+        try:
+            r = db.resolver_propuesto(
+                mid, d.get("accion") or "confirmar",
+                d.get("editado"), int(unir) if unir else None)
+        except (TypeError, ValueError) as e:
+            return jsonify({"error": str(e)}), 400
         if not r:
             return jsonify({"error": "no existe"}), 404
         return jsonify({"estado": r})
 
     @app.get("/api/estrategias")
     def estrategias_listar():
+        # La posicion viaja adentro de cada estrategia y en ningun otro
+        # endpoint. Los precios salen del cache: esto no pide nada.
+        precios = _precios_vigentes()
+        lista = db.estrategias(
+            incluir_cerradas=request.args.get("cerradas") == "1",
+            familia=request.args.get("familia") or None)
+        for e in lista:
+            try:
+                e["posicion"] = P.resumen(e, precios)
+            except Exception as ex:
+                log.debug("posicion de %s: %s", e["id"], ex)
+                e["posicion"] = None
         return jsonify({
-            "estrategias": db.estrategias(
-                incluir_cerradas=request.args.get("cerradas") == "1",
-                familia=request.args.get("familia") or None),
+            "estrategias": lista,
+            # El patron dejo de depender de la familia, asi que la clave
+            # ya no existe y esto reventaba con KeyError. En su lugar van
+            # la pestaña y los tipos esperados, que es lo que el front
+            # necesita para armar la tarjeta y avisar la familia cruzada.
             "familias": [{"id": k, "nombre": v["nombre"],
-                          "patron": v["patron"],
+                          "pestana": v["pestana"],
+                          "tipos": list(v["tipos"]),
                           "campos": list(v["campos"])}
                          for k, v in db.FAMILIAS.items()],
             "patrones": list(db.PATRONES),
@@ -916,6 +858,132 @@ def crear_app(monitor):
     def estrategias_evolucion(eid):
         return jsonify({"evolucion": db.evolucion(eid)})
 
+    # -- posicion y ledger de la estrategia ---------------------------
+    # Todo esto colgaba del grupo. Un grupo es un par para alertar; la
+    # posicion, el capital aportado y la cuota son de la estrategia, que
+    # es la que sobrevive a la rotacion.
+
+    def _estrategia(eid):
+        for e in db.estrategias(incluir_cerradas=True):
+            if e["id"] == eid:
+                return e
+        return None
+
+    @app.get("/api/estrategias/<int:eid>/posicion")
+    def estrategias_posicion(eid):
+        e = _estrategia(eid)
+        if not e:
+            return jsonify({"error": "estrategia desconocida"}), 404
+        return jsonify(P.resumen(e, _precios_vigentes()))
+
+    @app.get("/api/estrategias/<int:eid>/movimientos")
+    def estrategias_movimientos(eid):
+        e = _estrategia(eid)
+        if not e:
+            return jsonify({"error": "estrategia desconocida"}), 404
+        precios = _precios_vigentes()
+        return jsonify({
+            "movimientos": [{
+                "id": m["id"], "ts": m["ts"], "tipo": m["tipo"],
+                "ticker_de": m["ticker_de"], "cant_de": m["cant_de"],
+                "ticker_a": m["ticker_a"], "cant_a": m["cant_a"],
+                "ratio_base": m["ratio_base"],
+                "equiv_antes": m["equiv_antes"],
+                "propuesto_id": m["propuesto_id"], "nota": m["nota"],
+            } for m in reversed(db.movimientos_estrategia(eid))],
+            "curva": P.curva(e, precios),
+            "resumen": P.resumen(e, precios),
+        })
+
+    @app.post("/api/estrategias/<int:eid>/movimientos")
+    def estrategias_mov_nuevo(eid):
+        e = _estrategia(eid)
+        if not e:
+            return jsonify({"error": "estrategia desconocida"}), 404
+        precios = _precios_vigentes()
+        limpio, error = P.validar_movimiento(e, request.get_json(silent=True)
+                                             or {}, precios)
+        if error:
+            return jsonify({"error": error}), 400
+        mid = db.registrar_mov_manual(eid, limpio)
+        return jsonify({"ok": True, "id": mid,
+                        "resumen": P.resumen(e, precios)})
+
+    @app.delete("/api/estrategias/movimientos/<int:mid>")
+    def estrategias_mov_borrar(mid):
+        db.borrar_mov_estrategia(mid)
+        return jsonify({"ok": True})
+
+    @app.post("/api/estrategias/<int:eid>/sembrar")
+    def estrategias_sembrar(eid):
+        """Carga como aporte inicial lo que ya figura en la tenencia.
+
+        La cuotaparte necesita un punto de partida. El equivalente sale
+        del precio de ahora y se puede pisar por especie: la plata entro
+        el dia que entro, no hoy. Con `simular` en true no escribe nada y
+        devuelve lo que propondria, que es lo que la tarjeta muestra para
+        que se corrija antes de confirmar.
+        """
+        e = _estrategia(eid)
+        if not e:
+            return jsonify({"error": "estrategia desconocida"}), 404
+        if not e.get("ticker_base"):
+            return jsonify({"error": "la estrategia no tiene ticker base: "
+                                     "sin eso no hay en qué medir"}), 400
+        if db.movimientos_estrategia(eid):
+            return jsonify({"error": "la estrategia ya tiene movimientos"}), 400
+
+        d = request.get_json(silent=True) or {}
+        pisar = {(k or "").upper(): v
+                 for k, v in (d.get("equivalentes") or {}).items()}
+        precios = _precios_vigentes()
+        sal = P.saldos(eid)
+        if not sal:
+            return jsonify({"error": "ninguna especie de la estrategia "
+                                     "está en la tenencia"}), 400
+
+        base = e["ticker_base"]
+        propuesta, faltan, acum = [], [], 0.0
+        for sim, v in sorted(sal.items()):
+            eq = pisar.get(sim)
+            try:
+                eq = float(eq) if eq is not None else None
+            except (TypeError, ValueError):
+                eq = None
+            if eq is None:
+                eq = P.equiv_de(sim, v["cantidad"], base, precios, sal)
+            if not eq:
+                faltan.append(sim)
+                continue
+            propuesta.append({"simbolo": sim, "cantidad": v["cantidad"],
+                              "equivalente": eq, "equiv_antes": acum})
+            acum += eq
+        if faltan and not propuesta:
+            return jsonify({"error": "sin precio para %s: cargá el "
+                                     "equivalente a mano"
+                                     % ", ".join(faltan)}), 400
+        if d.get("simular"):
+            return jsonify({"propuesta": propuesta, "faltan_precio": faltan,
+                            "ticker_base": base})
+
+        for a in propuesta:
+            db.registrar_mov_manual(eid, {
+                "tipo": "aporte", "ticker_a": a["simbolo"],
+                "cant_a": a["cantidad"], "ratio_base": a["equivalente"],
+                "equiv_antes": a["equiv_antes"] or None,
+                "nota": "tenencia inicial"})
+        return jsonify({"sembrados": propuesta, "faltan_precio": faltan,
+                        "resumen": P.resumen(e, precios)})
+
+    @app.get("/api/estrategias/revisar")
+    def estrategias_revisar():
+        """Lo que la app sospecha y no aplica sola.
+
+        Estaba escrito en db y no lo leia nadie: media funcionalidad.
+        """
+        return jsonify({"cruzadas": db.especies_cruzadas(),
+                        "cierres": db.cierres_sugeridos()})
+
     @app.delete("/api/estrategias/<int:eid>")
     def estrategias_borrar(eid):
         return jsonify({"borradas": db.borrar_estrategia(eid)})
@@ -931,11 +999,15 @@ def crear_app(monitor):
 
     @app.post("/api/estrategias/asignar")
     def estrategias_asignar():
+        # La asignacion es por simbolo y no por broker: la misma especie
+        # en dos cuentas es una sola posicion de una sola estrategia. El
+        # broker se sigue aceptando y se ignora, para no romper la
+        # pantalla vieja mientras se saca.
         d = request.get_json(silent=True) or {}
-        br, sim = (d.get("broker") or "").strip(), (d.get("simbolo") or "").strip()
-        if not br or not sim:
-            return jsonify({"error": "faltan el broker o el símbolo"}), 400
-        db.asignar(br, sim, d.get("estrategia_id") or None)
+        sim = (d.get("simbolo") or "").strip()
+        if not sim:
+            return jsonify({"error": "falta el símbolo"}), 400
+        db.asignar(sim, d.get("estrategia_id") or None)
         return jsonify({"ok": True})
 
     @app.post("/api/estrategias/limpiar")
@@ -1146,7 +1218,7 @@ def crear_app(monitor):
             if not filas:
                 errores.append("%s: no devolvió posiciones" % nombre)
                 continue
-            n = db.guardar_tenencias(filas, nombre)
+            n = db.guardar_tenencias(filas, nombre, _precios_vigentes())
             resultados.append({
                 "broker": nombre, "cargadas": n,
                 "sin_posiciones": vacios, "monedas": monedas,
@@ -1261,7 +1333,7 @@ def crear_app(monitor):
         # Solo lo que ya esta en cache: valuar no justifica una rueda de
         # requests por cada visita a la pestania.
         cache = monitor.cotizaciones_vigentes()
-        precios = {s: c["ref"] for s, c in cache.items() if c.get("ref")}
+        precios = _precios_vigentes()
         try:
             bonos_cfg, _ = BO.cargar()
         except Exception as e:
@@ -1774,7 +1846,7 @@ def _limpiar(f):
     if not f:
         return {}
     out = {k: f.get(k) for k in
-           ("alias", "num", "den", "ratio", "zona", "resistencia", "soporte",
+           ("id", "alias", "num", "den", "ratio", "zona", "resistencia", "soporte",
             "z", "ts", "alertas", "error", "alerta_id", "origen", "cerca")}
     est = f.get("est") or {}
     out["est"] = {k: est.get(k) for k in

@@ -53,7 +53,7 @@ def patron_valor(patron, f=None):
     return None
 
 
-def _factor_patron(pat, e):
+def factor_patron(pat, e, precios=None):
     """Cuánto rindió la vara desde el alta, como factor (1,12 = +12%).
 
     Hay dos clases de patrón y no se miden igual:
@@ -81,6 +81,19 @@ def _factor_patron(pat, e):
         if dev is None:
             return None, "sin serie BADLAR que cubra el período"
         return 1 + dev, None
+
+    if pat == "spy":
+        # El CEDEAR del S&P no tiene serie diaria guardada: `bono_hist`
+        # es solo para lo que tiene cronograma. El valor de entrada se
+        # carga a mano y el de hoy sale del precio vigente. Sin alguna de
+        # las dos puntas no se mide, que es mejor que inventar la vara.
+        base = e.get("patron_valor")
+        hoy = (precios or {}).get("SPY")
+        if not base:
+            return None, "cargá el precio de SPY del día que entraste"
+        if not hoy:
+            return None, "sin precio de SPY"
+        return hoy / base, None
 
     if pat == "tc_entrada":
         # El tipo de cambio al que se entró. Si no se cargó a mano, se
@@ -127,7 +140,7 @@ def medir(estrategias_, posiciones):
 
         pat = e.get("patron")
         if pat and costo:
-            factor, nota = _factor_patron(pat, e)
+            factor, nota = factor_patron(pat, e)
             if factor:
                 d["patron_pct"] = (factor - 1) * 100
                 # Lo unico que importa: si le gano o le perdio a la vara.

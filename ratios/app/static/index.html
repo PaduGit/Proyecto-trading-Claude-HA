@@ -357,7 +357,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
     <button role="tab" aria-selected="false" data-vista="opc">Opciones</button>
     <button role="tab" aria-selected="false" data-vista="plazos">Pases</button>
     <button role="tab" aria-selected="false" data-vista="pos">Tenencias</button>
-    <button role="tab" aria-selected="false" data-vista="alertas">Alertas</button>
+    <button role="tab" aria-selected="false" data-vista="alertas">Análisis técnico</button>
     <button role="tab" aria-selected="false" data-vista="reg">Registro</button>
     <button role="tab" aria-selected="false" data-vista="expl">Explorar</button>
   </nav>
@@ -402,6 +402,9 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
 </section>
 
   <section id="v-bonos" hidden>
+    <div id="curva-estr"></div>
+    <div id="reserva-estr"></div>
+
     <details style="margin-top:12px" id="canje-caja">
       <summary id="canje-tit">Canjes convenientes</summary>
       <div class="nota" style="margin-top:8px">Contra qué bono conviene
@@ -514,18 +517,21 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       mercado local.</p>
     </details>
     <details style="margin-top:12px">
-      <summary>Grupos de rotación</summary>
-      <div class="nota" style="margin-top:8px">Los tickers entre los que
-        rotás y la contabilidad por cuotapartes. Un grupo con estrategia
-        se ve adentro de ella; acá quedan los que todavía no tienen.</div>
+      <summary>Pares</summary>
+      <div class="nota" style="margin-top:8px">Qué se compara contra qué y
+        en qué niveles avisa. La posición y el rendimiento están en la
+        tarjeta de la estrategia, en Ratios.</div>
     <div id="pos-out" hidden></div>
     <button class="secundario" id="pos-nuevo" style="margin-top:14px">
       + Nuevo par</button>
     <details class="avanzado">
       <summary>Respaldo</summary>
       <p class="nota" style="margin-top:10px">Copiá este texto y guardalo
-        afuera. Trae los pares con sus niveles y todos los movimientos:
-        es lo que te permite recuperarlos después de una reinstalación.</p>
+        afuera. Trae los pares con sus niveles y las estrategias con sus
+        especies y su ledger. <b>No trae la tenencia ni el PPC:</b> para
+        eso está la copia de seguridad parcial de Home Assistant, o
+        <code>ratios.db</code>, que la app deja en su carpeta de
+        configuración cada vez que arranca.</p>
       <button class="secundario" id="pos-exportar">Exportar</button>
       <textarea id="pos-texto" style="width:100%;min-height:110px;
         background:var(--panel);border:1px solid var(--rule);color:var(--bone);
@@ -595,6 +601,11 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
   </section>
 
   <section id="v-alertas" hidden>
+    <div id="tecnica-estr"></div>
+
+    <h3 style="margin:22px 0 6px">Alertas de búsqueda</h3>
+    <p class="nota">Las de las posiciones que ya tenés viven dentro de su
+      estrategia, acá arriba. Estas son de lo que todavía no tenés.</p>
     <p class="nota">Se avisa cuando la alerta pasa a cumplirse, no mientras
       se mantiene. <b>Comprar</b> mira la punta vendedora y <b>vender</b> la
       compradora: es contra la que se ejecuta. No dispara con puntas de antes
@@ -867,6 +878,10 @@ const base = "";
 let vista = "panel";
 let abierto = {};
 let ultimoEstado = null;
+/* Las estrategias de familia par, con su posicion adentro. La tarjeta
+   del ratio las necesita y no vienen en /api/estado: la posicion vive en
+   un solo endpoint para que las dos pantallas no se desincronicen. */
+let estrPar = [];
 let opCtx = {};
 
 /* El backend inyecta la version del config.yaml en el body. */
@@ -987,6 +1002,10 @@ async function cargarPanel(){
   let d;
   try{ d = await (await fetch(base + "api/estado")).json(); }
   catch(e){ $("#hace").innerHTML = "<b>—</b>sin conexión"; return; }
+  try{
+    const e = await (await fetch(base + "api/estrategias?familia=par")).json();
+    estrPar = e.estrategias || [];
+  }catch(e){ /* sin estrategias la tarjeta muestra solo el ratio */ }
 
   ultimoEstado = d;
   pintarReloj(d.hace_seg, d.poll_seconds);
@@ -1025,6 +1044,9 @@ async function cargarPanel(){
   }
   cont.innerHTML = cab + d.pares.map(tarjeta).join("");
   Object.keys(abierto).forEach(a => dibujar(a, abierto[a]));
+  Object.keys(movsAbiertos).forEach(id => {
+    if(movsAbiertos[id]) verMovimientos(parseInt(id, 10), true);
+  });
 }
 
 function tarjeta(p){
@@ -1053,16 +1075,252 @@ function tarjeta(p){
       (p.z != null ? '<span>z <b>' + (p.z>=0?"+":"") + p.z.toFixed(2) + '</b></span>'
                    : '<span>n <b>' + (est.n||0) + '</b></span>') +
     '</div>' +
-    /* Sin tenencia ni movimientos: el panel es para ver la oportunidad.
-       Lo que se tiene y como viene rindiendo esta en la estrategia. */
+    /* La posicion, si el par tiene estrategia. El ratio dice si conviene
+       rotar; el bloque de abajo, cuanto tenes y como viene midiendose.
+       Estaban en dos pestañas y obligaban a saltar entre las dos. */
+    bloquePosicion(estrPar.find(x => x.grupo_id === p.id && !x.cierre)) +
     '<div class="acciones">' +
       '<button onclick="alternar(\'' + esc(p.alias) + '\')">Gráfico</button>' +
-      '<button onclick="editarPar(' + (p.posicion ? p.posicion.id : 0) +
-        ')">Editar</button>' +
+      '<button onclick="editarPar(' + (p.id || 0) + ')">Editar</button>' +
     '</div>' +
     '<div class="graf" id="g-' + css(p.alias) + '" hidden></div></div>';
 }
 
+
+/* ---------- la posicion, dentro de la tarjeta del par ---------- */
+
+/* Las cantidades salen de `tenencia`, nunca del ledger: por eso la
+   tarjeta no puede quedar vieja. El rendimiento es por cuotaparte, que
+   no se diluye cuando entra plata nueva. */
+/* Cada familia se mide contra otra cosa, y no es una preferencia de
+   pantalla: una rotacion de par gana nominales y no pesos, y una reserva
+   de valor puede ganar 80% en pesos y haber perdido contra el dolar. */
+function medicion(e, r){
+  const vara = r.vara || "nominales";
+  const base_ = r.ticker_base || e.ticker_base || "";
+
+  if(vara === "ppc"){
+    if(r.resultado_pct == null)
+      return '<div class="aviso">Sin PPC cargado' +
+        ((r.sin_ppc || []).length ? ' en ' + r.sin_ppc.map(esc).join(", ") : "") +
+        ': no hay contra qué medir la entrada.</div>';
+    const t = r.resultado_pct >= 0 ? "var(--sage)" : "var(--coral)";
+    return '<div style="font-family:var(--mono);font-size:12px;color:' + t +
+      '">' + (r.resultado_pct >= 0 ? "+" : "") + num(r.resultado_pct, 2) +
+      '% <span style="opacity:.6">sobre lo que costó · $' + ent(r.valor) +
+      '</span></div>' +
+      ((e.stop || e.objetivo)
+        ? '<div class="pos-pie" style="display:block">' +
+          (e.stop ? 'stop ' + num(e.stop, 2) + " " : "") +
+          (e.objetivo ? '· objetivo ' + num(e.objetivo, 2) : "") + '</div>'
+        : "");
+  }
+
+  if(vara === "indice"){
+    if(r.contra_patron_pct == null)
+      return '<div class="aviso">' + esc(r.nota_patron || "sin patrón") +
+        '.</div>';
+    const t = r.contra_patron_pct >= 0 ? "var(--sage)" : "var(--coral)";
+    return '<div style="font-family:var(--mono);font-size:12px;color:' + t +
+      '">' + (r.contra_patron_pct >= 0 ? "+" : "") +
+      num(r.contra_patron_pct, 2) + '% contra ' + esc(r.patron) + '</div>' +
+      '<div class="pos-pie" style="display:block">rindió ' +
+      num(r.rendimiento_pct, 2) + '% y ' + esc(r.patron) + ' hizo ' +
+      num(r.patron_pct, 2) + '% · $' + ent(r.equivalente) + '</div>';
+  }
+
+  if(!base_)
+    return '<div class="aviso">Sin ticker base no hay en qué medir. ' +
+      'Editala y elegí uno.</div>';
+  if(r.valor_cuota == null) return "";
+  const t = r.rendimiento_pct >= 0 ? "var(--sage)" : "var(--coral)";
+  return '<div style="font-family:var(--mono);font-size:12px;color:' + t +
+    '">' + (r.rendimiento_pct >= 0 ? "+" : "") + num(r.rendimiento_pct, 2) +
+    '% · ' + ent(r.equivalente) + ' ' + esc(base_) +
+    ' <span style="opacity:.6">sobre ' + ent(r.aportado) +
+    ' aportados</span></div>';
+}
+
+function bloquePosicion(e){
+  if(!e) return "";
+  const r = e.posicion || {};
+  const base_ = r.ticker_base || e.ticker_base || "";
+  const esp = Object.keys(r.tenencia || {}).sort();
+  let h = '<div class="pos-bloque">' +
+    '<div class="pos-pie" style="display:block;margin-top:12px">' +
+    esc(e.nombre) + (base_ ? ' <span class="tocar">medida en ' + esc(base_) +
+    '</span>' : "") + '</div>';
+
+  if(r.sin_punto_de_partida){
+    h += '<div class="aviso">Sin punto de partida no hay contra qué medir. ' +
+      '<button onclick="sembrar(' + e.id + ')">' +
+      'Usar la tenencia actual</button></div>';
+  } else {
+    h += medicion(e, r);
+  }
+
+  h += '<div class="datos" style="margin-top:8px">' + esp.map(k => {
+    const t = r.tenencia[k];
+    const br = Object.keys(t.brokers || {});
+    return '<span>' + esc(k) + ' <b>' + ent(t.cantidad) + '</b>' +
+      (br.length > 1 ? ' <span style="opacity:.6">' + br.map(b =>
+        esc(b) + " " + ent(t.brokers[b])).join(" · ") + '</span>' : "") +
+      (base_ && k !== base_ && t.equivalente != null
+        ? ' <span style="opacity:.6">≈ ' + ent(t.equivalente) + '</span>' : "") +
+      '</span>';
+  }).join("") + '</div>';
+
+  if((r.faltan_precios || []).length)
+    h += '<div class="aviso">Sin precio de ' +
+      r.faltan_precios.map(esc).join(", ") +
+      ': el equivalente está incompleto.</div>';
+  /* Una rotacion pendiente no ensucia nada porque no mueve el capital;
+     un aporte o un retiro si, y hasta confirmarlo la cuota miente. */
+  if(r.pendientes)
+    h += '<div class="aviso">' + r.pendientes + ' movimiento' +
+      (r.pendientes === 1 ? "" : "s") + ' de capital sin confirmar: hasta ' +
+      'que los confirmes el rendimiento no cierra. Están en Tenencias.</div>';
+  if((r.sin_medir || []).length)
+    h += '<div class="aviso">' + r.sin_medir.length + ' movimiento' +
+      (r.sin_medir.length === 1 ? "" : "s") +
+      ' sin equivalente: no entran en la medición.</div>';
+
+  return h + '<div class="acciones">' +
+    '<button onclick="verMovimientos(' + e.id + ')">Movimientos</button>' +
+    '<button onclick="abrirMov(' + e.id + ')">Cargar uno</button>' +
+    '</div><div id="mv-' + e.id + '" hidden></div></div>';
+}
+
+/* Carga como aporte inicial lo que ya figura en la tenencia. Primero
+   simula: el equivalente sale del precio de hoy y la plata pudo haber
+   entrado otro dia, asi que se muestra antes de escribir nada. */
+async function sembrar(eid){
+  const cont = document.getElementById("mv-" + eid);
+  if(!cont) return;
+  cont.hidden = false;
+  cont.innerHTML = '<div class="vacio" style="padding:12px">Calculando…</div>';
+  let d;
+  try{
+    d = await (await fetch(base + "api/estrategias/" + eid + "/sembrar", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({simular:true})})).json();
+  }catch(err){
+    cont.innerHTML = '<div class="msg error">No se pudo calcular.</div>'; return;
+  }
+  if(d.error){
+    cont.innerHTML = '<div class="msg error">' + esc(d.error) + '</div>'; return;
+  }
+  cont.innerHTML = '<div class="nota" style="margin:8px 0">A cuántos ' +
+    esc(d.ticker_base) + ' equivale cada especie. Corregilo si la compra ' +
+    'fue a otro precio: de acá sale el punto de partida.</div>' +
+    d.propuesta.map(a =>
+      '<div class="fila"><span>' + esc(a.simbolo) + ' ' + ent(a.cantidad) +
+      '</span><input type="number" step="any" data-siembra="' +
+      esc(a.simbolo) + '" value="' + Math.round(a.equivalente) +
+      '" style="width:110px"></div>').join("") +
+    ((d.faltan_precio || []).length
+      ? '<div class="aviso">Sin precio de ' +
+        d.faltan_precio.map(esc).join(", ") + ': quedan afuera.</div>' : "") +
+    '<button class="primario" onclick="sembrarConfirmar(' + eid + ')" ' +
+    'style="margin-top:8px">Confirmar el punto de partida</button>';
+}
+
+/* La misma tarjeta vive en RATIOS, BONOS o ANÁLISIS TÉCNICO segun la
+   familia. Despues de escribir hay que repintar la que se esta mirando,
+   no siempre el panel de ratios. */
+async function refrescarPosiciones(){
+  if(vista === "bonos") return cargarBonos();
+  if(vista === "alertas") return pintarEstrTecnica();
+  return cargarPanel();
+}
+
+async function sembrarConfirmar(eid){
+  const cont = document.getElementById("mv-" + eid);
+  if(!cont) return;
+  const eq = {};
+  cont.querySelectorAll("[data-siembra]").forEach(i => {
+    const v = parseFloat(i.value);
+    if(v > 0) eq[i.dataset.siembra] = v;
+  });
+  try{
+    const r = await fetch(base + "api/estrategias/" + eid + "/sembrar", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({equivalentes: eq})});
+    const d = await r.json();
+    if(!r.ok){
+      cont.innerHTML = '<div class="msg error">' + esc(d.error) + '</div>';
+      return;
+    }
+    cont.hidden = true; cont.innerHTML = "";
+    refrescarPosiciones();
+  }catch(err){
+    cont.innerHTML = '<div class="msg error">No se pudo guardar.</div>';
+  }
+}
+
+/* ---------- tarjetas de las otras familias ---------- */
+
+let estrOtras = [];
+
+async function cargarEstrOtras(){
+  try{
+    const d = await (await fetch(base + "api/estrategias")).json();
+    estrOtras = d.estrategias || [];
+  }catch(e){ estrOtras = []; }
+}
+
+/* En una estrategia de curva importan las dos cosas: si lo que tenés
+   esta caro o barato contra su propia historia, y contra que conviene
+   rotarlo. Lo primero explica lo segundo. */
+function tarjetaCurva(e, bonos, canjes){
+  const r = e.posicion || {};
+  const esp = Object.keys(r.tenencia || {});
+  const porSim = {};
+  (bonos || []).forEach(b => { porSim[b.simbolo] = b; });
+
+  const desvios = esp.map(k => {
+    const b = porSim[k];
+    if(!b || b.z == null) return "";
+    const caro = b.z > 0;
+    return '<span>' + esc(k) + ' <b style="color:' +
+      (caro ? "var(--coral)" : "var(--sage)") + '">z ' + num(b.z, 2) +
+      '</b> <span style="opacity:.6">' + (caro ? "caro" : "barato") +
+      ' contra su historia</span></span>';
+  }).filter(Boolean).join("");
+
+  const mios = (canjes || []).filter(c => esp.indexOf(c.desde) >= 0);
+  const rot = mios.length
+    ? mios.map(c => '<div class="pos-pie" style="display:block">⇄ ' +
+        esc(c.desde) + ' → ' + esc(c.hacia) + ' <b style="color:var(--sage)">+' +
+        num(c.ganancia_pct, 2) + '%</b> neto</div>').join("")
+    : '<div class="pos-pie" style="display:block">Ningún canje supera el ' +
+      'umbral. Es lo normal la mayoría de los días.</div>';
+
+  return '<div class="par">' +
+    '<div class="par-top"><span class="alias">' + esc(e.nombre) + '</span>' +
+    '<span class="t">curva</span></div>' +
+    (desvios ? '<div class="datos" style="margin-top:8px">' + desvios +
+      '</div>' : "") + rot +
+    bloquePosicion(e) + '</div>';
+}
+
+function tarjetaSimple(e, etiqueta){
+  return '<div class="par">' +
+    '<div class="par-top"><span class="alias">' + esc(e.nombre) + '</span>' +
+    '<span class="t">' + esc(etiqueta) + '</span></div>' +
+    (e.tesis ? '<div class="pos-pie" style="display:block">' + esc(e.tesis) +
+      '</div>' : "") +
+    bloquePosicion(e) + '</div>';
+}
+
+function pintarEstrFamilia(destino, familia, etiqueta, dibujo){
+  const cont = $(destino);
+  if(!cont) return;
+  const lista = estrOtras.filter(e => e.familia === familia && !e.cierre);
+  if(!lista.length){ cont.innerHTML = ""; return; }
+  cont.innerHTML = '<h3 style="margin:16px 0 6px">' + esc(etiqueta) + '</h3>' +
+    lista.map(dibujo).join("");
+}
 
 function banda(p){
   const sop = p.soporte||0, res = p.resistencia||0;
@@ -1606,76 +1864,54 @@ async function cargarPosicion(){
   }
   pintarSueltos();
   if(estrDatos.length) pintarEstrategias();
-  Object.keys(movsAbiertos).forEach(id => {
-    if(movsAbiertos[id]) verMovimientos(parseInt(id), true);
-  });
 }
 
+/* El grupo es la definicion del par: que se compara contra que y en que
+   niveles avisa. La posicion no va aca ni en ningun lado fuera de la
+   tarjeta de la estrategia. */
 function tarjetaGrupo(g){
-  const r = g.rendimiento_pct;
-  const color = r == null ? "" : r >= 0 ? "var(--sage)" : "var(--coral)";
-  const falta = g.faltan_precios && g.faltan_precios.length;
-
+  const niveles = [
+    g.soporte ? "soporte " + num(g.soporte, 2) : "",
+    g.resistencia ? "resistencia " + num(g.resistencia, 2) : "",
+  ].filter(Boolean).join(" · ");
   return '<div class="par">' +
     '<div class="par-top"><span class="alias">' + esc(g.nombre) + '</span>' +
-    '<span class="silencio">en ' + esc(g.base) + '</span></div>' +
-
-    (g.equivalente == null
-      ? '<div class="msg" style="margin-top:10px">Sin precios para calcular. ' +
-        (falta ? 'Falta: ' + g.faltan_precios.map(esc).join(", ") : "") + '</div>'
-      : '<div class="ratio" style="color:' + color + '">' +
-        ent(g.equivalente) + ' <span style="font-size:14px;opacity:.6">' +
-        esc(g.base) + '</span></div>' +
-        (r == null
-          ? '<div style="font-family:var(--mono);font-size:12px;color:var(--muted)">' +
-            'Sin punto de partida no hay contra qué medir la rotación. ' +
-            '<button data-sembrar="' + g.id + '">Usar la tenencia actual</button></div>'
-          : '<div style="font-family:var(--mono);font-size:12px;color:' + color + '">' +
-            (r >= 0 ? "+" : "") + r.toFixed(2) + '% · ' +
-            (g.ganancia_nominal >= 0 ? "+" : "") + ent(g.ganancia_nominal) +
-            ' nominales</div>')) +
-
-    (falta && g.equivalente != null
-      ? '<div class="aviso">Sin precio de ' + g.faltan_precios.map(esc).join(", ") +
-        ': el equivalente está incompleto.</div>' : "") +
-
-    '<div class="datos" style="margin-top:12px">' +
-      g.tenencia.map(t => '<span>' + esc(t.ticker) + ' <b>' + ent(t.cantidad) +
-        '</b>' + (t.ticker !== g.base && t.equivalente != null
-          ? ' <span style="opacity:.6">≈ ' + ent(t.equivalente) + '</span>' : "") +
-        '</span>').join("") +
-      '<span>aportado <b>' + ent(g.base_ajustada) + '</b></span>' +
+    (g.alertas ? "" : '<span class="silencio">sin alertas</span>') + '</div>' +
+    '<div class="datos" style="margin-top:8px">' +
+      '<span>' + esc(g.num || "") + " / " + esc(g.den || "") + '</span>' +
+      '<span>base <b>' + esc(g.base || "") + '</b></span>' +
+      (niveles ? '<span>' + niveles + '</span>' : "<span></span>") +
+      '<span>' + esc(g.plazo || "") + '</span>' +
     '</div>' +
-
     '<div class="acciones">' +
-      '<button onclick="abrirMov(' + g.id + ')">Movimiento</button>' +
+      '<button onclick="editarPar(' + g.id + ')">Editar</button>' +
       '<button onclick="borrarGrupo(' + g.id + ')">Borrar</button>' +
-    '</div>' +
-    /* el id de movimientos lo pone ahora la tarjeta del par: si lo
-       repitiera acá, getElementById podría agarrar el equivocado */
-    '</div>';
+    '</div></div>';
 }
 
-async function verMovimientos(gid, forzar){
-  const cont = document.getElementById("mv-" + gid);
+async function verMovimientos(eid, forzar){
+  const cont = document.getElementById("mv-" + eid);
   if(!cont) return;
-  if(movsAbiertos[gid] && !forzar){
-    movsAbiertos[gid] = false; cont.hidden = true; cont.innerHTML = ""; return;
+  if(movsAbiertos[eid] && !forzar){
+    movsAbiertos[eid] = false; cont.hidden = true; cont.innerHTML = ""; return;
   }
-  movsAbiertos[gid] = true;
+  movsAbiertos[eid] = true;
   cont.hidden = false;
   cont.innerHTML = '<div class="vacio" style="padding:12px">Cargando…</div>';
   try{
-    const d = await (await fetch(base + "api/grupos/" + gid + "/movimientos")).json();
-    const g = grupos.find(x => x.id === gid) || {};
+    const d = await (await fetch(base + "api/estrategias/" + eid +
+      "/movimientos")).json();
     let h = "";
+    /* La curva es el valor de la cuota, no el equivalente: el
+       equivalente sube cuando entra plata y eso no es rendimiento. */
     if(d.curva && d.curva.length > 1){
-      h += grafico(d.curva.map(p => ({x:p.x, y:p.y})), 0, 0, "diario");
-      h += '<div style="font-family:var(--mono);font-size:9px;color:var(--muted);' +
-           'text-align:center;margin-bottom:8px">equivalente en ' +
-           esc(g.base || "") + '</div>';
+      h += grafico(d.curva.map(x => ({x:x.x, y:x.y})), 0, 0, "diario");
+      h += '<div style="font-family:var(--mono);font-size:9px;' +
+           'color:var(--muted);text-align:center;margin-bottom:8px">' +
+           'valor de la cuota</div>';
     }
-    h += d.movimientos.length ? d.movimientos.map(m => filaMov(m, gid)).join("")
+    h += d.movimientos.length
+      ? d.movimientos.map(m => filaMov(m, eid)).join("")
       : '<div class="vacio" style="padding:12px">Sin movimientos.</div>';
     cont.innerHTML = h;
   }catch(e){
@@ -1683,24 +1919,27 @@ async function verMovimientos(gid, forzar){
   }
 }
 
-function filaMov(m, gid){
+function filaMov(m, eid){
   const desc = m.tipo === "rotacion"
-    ? ent(m.cant_de) + " " + esc(m.ticker_de) + " → " + ent(m.cant_a) + " " + esc(m.ticker_a)
-    : (m.tipo === "aporte" ? "+" : "−") + ent(m.cant_a) + " " + esc(m.ticker_a);
+    ? ent(m.cant_de) + " " + esc(m.ticker_de) + " → " +
+      ent(m.cant_a) + " " + esc(m.ticker_a)
+    : (m.tipo === "aporte" ? "+" : "−") + ent(m.cant_a) + " " +
+      esc(m.ticker_a) + (m.ratio_base != null
+        ? ' <span class="t">≈ ' + ent(m.ratio_base) + '</span>' : "");
   const icono = m.tipo === "rotacion" ? "⇄" : m.tipo === "aporte" ? "↓" : "↑";
   return '<div class="fila"><span>' + icono + ' ' + desc +
     (m.nota ? ' <span class="t">' + esc(m.nota) + '</span>' : "") + '</span>' +
     '<span><span class="t">' + m.ts.slice(5,10) + " " + m.ts.slice(11,16) +
-    '</span> <button onclick="borrarMov(' + m.id + ',' + gid + ')" ' +
-    'style="background:none;border:none;color:var(--muted);cursor:pointer">×</button>' +
-    '</span></div>';
+    '</span> <button onclick="borrarMov(' + m.id + ',' + eid + ')" ' +
+    'style="background:none;border:none;color:var(--muted);cursor:pointer">' +
+    '×</button></span></div>';
 }
 
-async function borrarMov(mid, gid){
+async function borrarMov(mid, eid){
   if(!confirm("¿Borrar este movimiento?")) return;
-  await fetch(base + "api/movimientos/" + mid, {method:"DELETE"});
-  await cargarPosicion();
-  verMovimientos(gid, true);
+  await fetch(base + "api/estrategias/movimientos/" + mid, {method:"DELETE"});
+  await refrescarPosiciones();
+  verMovimientos(eid, true);
 }
 
 async function borrarGrupo(gid){
@@ -1852,14 +2091,17 @@ $("#g-guardar").addEventListener("click", async () => {
 
 
 /* --- movimiento --- */
-let movGrupo = null;
-function abrirMov(gid){
-  movGrupo = grupos.find(g => g.id === gid);
-  if(!movGrupo) return;
-  $("#mov-titulo").textContent = movGrupo.nombre;
-  const ops = movGrupo.tickers.map(t => '<option>' + esc(t) + '</option>').join("");
+let movEstr = null;
+function abrirMov(eid){
+  movEstr = estrPar.find(e => e.id === eid) ||
+            estrOtras.find(e => e.id === eid) ||
+            estrDatos.find(e => e.id === eid);
+  if(!movEstr) return;
+  $("#mov-titulo").textContent = movEstr.nombre;
+  const esp = (movEstr.especies || []).map(x => x.simbolo || x);
+  const ops = esp.map(t => '<option>' + esc(t) + '</option>').join("");
   ["m-de","m-a","m-tk"].forEach(id => $("#"+id).innerHTML = ops);
-  if(movGrupo.tickers.length > 1) $("#m-a").value = movGrupo.tickers[1];
+  if(esp.length > 1) $("#m-a").value = esp[1];
   ["m-cant-de","m-cant-a","m-cant","m-eq"].forEach(id => $("#"+id).value = "");
   $("#m-nota").value = "";
   $("#m-msg").innerHTML = "";
@@ -1871,7 +2113,8 @@ function cambiarTipoMov(){
   const t = $("#m-tipo").value;
   $("#m-rot").hidden = t !== "rotacion";
   $("#m-flujo").hidden = t === "rotacion";
-  $("#lbl-eq").textContent = "Equivale a cuántos " + (movGrupo ? movGrupo.base : "");
+  $("#lbl-eq").textContent = "Equivale a cuántos " +
+    (movEstr ? (movEstr.ticker_base || "") : "");
   infoMov();
 }
 $("#m-tipo").addEventListener("change", cambiarTipoMov);
@@ -1879,30 +2122,24 @@ $("#m-tipo").addEventListener("change", cambiarTipoMov);
   $("#"+id).addEventListener("input", infoMov));
 
 function infoMov(){
-  if(!movGrupo) return;
+  if(!movEstr) return;
   const t = $("#m-tipo").value, el = $("#m-info");
   if(t === "rotacion"){
-    const cd = parseFloat($("#m-cant-de").value), ca = parseFloat($("#m-cant-a").value);
-    const de = $("#m-de").value, a = $("#m-a").value;
-    if(cd && ca){
-      el.textContent = "Ratio implícito " + de + "/" + a + ": " + num(cd/ca);
-    } else if(cd && movGrupo.precios && movGrupo.precios[de] && movGrupo.precios[a]){
-      const est = cd * movGrupo.precios[de] / movGrupo.precios[a];
-      el.textContent = "Al precio de ahora serían " + ent(est) + " " + a;
-    } else el.textContent = "";
+    const cd = parseFloat($("#m-cant-de").value);
+    const ca = parseFloat($("#m-cant-a").value);
+    el.textContent = (cd && ca)
+      ? "Ratio implícito " + $("#m-de").value + "/" + $("#m-a").value +
+        ": " + num(cd/ca)
+      : "";
   } else {
-    const tk = $("#m-tk").value, c = parseFloat($("#m-cant").value);
-    if(c && tk && movGrupo.precios && movGrupo.precios[tk] &&
-       movGrupo.precios[movGrupo.base]){
-      const eq = c * movGrupo.precios[tk] / movGrupo.precios[movGrupo.base];
-      el.textContent = "Al precio de ahora equivale a " + ent(eq) + " " + movGrupo.base;
-      if(!$("#m-eq").value) $("#m-eq").value = Math.round(eq);
-    } else el.textContent = "";
+    /* El equivalente lo calcula el servidor con el precio de ahora si se
+       deja vacio: aca no hay precios a mano y adivinarlos seria peor. */
+    el.textContent = "Si lo dejás vacío, lo calcula con el precio de ahora.";
   }
 }
 $("#m-cerrar").addEventListener("click", () => $("#dlg-mov").close());
 $("#m-guardar").addEventListener("click", async () => {
-  if(!movGrupo) return;
+  if(!movEstr) return;
   const t = $("#m-tipo").value;
   const cuerpo = t === "rotacion"
     ? {tipo:t, ticker_de:$("#m-de").value, cant_de:$("#m-cant-de").value,
@@ -1911,14 +2148,14 @@ $("#m-guardar").addEventListener("click", async () => {
     : {tipo:t, ticker_a:$("#m-tk").value, cant_a:$("#m-cant").value,
        ratio_base:$("#m-eq").value, nota:$("#m-nota").value};
   try{
-    const r = await fetch(base + "api/grupos/" + movGrupo.id + "/movimientos", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify(cuerpo)});
+    const r = await fetch(base + "api/estrategias/" + movEstr.id +
+      "/movimientos", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify(cuerpo)});
     const d = await r.json();
     if(!r.ok){ $("#m-msg").innerHTML = '<div class="msg error">' +
       esc(d.error) + '</div>'; return; }
     $("#dlg-mov").close();
-    cargarPosicion();
+    refrescarPosiciones();
   }catch(e){
     $("#m-msg").innerHTML = '<div class="msg error">No se pudo guardar.</div>';
   }
@@ -2174,6 +2411,25 @@ async function probarNotificacion(){
 }
 
 /* ---------- bonos ---------- */
+async function pintarEstrBonos(filas){
+  await cargarEstrOtras();
+  let canjes = [];
+  try{
+    const c = await (await fetch(base + "api/canjes")).json();
+    canjes = c.canjes || [];
+  }catch(e){ /* sin canjes la tarjeta muestra igual el desvio */ }
+  pintarEstrFamilia("#curva-estr", "curva", "Curva",
+                    e => tarjetaCurva(e, filas, canjes));
+  pintarEstrFamilia("#reserva-estr", "reserva_renta_fija", "Reserva de valor",
+                    e => tarjetaSimple(e, "reserva de valor"));
+}
+
+async function pintarEstrTecnica(){
+  await cargarEstrOtras();
+  pintarEstrFamilia("#tecnica-estr", "tecnica", "Posiciones",
+                    e => tarjetaSimple(e, "análisis técnico"));
+}
+
 async function cargarBonos(){
   const out = $("#b-out"), cab = $("#b-mep");
   out.innerHTML = '<div class="vacio">Calculando TIRs…</div>';
@@ -2201,6 +2457,9 @@ async function cargarBonos(){
       'corresponde a cada punta.</div>';
 
     window._filasBonos = d.filas;
+    /* Los dos bloques de arriba: lo que se tiene, medido. La tabla de
+       abajo es la curva completa, que es seguimiento sin tenencia. */
+    pintarEstrBonos(d.filas);
     const sinCer = d.filas.filter(f => f.falta_cer).map(f => f.simbolo);
     const sinTc = d.filas.filter(f => f.falta_tc).map(f => f.simbolo);
     out.innerHTML =
@@ -3424,6 +3683,7 @@ function alFila(a){
 }
 
 async function cargarAlertas(){
+  pintarEstrTecnica();
   const out = $("#al-out");
   try{
     const d = await (await fetch(base + "api/alertas-precio")).json();
@@ -3716,7 +3976,7 @@ async function cargarCanjes(recalcular){
       out.innerHTML = '<div class="vacio">Ningún canje supera ' +
         num(d.minimo, 3) + '% neto. Es lo normal la mayoría de los días.' +
         '</div><div class="acciones" style="margin-top:8px">' +
-        '<button id="canje-recalc">Recalcular ahora</button></div>';
+        '<button data-canje-recalc>Recalcular ahora</button></div>';
       return;
     }
     out.innerHTML = c.map(f =>
@@ -3738,7 +3998,7 @@ async function cargarCanjes(recalcular){
       esc((d.calculado || "").replace("T", " ").slice(0, 16) || "—") +
       '. Ya te llegó como aviso.</div>' +
       '<div class="acciones" style="margin-top:6px">' +
-      '<button id="canje-recalc">Recalcular ahora</button></div>';
+      '<button data-canje-recalc>Recalcular ahora</button></div>';
   }catch(e){
     out.innerHTML = '<div class="msg error">No se pudo calcular.</div>';
   }
@@ -3749,7 +4009,7 @@ $("#canje-caja").addEventListener("toggle", e => {
 });
 
 $("#canje-out").addEventListener("click", e => {
-  if(e.target.id === "canje-recalc") cargarCanjes(true);
+  if(e.target.closest("[data-canje-recalc]")) cargarCanjes(true);
 });
 
 /* ---------- estrategias ---------- */
@@ -3859,19 +4119,12 @@ function pintarSueltos(){
   if(!cont) return;
   cont.hidden = false;
   if(!grupos || !grupos.length){
-    cont.innerHTML = '<div class="vacio">Todavía no hay grupos. ' +
-      'Creá uno con los tickers entre los que rotás.</div>';
-    return;
-  }
-  const conEstr = new Set(estrDatos.map(e => e.grupo_id).filter(Boolean));
-  const sueltos = grupos.filter(g => !conEstr.has(g.id));
-  if(!sueltos.length){
-    cont.innerHTML = '<div class="vacio">Los ' + grupos.length +
-      ' grupos ya tienen estrategia: se ven adentro de cada una.</div>';
+    cont.innerHTML = '<div class="vacio">Todavía no hay pares. ' +
+      'Creá uno con los dos tickers que compares.</div>';
     return;
   }
   try{
-    cont.innerHTML = sueltos.map(tarjetaGrupo).join("");
+    cont.innerHTML = grupos.map(tarjetaGrupo).join("");
   }catch(err){
     cont.innerHTML = '<div class="msg error">No se pudo dibujar: ' +
       esc(err.message) + '</div>';
@@ -3880,8 +4133,7 @@ function pintarSueltos(){
 
 function tarjetaEstrategia(e){
   const m = estrMedidas.find(x => x.id === e.id);
-  const esp = (e.especies || []).map(x =>
-    esc(x.simbolo) + " (" + esc(x.broker) + ")").join(" · ");
+  const esp = (e.especies || []).map(x => esc(x.simbolo)).join(" · ");
   let meta = "";
   if(e.patron) meta = "contra " + (NOM_PATRON[e.patron] || e.patron);
   let linea = "";
@@ -4024,15 +4276,6 @@ function detalleEstrategia(e, m){
       esc(c.desde) + " → " + esc(c.hacia) + ": +" + num(c.ganancia_pct, 3) +
       "%").join(" · ") + '. El detalle está en Bonos.</div>';
 
-  const g = (grupos || []).find(x => x.id === e.grupo_id);
-  if(g){
-    try{
-      h += '<div style="margin-top:10px">' + tarjetaGrupo(g) + '</div>';
-    }catch(err){
-      h += '<div class="msg error">No se pudo dibujar el grupo.</div>';
-    }
-  }
-
   h += '<div data-evol="' + e.id + '" style="margin-top:10px"></div>' +
     '<div class="acciones" style="margin-top:10px">' +
     '<button data-ver-evol="' + e.id + '">Evolución</button>' +
@@ -4071,16 +4314,24 @@ function formEstrategia(e){
 
     '<label>Grupo de rotación<select data-e="grupo_id">' + gr +
       '</select></label>' +
+    /* En que nominales se mide. Uno por estrategia: si se rota TX28 ->
+       TZXD8 -> TX31 la vara sigue siendo el que se eligio, aunque ya no
+       se tenga. Sin esto no hay cuotaparte ni rendimiento. */
+    '<label>Se mide en nominales de<input data-e="ticker_base" ' +
+      'placeholder="ticker base" value="' + esc(v("ticker_base")) + '">' +
+      '<small class="nota">Una sola vez y no se cambia: cambiarlo mueve ' +
+      'la vara y el rendimiento acumulado deja de significar nada.</small>' +
+      '</label>' +
     '<label style="grid-column:1/-1">Tesis<textarea data-e="tesis" rows="2">' +
       esc(v("tesis")) + '</textarea></label>' +
     '<label style="grid-column:1/-1">Origen<input data-e="origen" value="' +
       esc(v("origen")) + '"></label></div>' +
-    '<div class="nota" style="margin-bottom:8px">Reserva de valor y ' +
-      'oportunidad cambiaria necesitan declarar contra qué se miden: sin ' +
-      'eso, un activo que sube en pesos menos que el dólar se lee como ' +
-      'ganancia. El valor del patrón se busca solo en la fecha de alta; ' +
-      'cargalo únicamente si el tipo de cambio al que entraste no fue el ' +
-      'de mercado de ese día.</div>' +
+    '<div class="nota" style="margin-bottom:8px">El patrón es opcional en ' +
+      'todas las familias: es la vara externa contra la que se compara, ' +
+      'aparte del rendimiento propio. Sin él, un activo que sube en pesos ' +
+      'menos que el dólar se lee como ganancia. El valor se busca solo en ' +
+      'la fecha de alta; cargalo únicamente si el tipo de cambio al que ' +
+      'entraste no fue el de mercado de ese día.</div>' +
     '<div class="acciones"><button class="primario" data-estr-guardar>' +
       'Guardar</button><button data-estr-cancelar>Cancelar</button></div>';
 }
@@ -4908,23 +5159,6 @@ $("#estr-form").addEventListener("click", async ev => {
   finally{ b.disabled = false; }
 });
 
-async function sembrarGrupo(gid, boton){
-  boton.disabled = true;
-  try{
-    const r = await (await fetch(base + "api/grupos/" + gid + "/sembrar",
-      {method:"POST"})).json();
-    if(r.error){ alert(r.error); boton.disabled = false; return; }
-    alert("Cargado como aporte inicial:\n" + (r.sembrados || []).join("\n"));
-    await cargarPosicion();
-    cargarEstrategias();
-  }catch(e){ alert("No se pudo."); boton.disabled = false; }
-}
-
-$("#pos-out").addEventListener("click", ev => {
-  const b = ev.target.closest("[data-sembrar]");
-  if(b) sembrarGrupo(parseInt(b.dataset.sembrar, 10), b);
-});
-
 $("#estr-out").addEventListener("click", async ev => {
   const fam = ev.target.closest("[data-fam-abrir]");
   if(fam){
@@ -4938,11 +5172,6 @@ $("#estr-out").addEventListener("click", async ev => {
     const id = ve.dataset.verEvol;
     const cont = ve.closest(".ten-edit").querySelector('[data-evol="' + id + '"]');
     if(cont) verEvolucion(parseInt(id, 10), cont);
-    return;
-  }
-  const sem = ev.target.closest("[data-sembrar]");
-  if(sem){
-    sembrarGrupo(parseInt(sem.dataset.sembrar, 10), sem);
     return;
   }
   const fila = ev.target.closest(".estr-fila");

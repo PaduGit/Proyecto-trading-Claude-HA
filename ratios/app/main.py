@@ -141,6 +141,10 @@ def main():
                      len(r.get("creados") or []), len(r.get("completados") or []))
     except Exception as e:
         log.warning("migracion de pares: %s", e)
+    # Una copia de la base donde se pueda bajar por SSH. /data se pierde
+    # si se desinstala el add-on y es lo unico que tiene la tenencia con
+    # PPC: el export de la app no la incluye.
+    db.copia_de_seguridad()
     cer.init()
     badlar.init()
     dolar.init()

@@ -1,5 +1,73 @@
 # Registro de cambios
 
+## 0.33.0
+
+**La posicion pasa a colgar de la estrategia y no del grupo.** El modelo
+viejo tenia dos contabilidades que no se hablaban: `tenencia` por un
+lado y un ledger por `grupo_id` por el otro, que solo escribia la carga
+manual. Una rotacion confirmada nunca llegaba al ledger, asi que la
+tarjeta mostraba la tenencia del dia en que se sembro el grupo y no se
+movia mas. Ahora las cantidades salen siempre de `tenencia` y el ledger
+de la estrategia se lee unicamente para medir.
+
+**Cada familia se mide contra lo que corresponde.** `par` y `curva` en
+nominales del ticker base, `reserva_renta_fija` contra el dolar, el CER,
+la BADLAR o el S&P, y `tecnica` contra lo que costo. Regla nueva: una
+estrategia sin ticker base se mide en pesos. El rendimiento por
+cuotaparte no se diluye cuando entra plata nueva, que es justo lo que
+hay que ver para juzgar una rotacion.
+
+**La tarjeta vive en la pestaña de su familia.** RATIOS muestra la
+posicion adentro de la tarjeta del par, con el ratio arriba y el saldo,
+el rendimiento y el ledger abajo. BONOS abre con dos bloques, curva y
+reserva de valor; el de curva trae el z de cada especie contra su propia
+historia y los canjes que salen de lo que se tiene. ALERTAS pasa a
+llamarse ANALISIS TECNICO y abre con las posiciones tecnicas, con su
+stop y su objetivo; abajo quedan las alertas de busqueda.
+
+**El sembrado simula antes de escribir.** Muestra a cuantos nominales
+del base equivale cada especie con el precio de ahora, editable, y
+recien al confirmar escribe. El anterior escribia de una y sin
+`ratio_base`, asi que sembraba y la cuotaparte quedaba en cero igual.
+
+**Transferencias entre cuentas.** Mover la misma especie de un broker a
+otro salia como un retiro y un aporte sueltos. Ahora se ofrecen para
+unir y confirmarlas no escribe ledger: el capital no cambio, cambio de
+cuenta.
+
+**Precios del momento de la foto.** El diff guarda el precio de salida,
+el de entrada, el del ticker base y cuanto valia la posicion justo
+antes. Sin ese ultimo dato el valor de la cuota quedaba clavado en 1 y
+el rendimiento salia siempre cero. Confirmar un movimiento de hace tres
+dias ya no lo mide con el precio de hoy.
+
+**Bases de cotizacion en el equivalente.** Un bono cotiza por cada 100
+nominales y un CEDEAR por unidad. Sin llevar los dos precios a la misma
+base el cociente se iba por un factor de 100: un aporte de 100 GGAL a
+7.000 contra base AO28 a 62.000 daba 11,29 nominales en vez de 1.129.
+
+**Arreglos que impedian arrancar el modelo nuevo.** `guardar_estrategia`
+y `/api/estrategias` leian una clave de `FAMILIAS` que ya no existe y
+reventaban con KeyError en toda alta y en todo listado. `ticker_base` no
+se escribia en ningun lado. El alta automatica por grupos usaba la
+familia `rotacion`, que se elimino. `CREATE TABLE IF NOT EXISTS` no
+agrega columnas a una tabla que ya existe, asi que faltaban las cinco
+nuevas de `mov_propuesto` y `ticker_base` en `estrategia`.
+
+**Respaldo version 3.** Suma las estrategias con familia, ticker base,
+patron, especies y ledger. El grupo se guarda por nombre porque los id
+no sobreviven a una reinstalacion. No incluye la tenencia ni el PPC: para
+eso, la app deja una copia de `ratios.db` en su carpeta de configuracion
+cada vez que arranca, hecha con la API de backup de SQLite.
+
+**Dos cargas del mismo broker dentro del mismo segundo** compartian
+timestamp y la segunda pisaba a la primera, dejando una foto mezclada.
+Ahora se corre un segundo hasta encontrar uno libre.
+
+**SPY como patron** no tenia rama y devolvia siempre "sin valor del
+patron". No hay serie diaria de un CEDEAR: el valor de entrada se carga
+a mano y el de hoy sale del precio vigente.
+
 ## 0.32.0
 
 **El costo de los canjes entraba 100 veces chico.** `CO.pct()` devuelve

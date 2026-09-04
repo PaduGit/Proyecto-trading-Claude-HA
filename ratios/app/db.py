@@ -97,6 +97,37 @@ def conn():
     return c
 
 
+# Carpeta que Home Assistant mapea como `addon_config`: del lado del host
+# es /addon_configs/<slug>, que si se ve desde el add-on de SSH. `/data`
+# no: vive en el volumen del Supervisor y se pierde al desinstalar.
+RUTA_COPIA = os.environ.get("RATIOS_COPIA", "/config/ratios.db")
+
+
+def copia_de_seguridad(destino=None):
+    """Deja una copia de la base donde se pueda bajar por SSH.
+
+    Se hace al arrancar y con la API de backup de SQLite, que copia una
+    base consistente aunque haya escrituras en curso: copiar el archivo
+    con `cp` puede dejar una base rota.
+    """
+    destino = destino or RUTA_COPIA
+    carpeta = os.path.dirname(destino)
+    if carpeta and not os.path.isdir(carpeta):
+        log.debug("sin carpeta para la copia: %s", carpeta)
+        return None
+    try:
+        dst = sqlite3.connect(destino)
+        try:
+            conn().backup(dst)
+        finally:
+            dst.close()
+        log.info("copia de la base en %s", destino)
+        return destino
+    except Exception as e:
+        log.warning("copia de seguridad: %s", e)
+        return None
+
+
 def init():
     c = conn()
     c.executescript(ESQUEMA)
@@ -858,6 +889,10 @@ CREATE TABLE IF NOT EXISTS estrategia (
   -- BADLAR); en oportunidad cambiaria, el tipo de cambio de entrada.
   patron   TEXT,
   patron_valor REAL,
+  -- En que nominales se mide la cuotaparte. Uno por estrategia: si vas
+  -- TX28 -> TZXD8 -> TX31, la vara sigue siendo el que elegiste al
+  -- crearla, aunque ya no lo tengas.
+  ticker_base TEXT,
   objetivo REAL,
   stop     REAL,
   revisar  TEXT,                     -- fecha para volver a mirarla
@@ -873,14 +908,34 @@ CREATE TABLE IF NOT EXISTS estrategia (
 );
 CREATE INDEX IF NOT EXISTS ix_estr_familia ON estrategia(familia, cierre);
 
--- Una especie de un broker pertenece a una sola estrategia.
+-- Una especie pertenece a una sola estrategia, en todos los brokers.
+-- Antes la clave incluia el broker: la misma especie en dos cuentas
+-- podia colgar de dos estrategias distintas, que no es como se opera.
 CREATE TABLE IF NOT EXISTS estrategia_especie (
   estrategia_id INTEGER NOT NULL,
-  broker        TEXT NOT NULL,
-  simbolo       TEXT NOT NULL,
-  PRIMARY KEY (broker, simbolo)
+  simbolo       TEXT NOT NULL PRIMARY KEY
 );
 CREATE INDEX IF NOT EXISTS ix_ee_estr ON estrategia_especie(estrategia_id);
+
+-- El libro de movimientos de la estrategia. Cada fila es un hecho y el
+-- aportado sale de sumarlas, no de un campo guardado. Las cantidades de
+-- la pantalla NO salen de aca: salen de `tenencia`, para que la tarjeta
+-- no pueda quedar vieja. El ledger sirve para medir.
+CREATE TABLE IF NOT EXISTS estrategia_mov (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  estrategia_id INTEGER NOT NULL,
+  ts            TEXT NOT NULL,      -- el de la foto, no el de la confirmacion
+  tipo          TEXT NOT NULL,      -- rotacion | aporte | retiro
+  ticker_de     TEXT,
+  cant_de       REAL,
+  ticker_a      TEXT,
+  cant_a        REAL,
+  ratio_base    REAL,               -- equivalente en el ticker base
+  equiv_antes   REAL,               -- valor de la posicion antes, para la cuota
+  propuesto_id  INTEGER,            -- de que propuesta salio
+  nota          TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_em_estr ON estrategia_mov(estrategia_id, ts, id);
 
 -- Como venia cada estrategia dia a dia. Sirve para ver la evolucion y,
 -- sobre todo, para congelar el resultado al cerrarla: cuando se cierra
@@ -903,8 +958,8 @@ CREATE TABLE IF NOT EXISTS mov_propuesto (
   id        INTEGER PRIMARY KEY AUTOINCREMENT,
   detectado TEXT NOT NULL,
   broker    TEXT NOT NULL,
-  desde     TEXT NOT NULL,          -- fecha de la foto anterior
-  hasta     TEXT NOT NULL,          -- fecha de la foto nueva
+  desde     TEXT NOT NULL,          -- timestamp de la foto anterior
+  hasta     TEXT NOT NULL,          -- timestamp de la foto nueva
   tipo      TEXT NOT NULL,          -- rotacion | aporte | retiro
   sale      TEXT,
   cant_sale REAL,
@@ -912,6 +967,26 @@ CREATE TABLE IF NOT EXISTS mov_propuesto (
   cant_entra REAL,
   ratio     REAL,
   grupo_id  INTEGER,
+  -- A que estrategia le pega. Se resuelve al detectar, por simbolo.
+  estrategia_id INTEGER,
+  -- Con que otra propuesta se unio para armar una rotacion entre
+  -- brokers. Vendo AO28 en IOL y compro AO29 en ECO: son dos fotos de
+  -- dos brokers distintos y una sola rotacion.
+  unido_a   INTEGER,
+  -- Precio del simbolo al momento de la foto, en la moneda de la
+  -- estrategia. Se guarda al detectar: si confirmas tres dias despues,
+  -- el ledger tiene que registrar el precio del hecho, no el de hoy.
+  precio_sale  REAL,
+  precio_entra REAL,
+  -- Precio del ticker base de la estrategia, del mismo momento. La
+  -- cuotaparte se mide en nominales del base: sin este precio el aporte
+  -- entra al ledger sin `ratio_base` y no se puede medir.
+  precio_base  REAL,
+  -- Cuanto valia la posicion de la estrategia justo antes, en nominales
+  -- del ticker base. Es el valor al que se emiten o rescatan las cuotas:
+  -- sin esto el valor de la cuota queda clavado en 1 y el rendimiento
+  -- por cuotaparte sale siempre cero.
+  equiv_antes  REAL,
   estado    TEXT NOT NULL DEFAULT 'pendiente',
   UNIQUE (broker, desde, hasta, tipo, sale, entra)
 );
@@ -926,23 +1001,42 @@ CREATE INDEX IF NOT EXISTS ix_mp_estado ON mov_propuesto(estado, detectado);
 # stop de MIRG es de MIRG, y el ticker contra el que se rota tambien. La
 # estrategia agrupa y mide; los parametros son de la posicion.
 FAMILIAS = {
-    "rotacion":   {"nombre": "Rotación", "patron": False,
-                   "campos": ("par_ticker", "ratio_min", "ratio_max")},
-    "intradiaria": {"nombre": "Intradiaria", "patron": False,
-                    "campos": ("par_ticker",)},
-    "tecnica":    {"nombre": "Trading", "patron": False,
-                   "campos": ("stop", "objetivo")},
-    "opciones":   {"nombre": "Opciones", "patron": False,
-                   "campos": ("stop", "objetivo")},
-    "reserva":    {"nombre": "Reserva de valor", "patron": True,
-                   "campos": ()},
-    "cambiaria":  {"nombre": "Oportunidad cambiaria", "patron": True,
-                   "campos": ()},
+    "par": {
+        "nombre": "Rotación de par", "pestana": "ratios",
+        "tenencia": True, "tipos": ("bonos", "letras", "on", "acciones",
+                                    "cedears"),
+        "campos": ("ratio_min", "ratio_max"),
+    },
+    "curva": {
+        "nombre": "Curva de bonos", "pestana": "bonos",
+        "tenencia": True, "tipos": ("bonos", "letras", "on"),
+        "campos": (),
+    },
+    "reserva_renta_fija": {
+        "nombre": "Reserva de valor renta fija", "pestana": "bonos",
+        "tenencia": True, "tipos": ("bonos", "letras", "on", "moneda",
+                                    "fci"),
+        "campos": (),
+    },
+    "tecnica": {
+        "nombre": "Análisis técnico", "pestana": "tecnica",
+        "tenencia": True, "tipos": ("acciones", "cedears"),
+        "campos": ("stop", "objetivo"),
+    },
+    "opciones": {
+        "nombre": "Opciones", "pestana": "opc",
+        "tenencia": True, "tipos": ("opciones", "acciones", "cedears"),
+        "campos": ("stop", "objetivo"),
+    },
 }
+
 # La fecha de revision aplica a cualquier familia.
-CAMPOS_POSICION = ("stop", "objetivo", "par_ticker", "ratio_min",
-                   "ratio_max", "revisar")
-PATRONES = ("dolar", "cer", "badlar", "tc_entrada")
+CAMPOS_POSICION = ("stop", "objetivo", "ratio_min", "ratio_max", "revisar")
+
+# El patron es la vara externa y es opcional en TODAS las familias.
+# Antes solo lo admitian reserva y cambiaria, lo que mezclaba como se
+# opera con contra que se mide, que son cosas independientes.
+PATRONES = ("dolar", "cer", "badlar", "spy")
 
 
 # Los que puede tener una tenencia. Salen de como agrupa el broker.
@@ -978,13 +1072,114 @@ def init_alertas():
     try:
         ce = {r["name"] for r in c.execute("PRAGMA table_info(estrategia)")}
         for col in ("res_final REAL", "res_patron_final REAL",
-                    "valor_final REAL", "dias_final INTEGER"):
+                    "valor_final REAL", "dias_final INTEGER",
+                    "ticker_base TEXT"):
             if col.split()[0] not in ce:
                 c.execute("ALTER TABLE estrategia ADD COLUMN " + col)
     except Exception as e:
         log.warning("migrar estrategia: %s", e)
     _migrar_parametros(c)
+    _migrar_modelo_estrategias(c)
     c.commit()
+
+
+MIGRACION = "modelo_estrategias_v2"
+
+
+def _migrar_modelo_estrategias(c):
+    """Pasa al modelo nuevo de estrategias. Corre una sola vez.
+
+    Tres cambios que no se pueden hacer con ALTER TABLE:
+
+    1. `tenencia_hist` pasa de una foto por dia a una por carga. Con la
+       clave por fecha, dos cargas del mismo dia con operaciones
+       distintas en el medio se pisaban y el diff comparaba contra ayer:
+       las dos rotaciones se veian como una sola.
+    2. `estrategia_especie` pierde el broker. Una especie pertenece a una
+       sola estrategia en todos lados.
+    3. Las familias viejas -rotacion, intradiaria, cambiaria, reserva- ya
+       no existen. `rotacion` tapaba dos tarjetas distintas, `cambiaria`
+       y `reserva` eran la misma con distinta vara, e `intradiaria` no
+       aparece nunca en el diff porque vuelve a la misma especie.
+
+    Las estrategias cargadas se pierden. Es a proposito y esta
+    acordado: no hay forma honesta de adivinar cual de las dos familias
+    nuevas le corresponde a cada `rotacion` vieja.
+
+    `movimientos` NO se borra. Queda sin que nadie la lea, para tener a
+    donde mirar si algo del modelo nuevo no cierra.
+    """
+    if get_estado(MIGRACION):
+        return
+    log.warning("migrando al modelo nuevo de estrategias")
+
+    # -- 1. tenencia_hist por timestamp -------------------------------
+    cols = {r["name"] for r in c.execute("PRAGMA table_info(tenencia_hist)")}
+    if cols and "ts" not in cols:
+        c.executescript("""
+        ALTER TABLE tenencia_hist RENAME TO tenencia_hist_viejo;
+        CREATE TABLE tenencia_hist (
+          ts       TEXT NOT NULL,
+          fecha    TEXT NOT NULL,
+          broker   TEXT NOT NULL,
+          simbolo  TEXT NOT NULL,
+          cantidad REAL NOT NULL,
+          tipo     TEXT,
+          PRIMARY KEY (ts, broker, simbolo)
+        );
+        CREATE INDEX ix_th_broker ON tenencia_hist(broker, ts);
+        """)
+        # La foto vieja no tiene hora: se le pone el cierre del dia, que
+        # conserva el orden y no inventa una precision que no habia.
+        c.execute(
+            "INSERT INTO tenencia_hist (ts, fecha, broker, simbolo, "
+            "cantidad, tipo) SELECT fecha || 'T23:59:59', fecha, broker, "
+            "simbolo, cantidad, tipo FROM tenencia_hist_viejo")
+        c.execute("DROP TABLE tenencia_hist_viejo")
+
+    # -- 2. estrategia_especie sin broker ------------------------------
+    ee = {r["name"] for r in c.execute("PRAGMA table_info(estrategia_especie)")}
+    if "broker" in ee:
+        c.execute("DROP TABLE estrategia_especie")
+        c.executescript("""
+        CREATE TABLE estrategia_especie (
+          estrategia_id INTEGER NOT NULL,
+          simbolo       TEXT NOT NULL PRIMARY KEY
+        );
+        CREATE INDEX ix_ee_estr ON estrategia_especie(estrategia_id);
+        """)
+
+    # -- 3. las estrategias viejas se van ------------------------------
+    for t in ("estrategia", "estrategia_especie", "estrategia_hist"):
+        try:
+            c.execute("DELETE FROM %s" % t)
+        except Exception as e:
+            log.warning("limpiar %s: %s", t, e)
+
+    # -- 4. mov_propuesto se recrea ------------------------------------
+    # No alcanza con vaciarla: `desde` y `hasta` pasaron de fecha a
+    # timestamp, y con eso cambia la clave unica que evita proponer dos
+    # veces lo mismo. Ademas suma estrategia_id, unido_a y los tres
+    # precios, y CREATE TABLE IF NOT EXISTS no agrega columnas a una
+    # tabla que ya existe: la base venia de 0.32.0 sin ninguna de las
+    # cinco y el INSERT del diff reventaba.
+    try:
+        c.execute("DROP TABLE IF EXISTS mov_propuesto")
+        c.executescript(ESQUEMA_ALERTAS)
+    except Exception as e:
+        log.warning("recrear mov_propuesto: %s", e)
+
+    # Las alertas dejan de tener estrategia: la vigilancia vive dentro de
+    # la tarjeta, no es una fila en alerta_precio.
+    for t in ("alerta_precio", "alerta_fecha"):
+        try:
+            c.execute("UPDATE %s SET estrategia_id = NULL" % t)
+        except Exception:
+            pass
+
+    set_estado(MIGRACION, datetime.now().isoformat(timespec="seconds"))
+    c.commit()
+    log.warning("modelo nuevo listo")
 
 
 def _migrar_parametros(c):
@@ -1006,15 +1201,14 @@ def _migrar_parametros(c):
     for e in c.execute("SELECT id, stop, objetivo, revisar FROM estrategia "
                        "WHERE stop IS NOT NULL OR objetivo IS NOT NULL "
                        "OR revisar IS NOT NULL"):
-        for esp in c.execute("SELECT broker, simbolo FROM estrategia_especie "
+        for esp in c.execute("SELECT simbolo FROM estrategia_especie "
                              "WHERE estrategia_id = ?", (e["id"],)):
             c.execute(
                 "UPDATE tenencia SET stop = COALESCE(stop, ?), "
                 "objetivo = COALESCE(objetivo, ?), "
                 "revisar = COALESCE(revisar, ?) "
-                "WHERE broker = ? AND simbolo = ?",
-                (e["stop"], e["objetivo"], e["revisar"],
-                 esp["broker"], esp["simbolo"]))
+                "WHERE simbolo = ?",
+                (e["stop"], e["objetivo"], e["revisar"], esp["simbolo"]))
 
 
 def alertas_fecha(solo_activas=False):
@@ -1144,7 +1338,7 @@ def tenencias(broker=None):
     asig = asignaciones()
     est = {e["id"]: e for e in estrategias(incluir_cerradas=True)}
     for f in filas:
-        eid = asig.get((f["broker"], f["simbolo"]))
+        eid = asig.get(f["simbolo"])
         f["estrategia_id"] = eid
         e = est.get(eid) if eid else None
         f["estrategia"] = e["nombre"] if e else None
@@ -1184,7 +1378,7 @@ def _con_eventos(f):
     return f
 
 
-def guardar_tenencias(filas, reemplazar="todo"):
+def guardar_tenencias(filas, reemplazar="todo", precios=None):
     """Pisa la lista entera o la de un broker.
 
     Reemplazar por broker permite actualizar una cuenta sin tocar la otra,
@@ -1243,13 +1437,15 @@ def guardar_tenencias(filas, reemplazar="todo"):
         brokers.add(br)
         n += 1
     c.commit()
+    # Una sola marca de tiempo para toda la carga: si se cargan dos
+    # brokers de un saque, las dos fotos son del mismo momento.
     for br in brokers:
-        snapshot(br)
-        try:
-            detectar_movimientos(br)
-        except Exception as e:
-            log.warning("diff de %s: %s", br, e)
-    cerrar_sin_tenencia()
+        if snapshot(br, ahora):
+            try:
+                detectar_movimientos(br, precios)
+            except Exception as e:
+                log.warning("diff de %s: %s", br, e)
+    # El cierre ya no se aplica solo: se propone y espera confirmacion.
     return n
 
 
@@ -1319,8 +1515,8 @@ def estrategias(incluir_cerradas=False, familia=None):
     filas = [dict(r) for r in conn().execute(q, args)]
     for f in filas:
         f["especies"] = [dict(r) for r in conn().execute(
-            "SELECT broker, simbolo FROM estrategia_especie "
-            "WHERE estrategia_id = ? ORDER BY broker, simbolo", (f["id"],))]
+            "SELECT simbolo FROM estrategia_especie "
+            "WHERE estrategia_id = ? ORDER BY simbolo", (f["id"],))]
     return filas
 
 
@@ -1334,9 +1530,10 @@ def guardar_estrategia(datos, eid=None):
     patron = (datos.get("patron") or "").strip().lower() or None
     if patron and patron not in PATRONES:
         raise ValueError("patrón inválido: %s" % patron)
-    if FAMILIAS[familia]["patron"] and not patron:
-        raise ValueError("%s necesita declarar contra qué se mide"
-                         % FAMILIAS[familia]["nombre"])
+    # El patron es opcional en todas las familias: exigirlo en algunas
+    # mezclaba como se opera con contra que se mide. FAMILIAS ya no tiene
+    # la clave y el chequeo viejo reventaba con KeyError.
+    base = (datos.get("ticker_base") or "").strip().upper() or None
 
     def num(k):
         v = datos.get(k)
@@ -1349,17 +1546,18 @@ def guardar_estrategia(datos, eid=None):
               (datos.get("origen") or "").strip() or None, patron,
               num("patron_valor"), num("objetivo"), num("stop"),
               (datos.get("revisar") or "").strip() or None,
-              datos.get("grupo_id") or None)
+              datos.get("grupo_id") or None, base)
     c = conn()
     if eid:
         c.execute("UPDATE estrategia SET nombre=?, familia=?, tesis=?, "
                   "origen=?, patron=?, patron_valor=?, objetivo=?, stop=?, "
-                  "revisar=?, grupo_id=? WHERE id=?", campos + (eid,))
+                  "revisar=?, grupo_id=?, ticker_base=? WHERE id=?",
+                  campos + (eid,))
     else:
         cur = c.execute(
             "INSERT INTO estrategia (nombre, familia, tesis, origen, patron, "
-            "patron_valor, objetivo, stop, revisar, grupo_id, alta) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "patron_valor, objetivo, stop, revisar, grupo_id, ticker_base, "
+            "alta) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             campos + (datetime.now().date().isoformat(),))
         eid = cur.lastrowid
     c.commit()
@@ -1422,27 +1620,63 @@ def borrar_estrategia(eid):
     return cur.rowcount
 
 
-def asignar(broker, simbolo, eid):
+def asignar(simbolo, eid):
     """Ata una especie a una estrategia, o la desata si eid es None.
 
-    La clave primaria es broker mas simbolo, asi que reasignar pisa la
-    anterior sin dejar la especie en dos lados.
+    La clave es el simbolo solo. La tenencia de una especie obedece a una
+    estrategia sin importar en cuantos brokers este: antes la clave
+    incluia el broker y la misma especie podia colgar de dos estrategias
+    distintas, que no es como se opera.
     """
     c = conn()
     sim = simbolo.upper()
     if eid:
         c.execute("INSERT OR REPLACE INTO estrategia_especie "
-                  "(estrategia_id, broker, simbolo) VALUES (?,?,?)",
-                  (eid, broker, sim))
+                  "(estrategia_id, simbolo) VALUES (?,?)", (eid, sim))
     else:
-        c.execute("DELETE FROM estrategia_especie WHERE broker=? AND simbolo=?",
-                  (broker, sim))
+        c.execute("DELETE FROM estrategia_especie WHERE simbolo=?", (sim,))
     c.commit()
 
 
 def asignaciones():
-    return {(r["broker"], r["simbolo"]): r["estrategia_id"]
+    return {r["simbolo"]: r["estrategia_id"]
             for r in conn().execute("SELECT * FROM estrategia_especie")}
+
+
+def especies_de(eid):
+    """Las especies asignadas a una estrategia, tenga saldo o no.
+
+    Una que se vendio entera sigue asignada hasta que se confirme la
+    rotacion o el cierre: es lo que permite medir la secuencia completa.
+    """
+    return [r["simbolo"] for r in conn().execute(
+        "SELECT simbolo FROM estrategia_especie WHERE estrategia_id=? "
+        "ORDER BY simbolo", (eid,))]
+
+
+def especies_cruzadas():
+    """Especies asignadas a una familia que no las espera.
+
+    No bloquea nada: marca. Si metes un CEDEAR en una reserva de valor de
+    renta fija, probablemente sea otra estrategia, pero eso lo decidis
+    vos y no la app.
+    """
+    c = conn()
+    tipos = {r["simbolo"]: r["tipo"] for r in c.execute(
+        "SELECT simbolo, tipo FROM tenencia")}
+    out = []
+    for r in c.execute(
+            "SELECT s.simbolo, s.estrategia_id, e.familia, e.nombre "
+            "FROM estrategia_especie s JOIN estrategia e "
+            "ON e.id = s.estrategia_id WHERE e.cierre IS NULL"):
+        esperados = (FAMILIAS.get(r["familia"]) or {}).get("tipos") or ()
+        t = tipos.get(r["simbolo"])
+        if t and esperados and t not in esperados:
+            out.append({"simbolo": r["simbolo"], "tipo": t,
+                        "estrategia_id": r["estrategia_id"],
+                        "estrategia": r["nombre"], "familia": r["familia"],
+                        "esperados": list(esperados)})
+    return out
 
 
 def asignar_por_grupos():
@@ -1474,7 +1708,11 @@ def asignar_por_grupos():
             eid = est["id"]
         else:
             eid = guardar_estrategia({
-                "nombre": g["nombre"], "familia": "rotacion",
+                # Un grupo es un par: num contra den. La familia vieja
+                # `rotacion` ya no existe y esto reventaba con
+                # ValueError en cada alta automatica.
+                "nombre": g["nombre"], "familia": "par",
+                "ticker_base": g["base"],
                 "origen": "grupo de rotación",
                 "tesis": "Rotar entre %s manteniendo o subiendo los "
                          "nominales medidos en %s." % (
@@ -1489,14 +1727,14 @@ def asignar_por_grupos():
             sim = (t or "").strip().upper()
             if not sim:
                 continue
-            for r in c.execute("SELECT broker FROM tenencia WHERE simbolo=?",
-                               (sim,)):
-                clave = (r["broker"], sim)
-                if clave in ya:
-                    continue
-                asignar(r["broker"], sim, eid)
-                ya[clave] = eid
-                hechas.append("%s · %s → %s" % (r["broker"], sim, g["nombre"]))
+            if sim in ya:
+                continue        # nunca pisa una asignacion existente
+            if not c.execute("SELECT 1 FROM tenencia WHERE simbolo=? LIMIT 1",
+                             (sim,)).fetchone():
+                continue
+            asignar(sim, eid)
+            ya[sim] = eid
+            hechas.append("%s → %s" % (sim, g["nombre"]))
     return hechas
 
 
@@ -1553,57 +1791,66 @@ def borrar_vacias():
     return nombres
 
 
-def cerrar_sin_tenencia():
-    """Cierra las estrategias cuyas especies ya no estan en cartera.
+def cierres_sugeridos():
+    """Estrategias cuyas especies ya no estan en cartera.
 
-    Se corre despues de cargar tenencias. Una estrategia sin especies
-    asignadas no se toca: recien creada todavia no tiene ninguna y
-    cerrarla seria absurdo.
+    NO cierra nada. Antes se cerraba en la misma carga que corria la
+    deteccion, asi que la estrategia quedaba cerrada por "sin tenencia"
+    antes de que llegaras a confirmar la rotacion que la mantenia viva.
+    Ahora el cierre se propone junto con el movimiento y espera.
+
+    Una estrategia sin especies asignadas no se toca: recien creada
+    todavia no tiene ninguna y cerrarla seria absurdo.
     """
     c = conn()
     cerradas = []
     for e in c.execute("SELECT id, nombre FROM estrategia WHERE cierre IS NULL"):
-        esp = c.execute("SELECT broker, simbolo FROM estrategia_especie "
+        esp = c.execute("SELECT simbolo FROM estrategia_especie "
                         "WHERE estrategia_id=?", (e["id"],)).fetchall()
         if not esp:
             continue
         vivas = 0
         for s in esp:
-            r = c.execute("SELECT cantidad FROM tenencia WHERE broker=? "
-                          "AND simbolo=?", (s["broker"], s["simbolo"])).fetchone()
-            if r and r["cantidad"]:
+            r = c.execute("SELECT SUM(cantidad) t FROM tenencia WHERE "
+                          "simbolo=?", (s["simbolo"],)).fetchone()
+            if r and r["t"]:
                 vivas += 1
         if not vivas:
-            cerrar_estrategia(e["id"], "sin tenencia")
-            cerradas.append(e["nombre"])
+            cerradas.append({"id": e["id"], "nombre": e["nombre"]})
     return cerradas
 
 
-def detectar_movimientos(broker):
-    """Compara las dos ultimas fotos de un broker y propone que paso.
+def _estrategia_de(simbolo):
+    r = conn().execute("SELECT estrategia_id FROM estrategia_especie "
+                       "WHERE simbolo=?", (simbolo,)).fetchone()
+    return r["estrategia_id"] if r else None
 
-    Una rotacion solo se propone si las dos especies estan en el mismo
-    grupo declarado y se movieron en sentido contrario. El ratio sale de
-    la relacion de nominales, que es exacta y no necesita precios ni la
-    hora de la operacion. Todo lo demas queda como aporte o retiro.
+
+def detectar_movimientos(broker, precios=None):
+    """Compara las dos ultimas fotos de un broker y propone que paso.
 
     No aplica nada: entre dos fotos, dos operaciones sueltas del mismo
     dia se ven igual que una rotacion, y esa diferencia la sabe el que
     opero, no la base.
+
+    Guarda el precio de cada simbolo al momento de la foto. Si confirmas
+    tres dias despues, el ledger tiene que registrar el precio del hecho
+    y no el de hoy.
     """
     import json as _json
     c = conn()
-    fechas = [r["fecha"] for r in c.execute(
-        "SELECT DISTINCT fecha FROM tenencia_hist WHERE broker=? "
-        "ORDER BY fecha DESC LIMIT 2", (broker,))]
-    if len(fechas) < 2:
+    precios = precios or {}
+    tss = [r["ts"] for r in c.execute(
+        "SELECT DISTINCT ts FROM tenencia_hist WHERE broker=? "
+        "ORDER BY ts DESC LIMIT 2", (broker,))]
+    if len(tss) < 2:
         return []
-    hasta, desde = fechas[0], fechas[1]
+    hasta, desde = tss[0], tss[1]
 
-    def foto(f):
+    def foto(t):
         return {r["simbolo"]: r["cantidad"] for r in c.execute(
             "SELECT simbolo, cantidad FROM tenencia_hist "
-            "WHERE broker=? AND fecha=?", (broker, f))}
+            "WHERE broker=? AND ts=?", (broker, t))}
 
     a, b = foto(desde), foto(hasta)
     difs = {}
@@ -1626,11 +1873,9 @@ def detectar_movimientos(broker):
     props, usados = [], set()
     for gid, gnom, tk in grupos:
         bajan = sorted((s for s in difs if s in tk and difs[s] < 0
-                        and s not in usados),
-                       key=lambda s: difs[s])
+                        and s not in usados), key=lambda s: difs[s])
         suben = sorted((s for s in difs if s in tk and difs[s] > 0
-                        and s not in usados),
-                       key=lambda s: -difs[s])
+                        and s not in usados), key=lambda s: -difs[s])
         for sale, entra in zip(bajan, suben):
             cs, ce = -difs[sale], difs[entra]
             props.append({
@@ -1638,7 +1883,10 @@ def detectar_movimientos(broker):
                 "tipo": "rotacion", "sale": sale, "cant_sale": cs,
                 "entra": entra, "cant_entra": ce,
                 "ratio": (cs / ce) if ce else None, "grupo_id": gid,
-                "grupo": gnom})
+                "grupo": gnom,
+                "estrategia_id": _estrategia_de(sale) or _estrategia_de(entra),
+                "precio_sale": precios.get(sale),
+                "precio_entra": precios.get(entra)})
             usados.update((sale, entra))
 
     for sim, d in sorted(difs.items()):
@@ -1651,36 +1899,115 @@ def detectar_movimientos(broker):
             "cant_sale": None if d > 0 else -d,
             "entra": sim if d > 0 else None,
             "cant_entra": d if d > 0 else None,
-            "ratio": None, "grupo_id": None, "grupo": None})
+            "ratio": None, "grupo_id": None, "grupo": None,
+            "estrategia_id": _estrategia_de(sim),
+            "precio_sale": None if d > 0 else precios.get(sim),
+            "precio_entra": precios.get(sim) if d > 0 else None})
+
+    # El precio del ticker base va junto con los otros dos y por el mismo
+    # motivo: la cuotaparte de un aporte se emite al valor del base en el
+    # momento del hecho. Resolverlo al confirmar mediria un aporte de
+    # hace tres dias con el precio de hoy.
+    bases = {r["id"]: r["ticker_base"] for r in c.execute(
+        "SELECT id, ticker_base FROM estrategia WHERE ticker_base IS NOT NULL")}
+    equivs = {}
+    for p in props:
+        eid = p["estrategia_id"]
+        base = bases.get(eid)
+        p["precio_base"] = precios.get(base) if base else None
+        if eid not in equivs:
+            equivs[eid] = _equiv_en_base(eid, base, broker, desde, hasta,
+                                         precios) if eid else None
+        p["equiv_antes"] = equivs[eid]
 
     for p in props:
         c.execute(
             "INSERT OR IGNORE INTO mov_propuesto (detectado, broker, desde, "
-            "hasta, tipo, sale, cant_sale, entra, cant_entra, ratio, grupo_id) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "hasta, tipo, sale, cant_sale, entra, cant_entra, ratio, "
+            "grupo_id, estrategia_id, precio_sale, precio_entra, "
+            "precio_base, equiv_antes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (ahora, broker, desde, hasta, p["tipo"], p["sale"],
              p["cant_sale"], p["entra"], p["cant_entra"], p["ratio"],
-             p["grupo_id"]))
+             p["grupo_id"], p["estrategia_id"], p["precio_sale"],
+             p["precio_entra"], p["precio_base"], p["equiv_antes"]))
     c.commit()
     return props
 
 
-def movimientos_propuestos(estado="pendiente"):
+def candidatos_a_unir(mid):
+    """Propuestas pendientes que podrian ser la contraparte de esta.
+
+    Vendes AO28 en IOL y compras AO29 en ECO: son dos fotos de dos
+    brokers distintos y una sola rotacion. La app NO une sola. Ofrece, y
+    la union la confirma el que opero.
+
+    Dos formas validas, las dos en otro broker y en sentido contrario:
+
+    - **rotacion entre cuentas**: simbolos distintos del mismo grupo.
+    - **transferencia**: el mismo simbolo. No es una operacion: la plata
+      no entro ni salio, cambio de cuenta. Confirmarla no escribe ledger.
+    """
+    import json as _json
+    c = conn()
+    p = c.execute("SELECT * FROM mov_propuesto WHERE id=? AND estado="
+                  "'pendiente' AND unido_a IS NULL", (mid,)).fetchone()
+    if not p or p["tipo"] not in ("aporte", "retiro"):
+        return []
+    mio = p["entra"] if p["tipo"] == "aporte" else p["sale"]
+    busco = "retiro" if p["tipo"] == "aporte" else "aporte"
+
+    juntos = set()
+    for g in c.execute("SELECT tickers FROM grupos"):
+        try:
+            tk = {t.strip().upper() for t in _json.loads(g["tickers"] or "[]")}
+        except ValueError:
+            continue
+        if mio in tk:
+            juntos |= tk
+
+    out = []
+    for o in c.execute("SELECT * FROM mov_propuesto WHERE estado='pendiente' "
+                       "AND unido_a IS NULL AND tipo=? AND broker<>? "
+                       "ORDER BY detectado DESC", (busco, p["broker"])):
+        suyo = o["entra"] if o["tipo"] == "aporte" else o["sale"]
+        if suyo == mio:
+            union = "transferencia"
+        elif suyo in juntos:
+            union = "rotacion"
+        else:
+            continue
+        d = dict(o)
+        d["union"] = union
+        out.append(d)
+    return out
+
+
+def movimientos_propuestos(estado="pendiente", eid=None):
     q = "SELECT * FROM mov_propuesto"
-    args = []
+    cond, args = [], []
     if estado:
-        q += " WHERE estado = ?"
+        cond.append("estado = ?")
         args.append(estado)
+    if eid:
+        cond.append("estrategia_id = ?")
+        args.append(eid)
+    if cond:
+        q += " WHERE " + " AND ".join(cond)
     q += " ORDER BY hasta DESC, id DESC"
     return [dict(r) for r in conn().execute(q, args)]
 
 
-def resolver_propuesto(mid, accion):
-    """Confirma o descarta uno.
+def resolver_propuesto(mid, accion, editado=None, unir_con=None):
+    """Confirma, edita o descarta una propuesta.
 
-    Al confirmar una rotacion se mueve la asignacion de estrategia de la
-    especie que sale a la que entra: si no, la estrategia se cerraria
-    sola justo cuando se la esta ejecutando bien.
+    Confirmar es lo unico que escribe el ledger de la estrategia. Antes
+    solo movia la asignacion de especie y el ledger del grupo quedaba
+    congelado donde lo habia dejado la ultima carga manual: la tarjeta
+    mostraba la tenencia del dia en que se sembro el grupo y nunca mas.
+
+    `editado` permite corregir tipo, cantidades, precios o la estrategia
+    antes de aplicar. `unir_con` consolida esta propuesta con la de otro
+    broker para armar una rotacion entre cuentas.
     """
     c = conn()
     p = c.execute("SELECT * FROM mov_propuesto WHERE id=?", (mid,)).fetchone()
@@ -1692,51 +2019,297 @@ def resolver_propuesto(mid, accion):
         c.commit()
         return "descartado"
 
-    if p["tipo"] == "rotacion" and p["sale"] and p["entra"]:
-        eid = c.execute("SELECT estrategia_id FROM estrategia_especie "
-                        "WHERE broker=? AND simbolo=?",
-                        (p["broker"], p["sale"])).fetchone()
+    d = dict(p)
+    d.update({k: v for k, v in (editado or {}).items() if k in (
+        "tipo", "sale", "cant_sale", "entra", "cant_entra",
+        "precio_sale", "precio_entra", "precio_base", "estrategia_id",
+        "nota")})
+
+    otro = None
+    if unir_con:
+        otro = c.execute("SELECT * FROM mov_propuesto WHERE id=? AND "
+                         "estado='pendiente'", (unir_con,)).fetchone()
+        if not otro:
+            return "contraparte no disponible"
+        # De un retiro en un broker y un aporte en otro sale una sola
+        # rotacion. El ratio va por nominales, que es exacto y no
+        # necesita ni precios ni la hora de la operacion.
+        a, b = (d, dict(otro)) if d["tipo"] == "retiro" else (dict(otro), d)
+        # Si es la misma especie no hubo operacion: es una transferencia
+        # entre cuentas. El capital no cambio, asi que no va al ledger.
+        # Confirmadas por separado dejarian un retiro y un aporte falsos
+        # y la tarjeta avisaria pendientes por algo que no movio nada.
+        if a["sale"] and a["sale"] == b["entra"]:
+            c.execute("UPDATE mov_propuesto SET estado='transferido' "
+                      "WHERE id=?", (mid,))
+            c.execute("UPDATE mov_propuesto SET estado='transferido', "
+                      "unido_a=? WHERE id=?", (mid, otro["id"]))
+            c.commit()
+            return "transferencia"
+        d = dict(d)
+        d.update({
+            "tipo": "rotacion",
+            "sale": a["sale"], "cant_sale": a["cant_sale"],
+            "precio_sale": a["precio_sale"],
+            "entra": b["entra"], "cant_entra": b["cant_entra"],
+            "precio_entra": b["precio_entra"],
+            "ratio": ((a["cant_sale"] / b["cant_entra"])
+                      if b["cant_entra"] else None),
+            "estrategia_id": (d.get("estrategia_id")
+                              or otro["estrategia_id"]),
+        })
+
+    eid = d.get("estrategia_id")
+    if d["tipo"] == "rotacion" and d["sale"] and d["entra"]:
+        eid = eid or _estrategia_de(d["sale"]) or _estrategia_de(d["entra"])
         if eid:
-            asignar(p["broker"], p["entra"], eid["estrategia_id"])
-            c.execute("DELETE FROM estrategia_especie WHERE broker=? "
-                      "AND simbolo=?", (p["broker"], p["sale"]))
-            # La estrategia recupera una especie viva, asi que si se
-            # habia cerrado por quedarse sin tenencia hay que reabrirla.
+            asignar(d["entra"], eid)
+            # La que sale solo se desasigna si ya no queda en ningun
+            # broker: se puede rotar de a partes.
+            r = c.execute("SELECT SUM(cantidad) t FROM tenencia WHERE "
+                          "simbolo=?", (d["sale"],)).fetchone()
+            if not (r and r["t"]):
+                c.execute("DELETE FROM estrategia_especie WHERE simbolo=?",
+                          (d["sale"],))
             e = c.execute("SELECT cierre, motivo_cierre FROM estrategia "
-                          "WHERE id=?", (eid["estrategia_id"],)).fetchone()
+                          "WHERE id=?", (eid,)).fetchone()
             if e and e["cierre"] and e["motivo_cierre"] == "sin tenencia":
-                reabrir_estrategia(eid["estrategia_id"])
-    c.execute("UPDATE mov_propuesto SET estado='confirmado' WHERE id=?", (mid,))
+                reabrir_estrategia(eid)
+
+    if eid:
+        registrar_mov_estrategia(eid, d, propuesto_id=mid)
+
+    c.execute("UPDATE mov_propuesto SET estado='confirmado' WHERE id=?",
+              (mid,))
+    if otro:
+        c.execute("UPDATE mov_propuesto SET estado='confirmado', unido_a=? "
+                  "WHERE id=?", (mid, otro["id"]))
     c.commit()
     return "confirmado"
 
 
-def snapshot(broker, fecha=None):
-    """Guarda la foto del dia para un broker, si cambio.
+def registrar_mov_estrategia(eid, d, propuesto_id=None):
+    """Escribe la fila del ledger y calcula lo que hace falta para medir.
 
-    Se compara contra el ultimo snapshot de ese broker y no se escribe
-    nada si las cantidades son las mismas: actualizar tres veces en un
-    dia sin operar no tiene que dejar tres filas iguales.
+    `ratio_base` es el equivalente del movimiento en el ticker base de la
+    estrategia, con el precio de la foto. Solo lo llevan aportes y
+    retiros: son los unicos que mueven la cuotaparte. Una rotacion cambia
+    la composicion, no el capital.
+
+    `equiv_antes` es cuanto valia la posicion justo antes, que es lo que
+    determina a que valor se emiten o rescatan las cuotas.
     """
     c = conn()
-    fecha = fecha or datetime.now().date().isoformat()
+    e = c.execute("SELECT ticker_base FROM estrategia WHERE id=?",
+                  (eid,)).fetchone()
+    base = e["ticker_base"] if e else None
+
+    ratio_base = None
+    if d["tipo"] in ("aporte", "retiro"):
+        tk = d["entra"] if d["tipo"] == "aporte" else d["sale"]
+        cant = d["cant_entra"] if d["tipo"] == "aporte" else d["cant_sale"]
+        pr = d["precio_entra"] if d["tipo"] == "aporte" else d["precio_sale"]
+        ratio_base = _a_base(tk, cant, pr, base, d)
+
+    c.execute(
+        "INSERT INTO estrategia_mov (estrategia_id, ts, tipo, ticker_de, "
+        "cant_de, ticker_a, cant_a, ratio_base, equiv_antes, propuesto_id, "
+        "nota) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        (eid, d.get("hasta") or datetime.now().isoformat(timespec="seconds"),
+         d["tipo"], d.get("sale"), d.get("cant_sale"), d.get("entra"),
+         d.get("cant_entra"), ratio_base, d.get("equiv_antes"),
+         propuesto_id, d.get("nota")))
+    c.commit()
+
+
+def _a_base(tk, cant, precio, base, d=None):
+    """Nominales de `tk` llevados al ticker base con el precio de la foto.
+
+    Si el ticker ES la base, no hace falta precio. Si falta el precio de
+    alguno de los dos, devuelve None: la fila queda sin ratio_base y la
+    tarjeta avisa que ese movimiento no se pudo medir, que es mejor que
+    inventar un numero.
+    """
+    if not cant:
+        return None
+    ts = (d or {}).get("hasta")
+    if not base:
+        # Sin ticker base la vara es el peso: la estrategia no rota entre
+        # especies equivalentes, se mide contra un indice o contra lo que
+        # costo.
+        if not precio:
+            return None
+        return cant * precio / (base_cotizacion(tk, ts) or 1.0)
+    if tk == base:
+        return cant
+    p_base = (d or {}).get("precio_base")
+    if not (precio and p_base):
+        return None
+    # Un bono cotiza por cada 100 nominales y un CEDEAR por unidad. Si el
+    # ticker del movimiento y el base no cotizan en la misma, el cociente
+    # de precios se va por un factor de 100. Si de alguno de los dos no
+    # se conoce el tipo se los deja iguales: el factor se cancela, que es
+    # lo que venia haciendo.
+    b1, b2 = base_cotizacion(tk, ts), base_cotizacion(base, ts)
+    if b1 and b2:
+        precio, p_base = precio / b1, p_base / b2
+    return cant * precio / p_base
+
+
+def _equiv_en_base(eid, base, broker, desde, hasta, precios):
+    """Cuanto valia la posicion de la estrategia, en nominales del base.
+
+    Se mide sobre la foto anterior -las cantidades de antes del
+    movimiento- y con los precios de ese momento. Es el valor al que se
+    emiten o rescatan las cuotas.
+
+    Del broker que se acaba de cargar se toma la foto anterior, que es
+    justo la de antes del movimiento. De los demas, la ultima que
+    tengan: no cambiaron, asi que su estado de ahora es tambien el de
+    antes. Tomarles la foto vieja mediria el aporte contra una posicion
+    que ya no existia.
+
+    Si a alguna especie le falta el precio devuelve None. Un equivalente
+    a medias emitiria cuotas a un valor mas bajo que el real y la
+    medicion quedaria inflada para siempre: es mejor no medir ese
+    movimiento y que la tarjeta lo avise.
+    """
+    # Sin ticker base se mide en pesos: precio 1 y base 1 dejan la cuenta
+    # en el valor de mercado, que es lo que la vara del indice compara.
+    p_base = precios.get(base) if base else 1.0
+    if not p_base:
+        return None
+    b_base = (base_cotizacion(base, hasta) or 1.0) if base else 1.0
+    filas = conn().execute(
+        "SELECT h.simbolo, SUM(h.cantidad) cant FROM tenencia_hist h "
+        "JOIN estrategia_especie e ON e.simbolo = h.simbolo "
+        "JOIN (SELECT broker, MAX(ts) ts FROM tenencia_hist WHERE ts <= "
+        "      CASE WHEN broker = ? THEN ? ELSE ? END GROUP BY broker) u "
+        "  ON u.broker = h.broker AND u.ts = h.ts "
+        "WHERE e.estrategia_id = ? GROUP BY h.simbolo",
+        (broker, desde, hasta, eid)).fetchall()
+    total = 0.0
+    for f in filas:
+        cant = f["cant"] or 0
+        if not cant:
+            continue
+        if base and f["simbolo"] == base:
+            total += cant
+            continue
+        p = precios.get(f["simbolo"])
+        if not p:
+            return None
+        b = base_cotizacion(f["simbolo"], hasta) or 1.0
+        total += cant * (p / b) / (p_base / b_base)
+    return total
+
+
+def tenencia_de_estrategia(eid):
+    """Las posiciones de una estrategia, una fila por broker y especie.
+
+    Las cantidades de la tarjeta salen de aca y no del ledger: el ledger
+    solo se lee para medir. Es lo que evita que la tarjeta muestre la
+    tenencia del dia en que se sembro el grupo y nunca mas.
+    """
+    return [dict(r) for r in conn().execute(
+        "SELECT t.broker, t.simbolo, t.cantidad, t.tipo, t.ppc, t.ppc_base "
+        "FROM tenencia t JOIN estrategia_especie e ON e.simbolo = t.simbolo "
+        "WHERE e.estrategia_id = ? ORDER BY t.simbolo, t.broker", (eid,))]
+
+
+def base_cotizacion(simbolo, ts=None):
+    """100 si cotiza por lamina, 1 si por unidad, None si no se sabe.
+
+    El tipo sale de la foto vigente al momento del movimiento y no de la
+    tenencia de hoy: la especie que salio puede no estar mas.
+    """
+    from cartera import BASE_100
+    c = conn()
+    r = None
+    if ts:
+        r = c.execute("SELECT tipo FROM tenencia_hist WHERE simbolo=? AND "
+                      "ts<=? AND tipo IS NOT NULL ORDER BY ts DESC LIMIT 1",
+                      (simbolo, ts)).fetchone()
+    if not r:
+        r = c.execute("SELECT tipo FROM tenencia WHERE simbolo=? AND "
+                      "tipo IS NOT NULL LIMIT 1", (simbolo,)).fetchone()
+    if not r:
+        return None
+    return 100.0 if (r["tipo"] or "").lower() in BASE_100 else 1.0
+
+
+def registrar_mov_manual(eid, d):
+    """Escribe en el ledger un movimiento cargado a mano.
+
+    Es el camino del punto de partida: la primera vez no hay dos fotos
+    que comparar, asi que el aporte inicial se carga y de ahi sale la
+    cuota. Valida `posicion.validar_movimiento`, que ya trae calculados
+    `ratio_base` y `equiv_antes`.
+    """
+    c = conn()
+    cur = c.execute(
+        "INSERT INTO estrategia_mov (estrategia_id, ts, tipo, ticker_de, "
+        "cant_de, ticker_a, cant_a, ratio_base, equiv_antes, nota) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (eid, d.get("ts") or datetime.now().isoformat(timespec="seconds"),
+         d["tipo"], d.get("ticker_de"), d.get("cant_de"), d.get("ticker_a"),
+         d.get("cant_a"), d.get("ratio_base"), d.get("equiv_antes"),
+         d.get("nota")))
+    c.commit()
+    return cur.lastrowid
+
+
+def movimientos_estrategia(eid):
+    return [dict(r) for r in conn().execute(
+        "SELECT * FROM estrategia_mov WHERE estrategia_id=? ORDER BY ts, id",
+        (eid,))]
+
+
+def borrar_mov_estrategia(mid):
+    c = conn()
+    c.execute("DELETE FROM estrategia_mov WHERE id=?", (mid,))
+    c.commit()
+
+
+def snapshot(broker, ts=None):
+    """Guarda una foto del broker, si cambio algo.
+
+    Una foto por carga, no por dia. Con la clave por fecha, dos cargas
+    del mismo dia con operaciones distintas en el medio se pisaban: la
+    segunda borraba la primera y el diff terminaba comparando contra
+    ayer, asi que dos rotaciones se leian como una sola.
+
+    Se compara contra la ultima foto de ese broker y no se escribe nada
+    si las cantidades son las mismas: actualizar tres veces sin operar no
+    tiene que dejar tres fotos iguales.
+    """
+    c = conn()
+    ts = ts or datetime.now().isoformat(timespec="seconds")
+    # La clave es (ts, broker, simbolo). Dos cargas del mismo broker
+    # dentro del mismo segundo comparten `ts` y la segunda pisaba a la
+    # primera: quedaba una foto mezclada, con las especies viejas que ya
+    # no estaban conviviendo con las nuevas. Se corre un segundo hasta
+    # encontrar uno libre.
+    while c.execute("SELECT 1 FROM tenencia_hist WHERE broker=? AND ts=? "
+                    "LIMIT 1", (broker, ts)).fetchone():
+        ts = (datetime.fromisoformat(ts)
+              + timedelta(seconds=1)).isoformat(timespec="seconds")
     actual = {r["simbolo"]: (r["cantidad"], r["tipo"]) for r in c.execute(
         "SELECT simbolo, cantidad, tipo FROM tenencia WHERE broker = ?",
         (broker,))}
-    ult = c.execute("SELECT MAX(fecha) f FROM tenencia_hist WHERE broker = ? "
-                    "AND fecha < ?", (broker, fecha)).fetchone()
-    if ult and ult["f"]:
+    ult = c.execute("SELECT MAX(ts) t FROM tenencia_hist WHERE broker = ?",
+                    (broker,)).fetchone()
+    if ult and ult["t"]:
         previo = {r["simbolo"]: r["cantidad"] for r in c.execute(
             "SELECT simbolo, cantidad FROM tenencia_hist "
-            "WHERE broker = ? AND fecha = ?", (broker, ult["f"]))}
+            "WHERE broker = ? AND ts = ?", (broker, ult["t"]))}
         if previo == {k: v[0] for k, v in actual.items()}:
             return 0
-    c.execute("DELETE FROM tenencia_hist WHERE broker = ? AND fecha = ?",
-              (broker, fecha))
     for sim, (cant, tipo) in actual.items():
-        c.execute("INSERT INTO tenencia_hist "
-                  "(fecha, broker, simbolo, cantidad, tipo) VALUES (?,?,?,?,?)",
-                  (fecha, broker, sim, cant, tipo))
+        c.execute("INSERT OR REPLACE INTO tenencia_hist "
+                  "(ts, fecha, broker, simbolo, cantidad, tipo) "
+                  "VALUES (?,?,?,?,?,?)",
+                  (ts, ts[:10], broker, sim, cant, tipo))
     c.commit()
     return len(actual)
 
