@@ -1,5 +1,20 @@
 # Registro de cambios
 
+## 0.33.1
+
+**El panel arrancaba sin posicion despues de un reinicio fuera de
+rueda.** El snapshot de los pares se guarda en la base y se restaura al
+arrancar, y el guardado por una version anterior no traia el `id` del
+par, que es con lo que la tarjeta encuentra su estrategia. Habia que
+esperar al primer ciclo con mercado abierto para ver el bloque de
+posicion. Ahora se repone por alias al restaurar, asi que cubre tambien
+cualquier campo que se agregue al estado mas adelante.
+
+**El alias `CO` en `monitor.py` era dos modulos distintos**, `costos` en
+dos funciones y `cobros` en una tercera. Son imports locales, asi que no
+colisionaba, pero alcanzaba con mover uno al encabezado para romper algo
+en silencio. Quedan `CO_COSTOS` y `CO_COBROS`.
+
 ## 0.33.0
 
 **La posicion pasa a colgar de la estrategia y no del grupo.** El modelo

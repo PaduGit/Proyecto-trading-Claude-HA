@@ -732,7 +732,7 @@ class Monitor:
         """
         import bonos as BO
         import curva as CU
-        import costos as CO
+        import costos as CO_COSTOS
 
         with self.lock:
             cot = cot or dict(self.cotizaciones)
@@ -745,14 +745,14 @@ class Monitor:
         t = BO.tabla(cot, cer_actual=float(self.cfg.get("cer_actual") or 0))
         an = CU.analizar(t["filas"])
         mep = self._mep(cot)
-        # Ida y vuelta: se vende una especie y se compra otra. CO.pct
+        # Ida y vuelta: se vende una especie y se compra otra. `pct`
         # devuelve tanto por uno y canjes() trabaja en puntos
         # porcentuales, igual que el recorrido de cada punta: sin el x100
         # el costo entraba como 0,003 en vez de 0,32 y todos los canjes
         # salian sobreestimados en su propia comision.
-        una = CO.pct(self.cfg.get("comisiones") or {}, "bonos",
-                     self.cfg.get("derechos_mercado"),
-                     self.cfg.get("iva_pct") or 0)
+        una = CO_COSTOS.pct(self.cfg.get("comisiones") or {}, "bonos",
+                            self.cfg.get("derechos_mercado"),
+                            self.cfg.get("iva_pct") or 0)
         return CU.canjes(
             t["filas"], an, tenidos, costo_pct=una * 2 * 100,
             min_ganancia=float(self.cfg.get("canje_min_pct") or 1.0),
@@ -1360,11 +1360,11 @@ class Monitor:
         No depende de puntas ni de que haya rueda: sale del cronograma y
         de la tenencia, asi que corre igual con el mercado cerrado.
         """
-        import cobros as CO
+        import cobros as CO_COBROS
         dias = int(self.cfg.get("dias_aviso_cobro") or 2)
         if not dias:
             return 0
-        nuevos = CO.por_avisar(
+        nuevos = CO_COBROS.por_avisar(
             dias_aviso=dias,
             cer_actual=float(self.cfg.get("cer_actual") or 0),
             brokers_fuera=self.brokers_extranjeros())
@@ -1547,7 +1547,7 @@ class Monitor:
         """
         import json
         import circuitos as CI
-        import costos as CO
+        import costos as CO_COSTOS
         cot = cot if cot is not None else dict(self.cotizaciones)
         if not cot:
             return 0
@@ -1564,7 +1564,7 @@ class Monitor:
                         float(self.cfg.get("rulo_umbral_pct") or 0),
                         self.cfg.get("derechos_mercado") or {},
                         self.cfg.get("iva_pct") or 0,
-                        CO.esquema(self.cfg),
+                        CO_COSTOS.esquema(self.cfg),
                         min_monto=self._min_monto(),
                         mep=self._mep(cot))
         with self.lock:
@@ -1653,12 +1653,20 @@ class Monitor:
         pares = d.get("pares") or {}
         if not pares:
             return
-        vigentes = {p["alias"] for p in self.pares}
-        pares = {k: v for k, v in pares.items() if k in vigentes}
+        # El snapshot guardado puede ser de una version anterior y no
+        # traer campos que se agregaron despues. El `id` del par es el
+        # caso: sin el, la tarjeta no encuentra su estrategia y el panel
+        # se ve sin posicion hasta que corra el primer ciclo, que fuera
+        # de rueda puede ser al dia siguiente. Se repone por alias, que
+        # es la clave con la que se guardo.
+        ids = {p["alias"]: p.get("id") for p in self.pares}
+        pares = {k: v for k, v in pares.items() if k in ids}
         if not pares:
             return
-        for v in pares.values():
+        for k, v in pares.items():
             v["viejo"] = True
+            if not v.get("id"):
+                v["id"] = ids[k]
         with self.lock:
             if not self.snapshot:
                 self.snapshot = pares
