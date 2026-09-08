@@ -1185,6 +1185,20 @@ function bloquePosicion(e){
       (r.sin_medir.length === 1 ? "" : "s") +
       ' sin equivalente: no entran en la medición.</div>';
 
+  /* Las alertas de vigilancia se leen acá y no en la pantalla de
+     alertas: "AO28 a 145.000" no dice nada sin saber cuánto tenés y cómo
+     viene midiéndose la estrategia. */
+  (r.alertas || []).forEach(a => {
+    const que = a.tipo === "fecha"
+      ? esc(a.fecha) + (a.dias_antes ? " (avisa " + a.dias_antes + " días antes)" : "")
+      : (a.condiciones || []).map(c =>
+          esc(c.simbolo) + " " + (c.operacion === "comprar" ? "≤" : "≥") + " " +
+          num(c.precio, 2)).join(a.modo === "alguna" ? " o " : " y ");
+    h += '<div class="pos-pie" style="display:block">' +
+      (a.activa ? "◔ " : "○ ") + esc(a.titulo) +
+      ' <span style="opacity:.6">' + que + '</span></div>';
+  });
+
   return h + '<div class="acciones">' +
     '<button onclick="verMovimientos(' + e.id + ')">Movimientos</button>' +
     '<button onclick="abrirMov(' + e.id + ')">Cargar uno</button>' +
@@ -3688,11 +3702,21 @@ async function cargarAlertas(){
   try{
     const d = await (await fetch(base + "api/alertas-precio")).json();
     alEditando = null;
-    if(!(d.alertas || []).length){
-      out.innerHTML = '<div class="vacio">Todavía no hay alertas.</div>';
+    /* Las que tienen estrategia son de vigilancia y se leen adentro de
+       su tarjeta, con la tenencia y el rendimiento al lado. Acá quedan
+       las de búsqueda: lo que todavía no tenés. */
+    const busqueda = (d.alertas || []).filter(a => !a.estrategia_id);
+    const vigilancia = (d.alertas || []).length - busqueda.length;
+    const pie = vigilancia
+      ? '<div class="nota">' + vigilancia + ' alerta' +
+        (vigilancia === 1 ? "" : "s") + ' de vigilancia, dentro de su ' +
+        'estrategia.</div>' : "";
+    if(!busqueda.length){
+      out.innerHTML = '<div class="vacio">Ninguna alerta de búsqueda.</div>' +
+        pie;
       return;
     }
-    out.innerHTML = d.alertas.map(alFila).join("") +
+    out.innerHTML = busqueda.map(alFila).join("") + pie +
       (d.hay_rueda === false ? '<div class="nota">Mercado cerrado: los ' +
         'precios son los de la última rueda.</div>' : "");
   }catch(e){
@@ -3713,7 +3737,20 @@ function alFormulario(a){
       (a && a.modo === "alguna" ? "" : " selected") +
       '>Todas las condiciones</option>' +
     '<option value="alguna"' + (a && a.modo === "alguna" ? " selected" : "") +
-      '>Alguna condición</option></select></div></div>' +
+      '>Alguna condición</option></select></div>' +
+    /* Con estrategia la alerta pasa a vigilancia y se lee adentro de su
+       tarjeta. "Sola" la deduce de las especies, y solo si todas caen en
+       la misma: si mira dos estrategias distintas queda de búsqueda. */
+    '<div><label for="al-estr">Vigila</label><select id="al-estr">' +
+      '<option value="">Nada que ya tengas (búsqueda)</option>' +
+      '<option value="auto"' + (a ? "" : " selected") +
+        '>Deducirlo de los símbolos</option>' +
+      (estrOtras.concat(estrPar).filter((e, i, l) =>
+        l.findIndex(x => x.id === e.id) === i)
+        .map(e => '<option value="' + e.id + '"' +
+          (a && a.estrategia_id === e.id ? " selected" : "") + '>' +
+          esc(e.nombre) + '</option>').join("")) +
+      '</select></div></div>' +
     '<div id="al-conds">' + conds.map(alCondFila).join("") + '</div>' +
     '<div class="op-acc">' +
       '<button class="secundario" id="al-mas">Agregar condición</button>' +
@@ -3766,8 +3803,10 @@ $("#al-out").addEventListener("click", async ev => {
           operacion: f.querySelector(".al-op").value, precio: pr});
     });
     if(!condiciones.length){ alert("Cargá al menos una condición."); return; }
+    const sel = $("#al-estr") ? $("#al-estr").value : "";
     const cuerpo = {titulo: $("#al-tit").value.trim(),
-      modo: $("#al-modo").value, condiciones};
+      modo: $("#al-modo").value, condiciones,
+      estrategia_id: sel === "auto" ? "auto" : (sel ? parseInt(sel, 10) : null)};
     if(alEditando) cuerpo.id = alEditando;
     t.disabled = true;
     try{

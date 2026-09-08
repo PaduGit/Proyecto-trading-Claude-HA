@@ -1,5 +1,24 @@
 # Registro de cambios
 
+## 0.34.0
+
+**Las alertas se separan en vigilancia y busqueda.** Una alerta sobre
+algo que ya tenes se lee adentro de la tarjeta de su estrategia, con el
+saldo y el rendimiento al lado: "AO28 a 145.000" no significa nada sin
+saber que tenes 7.059 nominales y que la estrategia viene plana. En
+ANALISIS TECNICO quedan las de busqueda, que miran lo que todavia no
+tenes.
+
+`alerta_precio` y `alerta_fecha` suman `estrategia_id`, con ALTER para
+las bases existentes. El documento de continuidad decia que la columna
+estaba desde 0.25.0 y no estaba en ningun lado.
+
+**El formulario suma el campo "Vigila"**, con tres opciones: nada, una
+estrategia concreta, o deducirlo de los simbolos, que es lo que viene
+elegido al crear. La deduccion resuelve solo si todas las especies de la
+alerta caen en la misma estrategia; si mira dos distintas queda de
+busqueda. Adivinar cual de las dos seria inventar.
+
 ## 0.33.1
 
 **El panel arrancaba sin posicion despues de un reinicio fuera de

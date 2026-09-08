@@ -226,6 +226,7 @@ def resumen(estrategia, precios):
         "sin_punto_de_partida": cuotas <= 0,
         "sin_medir": sin_medir,
         "pendientes": len(pend),
+        "alertas": db.alertas_de_estrategia(eid),
         **extra,
     }
 

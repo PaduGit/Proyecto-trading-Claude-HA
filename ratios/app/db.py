@@ -818,6 +818,11 @@ CREATE TABLE IF NOT EXISTS alerta_precio (
   id     INTEGER PRIMARY KEY AUTOINCREMENT,
   titulo TEXT NOT NULL,
   modo   TEXT NOT NULL DEFAULT 'todas',
+  -- Con estrategia la alerta es de vigilancia: mira algo que ya tenes y
+  -- vive dentro de su tarjeta. Sin estrategia es de busqueda: mira algo
+  -- que todavia no tenes. Es la misma alerta; cambia dónde se lee y con
+  -- qué contexto.
+  estrategia_id INTEGER,
   activa INTEGER NOT NULL DEFAULT 1,
   creada TEXT NOT NULL
 );
@@ -836,6 +841,7 @@ CREATE TABLE IF NOT EXISTS alerta_fecha (
   fecha      TEXT NOT NULL,
   dias_antes INTEGER NOT NULL DEFAULT 0,
   nota       TEXT,
+  estrategia_id INTEGER,
   activa     INTEGER NOT NULL DEFAULT 1,
   avisada    TEXT,
   creada     TEXT NOT NULL
@@ -1078,6 +1084,17 @@ def init_alertas():
                 c.execute("ALTER TABLE estrategia ADD COLUMN " + col)
     except Exception as e:
         log.warning("migrar estrategia: %s", e)
+    # CREATE TABLE IF NOT EXISTS no agrega columnas a una tabla que ya
+    # existe: las alertas de cualquier base anterior no tienen con qué
+    # separar vigilancia de búsqueda.
+    for tabla in ("alerta_precio", "alerta_fecha"):
+        try:
+            ca = {r["name"] for r in c.execute("PRAGMA table_info(%s)" % tabla)}
+            if ca and "estrategia_id" not in ca:
+                c.execute("ALTER TABLE %s ADD COLUMN estrategia_id INTEGER"
+                          % tabla)
+        except Exception as e:
+            log.warning("migrar %s: %s", tabla, e)
     _migrar_parametros(c)
     _migrar_modelo_estrategias(c)
     c.commit()
@@ -1228,16 +1245,17 @@ def guardar_alerta_fecha(d, aid=None):
     except (TypeError, ValueError):
         dias = 0
     nota = (d.get("nota") or "").strip() or None
+    eid = d.get("estrategia_id") or None
     if aid:
         # al cambiar la fecha se vuelve a habilitar el aviso
         c.execute("UPDATE alerta_fecha SET titulo=?, fecha=?, dias_antes=?, "
-                  "nota=?, avisada=NULL WHERE id=?",
-                  (titulo, fecha, dias, nota, aid))
+                  "nota=?, estrategia_id=?, avisada=NULL WHERE id=?",
+                  (titulo, fecha, dias, nota, eid, aid))
     else:
         cur = c.execute(
-            "INSERT INTO alerta_fecha (titulo, fecha, dias_antes, nota, creada)"
-            " VALUES (?,?,?,?,?)",
-            (titulo, fecha, dias, nota,
+            "INSERT INTO alerta_fecha (titulo, fecha, dias_antes, nota, "
+            "estrategia_id, creada) VALUES (?,?,?,?,?,?)",
+            (titulo, fecha, dias, nota, eid,
              datetime.now().isoformat(timespec="seconds")))
         aid = cur.lastrowid
     c.commit()
@@ -1286,14 +1304,18 @@ def guardar_alerta_precio(d, alerta_id=None):
     c = conn()
     titulo = (d.get("titulo") or "").strip() or "Sin titulo"
     modo = "alguna" if (d.get("modo") or "todas") == "alguna" else "todas"
+    eid = d.get("estrategia_id") or None
+    if eid == "auto":
+        eid = _estrategia_de_condiciones(d.get("condiciones") or [])
     if alerta_id:
-        c.execute("UPDATE alerta_precio SET titulo=?, modo=? WHERE id=?",
-                  (titulo, modo, alerta_id))
+        c.execute("UPDATE alerta_precio SET titulo=?, modo=?, estrategia_id=? "
+                  "WHERE id=?", (titulo, modo, eid, alerta_id))
         c.execute("DELETE FROM alerta_cond WHERE alerta_id=?", (alerta_id,))
     else:
         cur = c.execute(
-            "INSERT INTO alerta_precio (titulo, modo, creada) VALUES (?,?,?)",
-            (titulo, modo, datetime.now().isoformat(timespec="seconds")))
+            "INSERT INTO alerta_precio (titulo, modo, estrategia_id, creada) "
+            "VALUES (?,?,?,?)",
+            (titulo, modo, eid, datetime.now().isoformat(timespec="seconds")))
         alerta_id = cur.lastrowid
     for i, cond in enumerate(d.get("condiciones") or []):
         sim = (cond.get("simbolo") or "").strip().upper()
@@ -1310,6 +1332,45 @@ def guardar_alerta_precio(d, alerta_id=None):
             "orden) VALUES (?,?,?,?,?)", (alerta_id, sim, op, precio, i))
     c.commit()
     return alerta_id
+
+
+def alertas_de_estrategia(eid):
+    """Las alertas de vigilancia de una estrategia, de precio y de fecha.
+
+    Van adentro de la tarjeta y no en la pantalla de alertas: mirar "AO28
+    a 145.000" sin saber que tenes 7.059 y que la estrategia viene
+    plana no dice nada.
+    """
+    c = conn()
+    out = []
+    for a in c.execute("SELECT * FROM alerta_precio WHERE estrategia_id=? "
+                       "ORDER BY id", (eid,)):
+        d = dict(a)
+        d["tipo"] = "precio"
+        d["condiciones"] = [dict(r) for r in c.execute(
+            "SELECT * FROM alerta_cond WHERE alerta_id=? ORDER BY orden, id",
+            (a["id"],))]
+        out.append(d)
+    for a in c.execute("SELECT * FROM alerta_fecha WHERE estrategia_id=? "
+                       "ORDER BY fecha", (eid,)):
+        d = dict(a)
+        d["tipo"] = "fecha"
+        out.append(d)
+    return out
+
+
+def _estrategia_de_condiciones(conds):
+    """La estrategia de la alerta, si todas sus especies caen en una sola.
+
+    Si mira dos especies de estrategias distintas, no es de ninguna: se
+    deja de busqueda y lo decidis vos. Adivinar cual de las dos seria
+    inventar.
+    """
+    asig = asignaciones()
+    eids = {asig.get((c.get("simbolo") or "").strip().upper())
+            for c in conds if (c.get("simbolo") or "").strip()}
+    eids.discard(None)
+    return eids.pop() if len(eids) == 1 else None
 
 
 def activar_alerta_precio(alerta_id, activa):
