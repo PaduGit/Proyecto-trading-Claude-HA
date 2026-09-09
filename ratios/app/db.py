@@ -937,6 +937,10 @@ CREATE TABLE IF NOT EXISTS estrategia_mov (
   ticker_a      TEXT,
   cant_a        REAL,
   ratio_base    REAL,               -- equivalente en el ticker base
+  -- +1 comprado, -1 lanzado o deudor. Una opcion lanzada y un saldo en
+  -- descubierto figuran con cantidad negativa: valen en contra, y sin
+  -- esto el equivalente los sumaria como si fueran a favor.
+  signo         INTEGER NOT NULL DEFAULT 1,
   equiv_antes   REAL,               -- valor de la posicion antes, para la cuota
   propuesto_id  INTEGER,            -- de que propuesta salio
   nota          TEXT
@@ -988,6 +992,7 @@ CREATE TABLE IF NOT EXISTS mov_propuesto (
   -- cuotaparte se mide en nominales del base: sin este precio el aporte
   -- entra al ledger sin `ratio_base` y no se puede medir.
   precio_base  REAL,
+  signo        INTEGER NOT NULL DEFAULT 1,
   -- Cuanto valia la posicion de la estrategia justo antes, en nominales
   -- del ticker base. Es el valor al que se emiten o rescatan las cuotas:
   -- sin esto el valor de la cuota queda clavado en 1 y el rendimiento
@@ -1887,6 +1892,30 @@ def _estrategia_de(simbolo):
     return r["estrategia_id"] if r else None
 
 
+def _cambio_de_exposicion(antes, despues):
+    """(cuanto cambio la exposicion, con que signo esta la especie).
+
+    La exposicion es el valor absoluto: 100 lanzadas exponen tanto como
+    100 compradas, solo que en contra. El signo dice de que lado.
+    """
+    signo = -1 if (despues or antes) < 0 else 1
+    return abs(despues) - abs(antes), signo
+
+
+def _tramos(antes, despues):
+    """Los movimientos que salen de un cambio de saldo.
+
+    Casi siempre es uno solo. Son dos cuando el saldo cambia de signo
+    -de comprado a lanzado o al reves-, porque ahi pasaron dos cosas
+    distintas: se cerro lo que habia y se abrio lo contrario. Meterlas en
+    un movimiento daria una cantidad que no existio nunca.
+    """
+    if antes * despues < 0:
+        return [(-abs(antes), 1 if antes > 0 else -1),
+                (abs(despues), 1 if despues > 0 else -1)]
+    return [_cambio_de_exposicion(antes, despues)]
+
+
 def detectar_movimientos(broker, precios=None):
     """Compara las dos ultimas fotos de un broker y propone que paso.
 
@@ -1914,11 +1943,15 @@ def detectar_movimientos(broker, precios=None):
             "WHERE broker=? AND ts=?", (broker, t))}
 
     a, b = foto(desde), foto(hasta)
+    # Lo que decide si algo entro o salio es la exposicion -el valor
+    # absoluto- y no la cantidad. Una opcion lanzada se abre yendo de 0 a
+    # -100 y se cierra volviendo a 0: leer el signo de la resta diria lo
+    # contrario en las dos puntas. Lo mismo con un saldo en descubierto.
     difs = {}
     for sim in set(a) | set(b):
-        d = (b.get(sim) or 0) - (a.get(sim) or 0)
-        if abs(d) > 1e-9:
-            difs[sim] = d
+        antes, despues = a.get(sim) or 0, b.get(sim) or 0
+        if abs(despues - antes) > 1e-9:
+            difs[sim] = (antes, despues)
 
     # Los grupos dicen que especies son intercambiables entre si.
     grupos = []
@@ -1932,38 +1965,46 @@ def detectar_movimientos(broker, precios=None):
 
     ahora = datetime.now().isoformat(timespec="seconds")
     props, usados = [], set()
+    exp = {s: _cambio_de_exposicion(*v) for s, v in difs.items()}
     for gid, gnom, tk in grupos:
-        bajan = sorted((s for s in difs if s in tk and difs[s] < 0
-                        and s not in usados), key=lambda s: difs[s])
-        suben = sorted((s for s in difs if s in tk and difs[s] > 0
-                        and s not in usados), key=lambda s: -difs[s])
+        # Una rotacion es entre especies compradas: cambiar una lanzada
+        # por otra no es rotar, es rearmar la estructura.
+        bajan = sorted((s for s in exp if s in tk and exp[s][0] < 0
+                        and exp[s][1] > 0 and s not in usados),
+                       key=lambda s: exp[s][0])
+        suben = sorted((s for s in exp if s in tk and exp[s][0] > 0
+                        and exp[s][1] > 0 and s not in usados),
+                       key=lambda s: -exp[s][0])
         for sale, entra in zip(bajan, suben):
-            cs, ce = -difs[sale], difs[entra]
+            cs, ce = -exp[sale][0], exp[entra][0]
             props.append({
                 "broker": broker, "desde": desde, "hasta": hasta,
                 "tipo": "rotacion", "sale": sale, "cant_sale": cs,
                 "entra": entra, "cant_entra": ce,
                 "ratio": (cs / ce) if ce else None, "grupo_id": gid,
+                "signo": 1,
                 "grupo": gnom,
                 "estrategia_id": _estrategia_de(sale) or _estrategia_de(entra),
                 "precio_sale": precios.get(sale),
                 "precio_entra": precios.get(entra)})
             usados.update((sale, entra))
 
-    for sim, d in sorted(difs.items()):
+    for sim, (antes, despues) in sorted(difs.items()):
         if sim in usados:
             continue
-        props.append({
-            "broker": broker, "desde": desde, "hasta": hasta,
-            "tipo": "aporte" if d > 0 else "retiro",
-            "sale": None if d > 0 else sim,
-            "cant_sale": None if d > 0 else -d,
-            "entra": sim if d > 0 else None,
-            "cant_entra": d if d > 0 else None,
-            "ratio": None, "grupo_id": None, "grupo": None,
-            "estrategia_id": _estrategia_de(sim),
-            "precio_sale": None if d > 0 else precios.get(sim),
-            "precio_entra": precios.get(sim) if d > 0 else None})
+        for d, signo in _tramos(antes, despues):
+            props.append({
+                "broker": broker, "desde": desde, "hasta": hasta,
+                "tipo": "aporte" if d > 0 else "retiro",
+                "sale": None if d > 0 else sim,
+                "cant_sale": None if d > 0 else -d,
+                "entra": sim if d > 0 else None,
+                "cant_entra": d if d > 0 else None,
+                "signo": signo,
+                "ratio": None, "grupo_id": None, "grupo": None,
+                "estrategia_id": _estrategia_de(sim),
+                "precio_sale": None if d > 0 else precios.get(sim),
+                "precio_entra": precios.get(sim) if d > 0 else None})
 
     # El precio del ticker base va junto con los otros dos y por el mismo
     # motivo: la cuotaparte de un aporte se emite al valor del base en el
@@ -1986,11 +2027,13 @@ def detectar_movimientos(broker, precios=None):
             "INSERT OR IGNORE INTO mov_propuesto (detectado, broker, desde, "
             "hasta, tipo, sale, cant_sale, entra, cant_entra, ratio, "
             "grupo_id, estrategia_id, precio_sale, precio_entra, "
-            "precio_base, equiv_antes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "precio_base, equiv_antes, signo) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (ahora, broker, desde, hasta, p["tipo"], p["sale"],
              p["cant_sale"], p["entra"], p["cant_entra"], p["ratio"],
              p["grupo_id"], p["estrategia_id"], p["precio_sale"],
-             p["precio_entra"], p["precio_base"], p["equiv_antes"]))
+             p["precio_entra"], p["precio_base"], p["equiv_antes"],
+             p.get("signo") or 1))
     c.commit()
     return props
 
@@ -2083,8 +2126,8 @@ def resolver_propuesto(mid, accion, editado=None, unir_con=None):
     d = dict(p)
     d.update({k: v for k, v in (editado or {}).items() if k in (
         "tipo", "sale", "cant_sale", "entra", "cant_entra",
-        "precio_sale", "precio_entra", "precio_base", "estrategia_id",
-        "nota")})
+        "precio_sale", "precio_entra", "precio_base", "signo",
+        "estrategia_id", "nota")})
 
     otro = None
     if unir_con:
@@ -2171,15 +2214,19 @@ def registrar_mov_estrategia(eid, d, propuesto_id=None):
         cant = d["cant_entra"] if d["tipo"] == "aporte" else d["cant_sale"]
         pr = d["precio_entra"] if d["tipo"] == "aporte" else d["precio_sale"]
         ratio_base = _a_base(tk, cant, pr, base, d)
+        if ratio_base is not None and (d.get("signo") or 1) < 0:
+            # Una lanzada vale en contra: es una obligacion, no un
+            # activo. Sumarla como si fuera comprada infla la posicion.
+            ratio_base = -ratio_base
 
     c.execute(
         "INSERT INTO estrategia_mov (estrategia_id, ts, tipo, ticker_de, "
-        "cant_de, ticker_a, cant_a, ratio_base, equiv_antes, propuesto_id, "
-        "nota) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        "cant_de, ticker_a, cant_a, ratio_base, signo, equiv_antes, "
+        "propuesto_id, nota) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
         (eid, d.get("hasta") or datetime.now().isoformat(timespec="seconds"),
          d["tipo"], d.get("sale"), d.get("cant_sale"), d.get("entra"),
-         d.get("cant_entra"), ratio_base, d.get("equiv_antes"),
-         propuesto_id, d.get("nota")))
+         d.get("cant_entra"), ratio_base, d.get("signo") or 1,
+         d.get("equiv_antes"), propuesto_id, d.get("nota")))
     c.commit()
 
 
@@ -2310,12 +2357,12 @@ def registrar_mov_manual(eid, d):
     c = conn()
     cur = c.execute(
         "INSERT INTO estrategia_mov (estrategia_id, ts, tipo, ticker_de, "
-        "cant_de, ticker_a, cant_a, ratio_base, equiv_antes, nota) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        "cant_de, ticker_a, cant_a, ratio_base, signo, equiv_antes, nota) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
         (eid, d.get("ts") or datetime.now().isoformat(timespec="seconds"),
          d["tipo"], d.get("ticker_de"), d.get("cant_de"), d.get("ticker_a"),
-         d.get("cant_a"), d.get("ratio_base"), d.get("equiv_antes"),
-         d.get("nota")))
+         d.get("cant_a"), d.get("ratio_base"), d.get("signo") or 1,
+         d.get("equiv_antes"), d.get("nota")))
     c.commit()
     return cur.lastrowid
 

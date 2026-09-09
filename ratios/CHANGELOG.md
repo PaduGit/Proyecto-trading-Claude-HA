@@ -1,5 +1,50 @@
 # Registro de cambios
 
+## 0.35.0
+
+**El diff aprendio a leer cantidades negativas.** Miraba la cantidad y
+ahora mira la exposicion: 100 lanzadas exponen tanto como 100 compradas,
+solo que en contra. Antes, abrir una lanzada iba de 0 a -100 y se leia
+como un retiro de 100 nominales que nunca tuviste; cerrarla se leia como
+un aporte. Ahora armar un spread sale como aporte en las dos patas, y
+desarmarlo como retiro. Cuando el saldo cambia de signo -de comprado a
+lanzado- salen dos movimientos, porque son dos cosas distintas: se cerro
+lo que habia y se abrio lo contrario. Sirve igual para un saldo en
+descubierto.
+
+`mov_propuesto` y `estrategia_mov` suman `signo`: una lanzada es una
+obligacion y resta en el equivalente. Un bull spread de 100 GFGC7000 a
+400 contra 100 GFGC8000 a 150 vale 5,714 - 2,143 = 3,571 nominales del
+base, que son los 25.000 pesos de debito neto. Sumada como comprada, la
+posicion se veia 60% mas grande.
+
+**Los lotes de una posicion de opciones salen de la tenencia**, sumando
+brokers y dividiendo por 100. Si las dos patas no coinciden toma la menor
+y avisa, que es el caso de un cierre parcial. El boton de editar lotes
+queda solo cuando el dato no se pudo resolver.
+
+**El riesgo se puede corregir con el neto ejecutado.** IOL no informa el
+PPC de las opciones, asi que el riesgo sigue siendo el de las puntas del
+dia en que se cargo la posicion. El boton nuevo pregunta en pesos -lo
+que pagaste, o lo que cobraste si es de credito- y saca el riesgo por
+accion. Donde el PPC si esta cargado a mano, se rehace solo con la misma
+formula del screener.
+
+**Grafico de evolucion en la posicion abierta**, con el % sobre el riesgo
+y la linea del umbral de alarma. El grafico existia y solo se usaba en el
+screener.
+
+**La serie diaria deja de guardar todo el panel.** Con tres vencimientos
+y treinta bases son miles de filas por dia. Se guardan las que tenes
+abiertas y las que estan en zona de alerta.
+
+**Las alertas de vigilancia se pueden editar.** Al pasar a vigilancia
+desaparecian de la pantalla, y los botones de modificar y borrar viven
+ahi. Ahora hay un desplegable Vigilancia en ANALISIS TECNICO, con las
+mismas filas y a que estrategia vigila cada una. Ademas, abrir el
+formulario de una de ellas antes de que cargaran las estrategias y
+guardar sin tocar nada la devolvia a busqueda en silencio.
+
 ## 0.34.0
 
 **Las alertas se separan en vigilancia y busqueda.** Una alerta sobre

@@ -613,6 +613,14 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
     <button class="primario" id="al-nueva">Nueva alerta</button>
     <div id="al-out" style="margin-top:12px"></div>
 
+    <details style="margin-top:16px" id="al-vig-caja">
+      <summary>Vigilancia</summary>
+      <p class="nota" style="margin-top:8px">Las de lo que ya tenés. Se leen
+        en la tarjeta de su estrategia, con el saldo al lado; se editan
+        acá.</p>
+      <div id="al-vig"></div>
+    </details>
+
     <h3 style="margin:22px 0 6px">Por fecha</h3>
     <p class="nota">Recordatorios sueltos: revisar una posición, una fecha
       límite. Se avisan una vez; cambiar la fecha los rehabilita.</p>
@@ -3157,7 +3165,8 @@ async function cargarOpcPosiciones(){
           : "—") + '</span> ' +
           '<span style="color:var(--muted);font-size:11px">' +
           esc(p.subyacente) + ' ' + num(p.base_compra,5) + '/' +
-          num(p.base_venta,5) + ' · ' + ent(p.lotes) + ' lotes</span></div>' +
+          num(p.base_venta,5) + ' · ' + ent(p.lotes) + ' lotes' +
+          (p.lotes_de_tenencia ? '' : ' (cargados)') + '</span></div>' +
         '<div class="ruta">' + esc(p.vencimiento) +
           (v ? ' · vale ' + precio(v.salida) + ' por lote, $' +
                ent(v.ganancia_total) + ' en total' : ' · sin puntas') +
@@ -3166,13 +3175,27 @@ async function cargarOpcPosiciones(){
           ? '<div class="ej"><b>Desarmar:</b> ' + esc(motivos.join("; ")) +
             '</div>'
           : '<div class="ej">Sin motivo de desarme todavía.</div>') +
+        /* Los lotes y el riesgo salen de la cuenta. Cuando no se pueden
+           sacar, se sigue viendo lo cargado a mano y se dice por qué. */
+        ((p.avisos || []).length
+          ? '<div class="aviso">' + p.avisos.map(esc).join(" · ") + '</div>'
+          : "") +
         '<div class="op-acc">' +
           '<button class="secundario" data-cerrar="' + p.id + '" ' +
             'data-sal="' + (v ? v.salida : "") + '">Cerrar</button>' +
-          '<button class="secundario" data-editar="' + p.id + '" ' +
-            'data-lotes="' + p.lotes + '">Editar lotes</button>' +
+          '<button class="secundario" data-pos-hist="' + esc(p.combo) +
+            '">Evolución</button>' +
+          '<button class="secundario" data-riesgo="' + p.id + '" ' +
+            'data-r="' + p.riesgo + '" data-a="' + p.ancho + '" ' +
+            'data-l="' + p.lotes + '" data-e="' + esc(p.estructura) +
+            '">Corregir riesgo</button>' +
+          (p.lotes_de_tenencia ? '' :
+            '<button class="secundario" data-editar="' + p.id + '" ' +
+            'data-lotes="' + p.lotes + '">Editar lotes</button>') +
           '<button class="secundario" data-quitar="' + p.id + '">Borrar</button>' +
-        '</div></div>';
+        '</div>' +
+        '<div class="graf" data-hist-de="' + esc(p.combo) + '" hidden></div>' +
+        '</div>';
     }).join("") +
     (cerradas.length ? '<div class="nota">Cerradas: ' + cerradas.map(p =>
       esc(p.subyacente) + ' ' + num(p.base_compra,5) + '/' +
@@ -3184,6 +3207,64 @@ async function cargarOpcPosiciones(){
 }
 
 $("#op-pos").addEventListener("click", async ev => {
+  /* La evolucion va aparte: no toca nada, solo abre y cierra. */
+  const h = ev.target.closest("[data-pos-hist]");
+  if(h){
+    const combo = h.dataset.posHist;
+    const caja = $("#op-pos").querySelector(
+      '[data-hist-de="' + CSS.escape(combo) + '"]');
+    if(!caja) return;
+    if(!caja.hidden){ caja.hidden = true; return; }
+    h.disabled = true;
+    try{
+      const serie = await (await fetch(base + "api/opciones/historico/" +
+        encodeURIComponent(combo))).json();
+      caja.innerHTML = sprMiniGrafico(serie || [],
+                                      (sprDatos && sprDatos._umbral) || 33);
+      caja.hidden = false;
+    }catch(e){
+      caja.innerHTML = '<div class="msg error">No se pudo leer.</div>';
+      caja.hidden = false;
+    }finally{ h.disabled = false; }
+    return;
+  }
+  /* IOL no informa el PPC de las opciones, asi que el riesgo no se
+     puede rehacer solo: queda el de las puntas del dia en que se cargo
+     la posicion. Esto deja poner el neto que se ejecuto de verdad. */
+  const rb = ev.target.closest("[data-riesgo]");
+  if(rb){
+    const LOTE = 100;
+    const lotes = parseFloat(rb.dataset.l) || 1;
+    const ancho = parseFloat(rb.dataset.a) || 0;
+    const riesgo = parseFloat(rb.dataset.r) || 0;
+    const credito = rb.dataset.e === "BEAR_CALL";
+    const actual = credito ? (ancho - riesgo) * LOTE * lotes
+                           : riesgo * LOTE * lotes;
+    const txt = prompt(credito
+      ? "¿Cuánto cobraste en total por la estructura, neto de comisiones?"
+      : "¿Cuánto pagaste en total por la estructura, neto de comisiones?",
+      actual.toFixed(2));
+    if(txt === null) return;
+    const total = parseFloat(txt);
+    if(!(total > 0)){ alert("Poné un importe mayor que cero."); return; }
+    const porAccion = total / (LOTE * lotes);
+    const nuevo = credito ? ancho - porAccion : porAccion;
+    if(!(nuevo > 0) || nuevo >= ancho){
+      alert("Con ese importe el riesgo queda fuera del ancho de la " +
+            "estructura. Revisá el número.");
+      return;
+    }
+    rb.disabled = true;
+    try{
+      await fetch(base + "api/opciones/posiciones/" + rb.dataset.riesgo, {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({riesgo: Math.round(nuevo * 10000) / 10000})});
+      await cargarOpcPosiciones();
+    }catch(e){ alert("No se pudo guardar."); }
+    finally{ rb.disabled = false; }
+    return;
+  }
+
   const b = ev.target.closest("[data-cerrar],[data-editar],[data-quitar]");
   if(!b) return;
   const id = b.dataset.cerrar || b.dataset.editar || b.dataset.quitar;
@@ -3706,22 +3787,33 @@ async function cargarAlertas(){
        su tarjeta, con la tenencia y el rendimiento al lado. Acá quedan
        las de búsqueda: lo que todavía no tenés. */
     const busqueda = (d.alertas || []).filter(a => !a.estrategia_id);
-    const vigilancia = (d.alertas || []).length - busqueda.length;
-    const pie = vigilancia
-      ? '<div class="nota">' + vigilancia + ' alerta' +
-        (vigilancia === 1 ? "" : "s") + ' de vigilancia, dentro de su ' +
-        'estrategia.</div>' : "";
+    const vigilancia = (d.alertas || []).filter(a => a.estrategia_id);
+    pintarVigilancia(vigilancia);
     if(!busqueda.length){
-      out.innerHTML = '<div class="vacio">Ninguna alerta de búsqueda.</div>' +
-        pie;
+      out.innerHTML = '<div class="vacio">Ninguna alerta de búsqueda.</div>';
       return;
     }
-    out.innerHTML = busqueda.map(alFila).join("") + pie +
+    out.innerHTML = busqueda.map(alFila).join("") +
       (d.hay_rueda === false ? '<div class="nota">Mercado cerrado: los ' +
         'precios son los de la última rueda.</div>' : "");
   }catch(e){
     out.innerHTML = '<div class="msg error">No se pudieron leer.</div>';
   }
+}
+
+/* La tarjeta las muestra en contexto pero no las deja tocar, y los
+   botones de editar y borrar viven en esta pantalla. Sin este bloque,
+   una alerta que pasa a vigilancia deja de poder modificarse. */
+function pintarVigilancia(lista){
+  const caja = $("#al-vig"), det = $("#al-vig-caja");
+  if(!caja || !det) return;
+  det.hidden = !lista.length;
+  const nombres = {};
+  estrOtras.concat(estrPar).forEach(e => { nombres[e.id] = e.nombre; });
+  caja.innerHTML = lista.map(a =>
+    alFila(a) + '<div class="pos-pie" style="margin:-8px 0 12px">vigila ' +
+    esc(nombres[a.estrategia_id] || ("estrategia " + a.estrategia_id)) +
+    '</div>').join("");
 }
 
 function alFormulario(a){
@@ -3745,11 +3837,7 @@ function alFormulario(a){
       '<option value="">Nada que ya tengas (búsqueda)</option>' +
       '<option value="auto"' + (a ? "" : " selected") +
         '>Deducirlo de los símbolos</option>' +
-      (estrOtras.concat(estrPar).filter((e, i, l) =>
-        l.findIndex(x => x.id === e.id) === i)
-        .map(e => '<option value="' + e.id + '"' +
-          (a && a.estrategia_id === e.id ? " selected" : "") + '>' +
-          esc(e.nombre) + '</option>').join("")) +
+      opcionesEstrategia(a && a.estrategia_id) +
       '</select></div></div>' +
     '<div id="al-conds">' + conds.map(alCondFila).join("") + '</div>' +
     '<div class="op-acc">' +
@@ -3758,6 +3846,20 @@ function alFormulario(a){
         'Guardar</button>' +
       '<button class="secundario" id="al-cancelar">Cancelar</button>' +
     '</div></div>';
+}
+
+/* Si la estrategia de la alerta no esta en la lista -porque todavia no
+   se cargaron- igual va como opcion elegida. Sin esto, abrir el
+   formulario y guardar sin tocar nada la pasaria en silencio de
+   vigilancia a busqueda. */
+function opcionesEstrategia(eid){
+  const lista = estrOtras.concat(estrPar).filter((e, i, l) =>
+    l.findIndex(x => x.id === e.id) === i);
+  if(eid && !lista.some(e => e.id === eid))
+    lista.push({id: eid, nombre: "estrategia " + eid});
+  return lista.map(e => '<option value="' + e.id + '"' +
+    (eid === e.id ? " selected" : "") + '>' + esc(e.nombre) +
+    '</option>').join("");
 }
 
 function alCondFila(c){
@@ -3780,7 +3882,10 @@ $("#al-nueva").addEventListener("click", () => {
   $("#al-out").innerHTML = alFormulario(null);
 });
 
-$("#al-out").addEventListener("click", async ev => {
+/* El mismo manejador para las dos listas: las de busqueda y las de
+   vigilancia tienen los mismos botones y la misma alerta atras. Dos
+   copias del manejador se desincronizan. */
+async function alClick(ev){
   const t = ev.target;
   if(t.id === "al-cancelar"){ cargarAlertas(); return; }
   if(t.id === "al-mas"){
@@ -3839,9 +3944,13 @@ $("#al-out").addEventListener("click", async ev => {
       if(!a) return;
       alEditando = a.id;
       $("#al-out").innerHTML = alFormulario(a);
+      $("#al-out").scrollIntoView({block: "nearest"});
     }
   }catch(e){ alert("No se pudo."); }
-});
+}
+
+$("#al-out").addEventListener("click", alClick);
+$("#al-vig").addEventListener("click", alClick);
 
 
 /* ---------- próximos cobros ---------- */

@@ -491,3 +491,70 @@ def motivos_desarme(pos, val, spot, cfg):
         if contra >= mov:
             out.append("el papel se movio %.1f%% en contra" % contra)
     return out
+
+
+# -- reconstruccion desde la tenencia ---------------------------------
+
+def desde_tenencia(pos, tenencias, comisiones=None, derechos=None, iva_pct=0):
+    """Lotes y riesgo de una posicion, sacados de lo que hay en la cuenta.
+
+    Los lotes salen de la tenencia y no de lo que se cargo a mano: el
+    broker informa la pata lanzada con cantidad negativa, asi que las dos
+    puntas estan. Una opcion da derecho sobre 100 acciones, de ahi la
+    division.
+
+    El riesgo se rehace con los PPC de las dos patas, con la misma
+    formula con la que lo calcula el screener: en un spread de debito es
+    lo que se pago neto, y en uno de credito es el ancho menos la prima
+    cobrada. Si a alguna pata le falta el PPC no se inventa nada y queda
+    el riesgo con el que se cargo la posicion.
+
+    Devuelve (datos, avisos). `datos` trae solo lo que se pudo resolver.
+    """
+    avisos = []
+    out = {}
+    sc, sv = pos.get("sim_compra"), pos.get("sim_venta")
+    if not (sc and sv):
+        return out, ["la posición no tiene los símbolos de las dos patas"]
+
+    saldo, ppc = {}, {}
+    for t in tenencias:
+        s = t["simbolo"]
+        if s in (sc, sv):
+            saldo[s] = saldo.get(s, 0) + (t["cantidad"] or 0)
+            if t.get("ppc"):
+                ppc[s] = t["ppc"] / (t.get("ppc_base") or 1)
+
+    q_compra, q_venta = saldo.get(sc, 0), saldo.get(sv, 0)
+    if not q_compra and not q_venta:
+        return out, ["ninguna de las dos patas está en la tenencia"]
+
+    lc, lv = q_compra / LOTE, abs(q_venta) / LOTE
+    if q_venta > 0:
+        avisos.append("%s figura comprada y en esta estructura va lanzada"
+                      % sv)
+    if abs(lc - lv) > 1e-9:
+        avisos.append("las patas no coinciden: %g contra %g lotes" % (lc, lv))
+    lotes = min(lc, lv)
+    if lotes > 0:
+        out["lotes"] = int(lotes) if float(lotes).is_integer() else lotes
+
+    if sc not in ppc or sv not in ppc:
+        faltan = [s for s in (sc, sv) if s not in ppc]
+        avisos.append("sin PPC de %s: el riesgo queda como se cargó"
+                      % ", ".join(faltan))
+        return out, avisos
+
+    pago, cobro = ppc[sc], ppc[sv]
+    comision = (pago + cobro) * _costos(comisiones or {}, derechos, iva_pct)
+    ancho = pos.get("ancho") or 0
+    if pos.get("estructura") == "BEAR_CALL":
+        riesgo = ancho - (cobro - pago - comision)
+    else:
+        riesgo = pago - cobro + comision
+    if riesgo <= 0:
+        avisos.append("con esos PPC el riesgo da cero o negativo")
+        return out, avisos
+    out["riesgo"] = round(riesgo, 4)
+    out["riesgo_pct"] = round(riesgo / ancho * 100, 2) if ancho else None
+    return out, avisos

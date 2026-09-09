@@ -1190,11 +1190,20 @@ class Monitor:
         if salidas:
             self._avisar_desarme(salidas)
 
-        # cierre diario por combinacion
+        # Cierre diario por combinacion, para el grafico. No se guarda
+        # todo el panel: con tres vencimientos y treinta bases son miles
+        # de filas por dia y la mayoria no las vas a mirar nunca. Se
+        # guardan las que tenes abiertas y las que estan en zona de
+        # alerta, que son las dos que uno sigue.
         hoy = date.today().isoformat()
+        umbral = float(par.get("riesgo_max_alarma_pct") or 33)
+        lotes_min = int(par.get("lotes_min") or 2)
+        mias = {p["combo"] for p in db.opc_posiciones(abiertas=True)}
         db.opc_guardar_cierres([
             (f["id"], hoy, f["riesgo_pct"], f["riesgo"], f["lotes"],
-             f["spot"]) for f in filas])
+             f["spot"]) for f in filas
+            if f["id"] in mias
+            or (f["riesgo_pct"] <= umbral and f["lotes"] >= lotes_min)])
         return len(avisos)
 
     NOMBRE_ESTRUCTURA = {"BULL_CALL": "Bull con calls",

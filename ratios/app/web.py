@@ -592,8 +592,22 @@ def crear_app(monitor):
         except Exception:
             series, spots, viejo, desde = [], {}, True, None
             par = monitor.parametros_opciones()
+        # Los lotes y el riesgo se rehacen con lo que hay en la cuenta.
+        # Lo cargado a mano queda de respaldo: si el broker no informa
+        # alguna pata o falta un PPC, se sigue viendo lo que habia.
+        tenencias = db.tenencias()
         salida = []
         for p in db.opc_posiciones():
+            if not p["cerrada_el"]:
+                real, avisos = OP.desde_tenencia(
+                    p, tenencias, monitor.cfg.get("comisiones") or {},
+                    monitor.cfg.get("derechos_mercado") or {},
+                    monitor.cfg.get("iva_pct") or 0)
+                p["cargado"] = {"lotes": p["lotes"], "riesgo": p["riesgo"]}
+                p["lotes_de_tenencia"] = "lotes" in real
+                p["riesgo_de_ppc"] = "riesgo" in real
+                p.update(real)
+                p["avisos"] = avisos
             v = OP.valuar(p, series) if not p["cerrada_el"] else None
             p["valuacion"] = v
             if not p["cerrada_el"]:
