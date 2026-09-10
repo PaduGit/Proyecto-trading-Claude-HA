@@ -1,5 +1,29 @@
 # Registro de cambios
 
+## 0.36.0
+
+**El ratio del diff iba al reves.** Era nominales que salen por cada uno
+que entra, o sea el inverso del ratio del panel: rotar 1.000 AO28 a 1.047
+AO29 con el par AO28/AO29 en 1,047 mostraba 0,955 y no habia forma de
+comparar los dos numeros de un vistazo. Ahora es cuantos entran por cada
+uno que sale, y la propuesta lo dice con los tickers. Solo afecta
+propuestas pendientes: el ledger nunca guardo el ratio.
+
+**Descartar para operar dejo de ser descartar para valuar.** Una especie
+que no opera hace mas de `dias_sin_operar` se sigue sacando de las
+señales -una punta suelta genera rulos falsos y desvios de curva
+falsos-, pero ya no se tira: queda aparte, marcada y con la fecha de su
+ultima operacion, y se usa para valuar. Antes esas posiciones no
+aparecian en la cartera y el total mentia por omision, que es peor que un
+precio de hace diez dias. La cartera avisa cuales y de que dia son.
+
+**Boton "Ver operaciones" en Explorar.** Trae los ultimos noventa dias
+crudos de las dos cuentas, contra `/api/v2/operaciones`. De ahi tienen
+que salir las fechas de alta -ninguna de las 43 posiciones tiene-, el PPC
+exacto, las comisiones reales y las rentas duplicadas. Todavia no importa
+nada: primero hay que ver que campos devuelve. Armar el importador contra
+un formato supuesto es como se metieron las TIR de 152%.
+
 ## 0.35.0
 
 **El diff aprendio a leer cantidades negativas.** Miraba la cantidad y

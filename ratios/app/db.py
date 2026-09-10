@@ -1981,7 +1981,11 @@ def detectar_movimientos(broker, precios=None):
                 "broker": broker, "desde": desde, "hasta": hasta,
                 "tipo": "rotacion", "sale": sale, "cant_sale": cs,
                 "entra": entra, "cant_entra": ce,
-                "ratio": (cs / ce) if ce else None, "grupo_id": gid,
+                # Cuantos entran por cada uno que sale. Al reves daba el
+                # inverso del ratio del panel: rotar 1.000 AO28 a 1.047
+                # AO29 con el par AO28/AO29 en 1,047 mostraba 0,955 y no
+                # habia forma de comparar los dos numeros de un vistazo.
+                "ratio": (ce / cs) if cs else None, "grupo_id": gid,
                 "signo": 1,
                 "grupo": gnom,
                 "estrategia_id": _estrategia_de(sale) or _estrategia_de(entra),

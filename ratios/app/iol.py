@@ -231,6 +231,25 @@ class IOL:
         return self._get("/api/v2/%s/Titulos/%s/Opciones" % (mercado, simbolo),
                          timeout=45)
 
+    def operaciones(self, desde=None, hasta=None, estado="terminadas"):
+        """Las operaciones de la cuenta, para reconstruir el diario.
+
+        Es la unica fuente de la fecha en que entro cada posicion: el
+        portafolio da cantidades y nada mas. Tambien trae el precio y el
+        neto liquidado, que es de donde salen el PPC exacto y las
+        comisiones reales.
+
+        No se parsea todavia: la forma de la respuesta se mira primero
+        desde Explorar. Armar el importador contra un formato supuesto
+        es como se metio el error de las TIR.
+        """
+        q = ["estado=%s" % estado]
+        if desde:
+            q.append("fechaDesde=%s" % desde)
+        if hasta:
+            q.append("fechaHasta=%s" % hasta)
+        return self._get("/api/v2/operaciones?" + "&".join(q), timeout=60)
+
     def serie(self, mercado, simbolo, desde, hasta, ajustada="sinAjustar"):
         path = ("/api/v2/%s/Titulos/%s/Cotizacion/seriehistorica/%s/%s/%s"
                 % (mercado, simbolo, desde, hasta, ajustada))

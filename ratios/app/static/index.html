@@ -668,7 +668,13 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
     <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
       <button class="secundario" id="probar-ec" style="width:auto;padding:0 14px">
         Ver estado de cuenta</button>
+      <button class="secundario" id="probar-ops" style="width:auto;padding:0 14px">
+        Ver operaciones</button>
     </div>
+    <p class="nota">Las operaciones de los últimos noventa días, crudas. De
+      ahí tienen que salir las fechas de alta, el PPC exacto y las
+      comisiones reales. Todavía no se importa nada: primero hay que ver
+      qué campos trae.</p>
     <p class="nota">Devuelve la respuesta cruda de cada cuenta
       configurada, sin interpretarla. Es para ver de qué campo sale cada
       número cuando un saldo no cierra.</p>
@@ -2392,6 +2398,33 @@ $("#probar-ec").addEventListener("click", async e => {
   }finally{ b.disabled = false; }
 });
 
+$("#probar-ops").addEventListener("click", async e => {
+  e.preventDefault(); e.stopPropagation();
+  const out = $("#ec-out");
+  const b = e.target;
+  b.disabled = true;
+  out.innerHTML = '<div class="nota">Consultando…</div>';
+  const hoy = new Date();
+  const antes = new Date(hoy.getTime() - 90 * 86400000);
+  const iso = f => f.toISOString().slice(0, 10);
+  try{
+    const d = await (await fetch(base + "api/iol/operaciones", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({desde: iso(antes), hasta: iso(hoy)})})).json();
+    out.innerHTML = (d.cuentas || []).map(c =>
+      '<div style="margin-top:10px"><b>' + esc(c.broker) + '</b>' +
+      (c.error ? '<div class="msg error">' + esc(c.error) + '</div>'
+               : '<pre style="font-family:var(--mono);font-size:10px;' +
+                 'white-space:pre-wrap;word-break:break-all;' +
+                 'background:var(--panel);border:1px solid var(--rule);' +
+                 'padding:8px;border-radius:4px;max-height:50vh;overflow:auto">' +
+                 esc(JSON.stringify(c.respuesta, null, 1)) + '</pre>') +
+      '</div>').join("") || '<div class="vacio">Sin cuentas.</div>';
+  }catch(err){
+    out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
+  }finally{ b.disabled = false; }
+});
+
 $("#probar-badlar").addEventListener("click", async e => {
   e.preventDefault(); e.stopPropagation();
   try{
@@ -4056,8 +4089,8 @@ async function cargarPropuestos(){
     out.innerHTML = p.map(m => {
       let qué;
       if(m.tipo === "rotacion")
-        qué = esc(m.sale) + " → " + esc(m.entra) +
-          " · ratio " + num(m.ratio, 4);
+        qué = esc(m.sale) + " → " + esc(m.entra) + " · " +
+          num(m.ratio, 4) + " " + esc(m.entra) + " por cada " + esc(m.sale);
       else if(m.tipo === "aporte")
         qué = "Entró " + ent(m.cant_entra) + " de " + esc(m.entra);
       else
@@ -4561,6 +4594,15 @@ function pintarCartera(d){
         : "total oculto") +
       ' <button id="cart-ojo" style="margin-left:8px">' +
       (cartTotal ? "Ocultar" : "Ver") + '</button></div>';
+  /* Valuar con un precio de hace días es mejor que no valuar, pero hay
+     que decirlo: el total es real, la última punta no. */
+  if((d.precios_viejos || []).length){
+    h += '<div class="cart-sub" style="opacity:.8">' +
+      d.precios_viejos.length + ' valuada' +
+      (d.precios_viejos.length === 1 ? "" : "s") + ' con precios viejos: ' +
+      d.precios_viejos.map(v => esc(v[0]) + (v[1] ? " (" + esc(v[1]) + ")" : ""))
+        .join(" · ") + '</div>';
+  }
   if(res != null){
     /* El porcentaje se muestra siempre: no revela cuanto hay. */
     h += '<div class="cart-res" style="color:' + tono + '">' +

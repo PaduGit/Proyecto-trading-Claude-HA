@@ -258,10 +258,12 @@ def crear_app(monitor):
         """Precio de referencia de todo lo que ya esta en cache.
 
         No pide nada: se usa al guardar la tenencia, para que el diff
-        registre el precio del momento de la foto, y para valuar.
+        registre el precio del momento de la foto, y para valuar. Incluye
+        las que no operan hace dias: para valuar, un precio viejo es
+        mucho mejor que ninguno.
         """
-        return {s: c["ref"] for s, c in monitor.cotizaciones_vigentes().items()
-                if c.get("ref")}
+        return {s: c["ref"] for s, c in
+                monitor.cotizaciones_para_valuar().items() if c.get("ref")}
 
     def _precios_para(grupo):
         """Precio de referencia de cada ticker del grupo.
@@ -1209,6 +1211,28 @@ def crear_app(monitor):
                 salida.append({"broker": nombre, "error": str(e)})
         return jsonify({"cuentas": salida})
 
+    @app.post("/api/iol/operaciones")
+    def iol_operaciones():
+        """La respuesta cruda de las operaciones, sin interpretar.
+
+        De aca tienen que salir las fechas de alta, el PPC exacto y las
+        comisiones reales. Primero se mira que devuelve: armar el
+        importador contra un formato supuesto es como se metieron las
+        TIR de 152%.
+        """
+        d = request.get_json(silent=True) or {}
+        desde = (d.get("desde") or "").strip() or None
+        hasta = (d.get("hasta") or "").strip() or None
+        salida = []
+        for nombre, cli in _cuentas_iol():
+            try:
+                with cli.como("boton"):
+                    salida.append({"broker": nombre,
+                                   "respuesta": cli.operaciones(desde, hasta)})
+            except IOLError as e:
+                salida.append({"broker": nombre, "error": str(e)})
+        return jsonify({"cuentas": salida})
+
     @app.post("/api/tenencias/traer")
     def tenencias_traer():
         """Baja la tenencia de las cuentas de IOL y las carga.
@@ -1404,6 +1428,13 @@ def crear_app(monitor):
         # Sin precios, decir por que: si los paneles estan caidos no es
         # que falte esperar el proximo ciclo.
         r["fallas"] = list(getattr(monitor, "orleans_fallas", []) or [])
+        # Las que se valuaron con un precio de dias anteriores. El total
+        # no miente por omision, pero conviene saber de que esta hecho.
+        viejas = getattr(monitor, "_viejas", None) or {}
+        r["precios_viejos"] = sorted(
+            {f["simbolo"]: viejas[f["simbolo"]].get("ultima_operacion")
+             for f in (r.get("posiciones") or [])
+             if f["simbolo"] in viejas}.items())
         return jsonify(r)
 
     @app.get("/api/cobros")

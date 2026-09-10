@@ -29,6 +29,9 @@ class Monitor:
         # editan desde la app y sobreviven a una reinstalacion via el
         # respaldo. La lista de cfg solo sirvio para migrarlos.
         self._pares_cache = []
+        # Cotizaciones descartadas por no operar hace dias: no sirven
+        # para operar, si para valuar.
+        self._viejas = {}
         self._pares_ts = None
 
         self.snapshot = {}
@@ -319,6 +322,7 @@ class Monitor:
             except Exception as e:
                 log.warning("byma forzado: %s", e)
         mapa, planos, total, fallas = {}, 0, 0, []
+        self._viejas = {}
         dias = self.cfg.get("dias_sin_operar")
         dias = 7 if dias is None else int(dias)
         descartados = []
@@ -339,10 +343,18 @@ class Monitor:
                 sim = str((t or {}).get("simbolo") or "").strip().upper()
                 if not sim:
                     continue
-                if self._vencido(t.get("fecha"), dias):
-                    descartados.append(sim)
-                    continue
+                vieja = self._vencido(t.get("fecha"), dias)
                 c = normalizar(t, sim)
+                if vieja:
+                    # No se tira: descartar para operar no es lo mismo
+                    # que descartar para valuar. Una ON que no opera hace
+                    # diez dias no sirve para una señal, pero su ultimo
+                    # precio vale mucho mas que no valuarla.
+                    descartados.append(sim)
+                    c["vieja"] = True
+                    c["ultima_operacion"] = str(t.get("fecha") or "")[:10]
+                    self._viejas[sim] = c
+                    continue
                 c["instrumento"] = inst
                 c["descripcion"] = t.get("descripcion") or ""
                 c["plazo_panel"] = t.get("plazo")
@@ -526,6 +538,20 @@ class Monitor:
         if mapa:
             return mapa
         return self.mapa_guardado()
+
+    def cotizaciones_para_valuar(self):
+        """Las vigentes mas las que no operan hace dias, marcadas.
+
+        Para una señal -un ratio, un canje, un rulo- una punta suelta de
+        hace una semana es ruido y queda afuera. Para valuar la cartera
+        es lo contrario: sin ese precio la posicion no aparece y el total
+        miente mas que el precio viejo. Las viejas vienen con `vieja` y
+        con la fecha de su ultima operacion, para que se pueda avisar.
+        """
+        mapa = dict(self.cotizaciones_vigentes())
+        for sim, c in (getattr(self, "_viejas", None) or {}).items():
+            mapa.setdefault(sim, c)
+        return mapa
 
 
 
