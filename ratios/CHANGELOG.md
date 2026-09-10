@@ -1,5 +1,23 @@
 # Registro de cambios
 
+## 0.36.1
+
+**Todo lo de la API de IOL quedo junto**, dentro de "Consultar la API de
+IOL", con tres bloques: cuenta, instrumentos y ruta manual. En "Probar
+las fuentes" quedan solo BCRA y BYMA, que es lo que corresponde: eso
+prueba que la fuente responda, no consulta la API.
+
+**Las operaciones aceptan un rango de fechas.** Vacias, los ultimos
+noventa dias; con fechas, lo que se pida. Hace falta para las posiciones
+viejas: ninguna de las 43 tiene fecha de alta y la mayoria entro antes de
+esos noventa dias.
+
+**Dos botones de copiado.** "Copiar todo" deja el JSON entero; "Copiar
+resumen" deja cuantas operaciones hay de cada tipo, con que simbolos, y
+un ejemplo completo de cada uno. Pegar un año de operaciones desde el
+telefono no es viable, y el resumen alcanza para saber que tipos existen
+y como viene cada uno.
+
 ## 0.36.0
 
 **El ratio del diff iba al reves.** Era nominales que salen por cada uno
