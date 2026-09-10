@@ -1,5 +1,39 @@
 # Registro de cambios
 
+## 0.37.0
+
+**Fechas de alta y PPC reconstruidos desde las operaciones de IOL.**
+Ninguna de las 43 posiciones tenia fecha de alta, y sin ella el ajuste
+por evento societario es un supuesto y una reserva de valor no se puede
+medir desde el origen. El portafolio da cantidades y nada mas: la fecha
+solo esta en las operaciones.
+
+`operaciones.py` recorre las operaciones hacia adelante por simbolo,
+llevando la cantidad. El alta es **el ultimo cruce de cero hacia
+arriba**: si vendiste todo en 2020 y volviste a comprar en 2024, la
+posicion de hoy empezo en 2024. El PPC promedia solo las compras de la
+tenencia vigente.
+
+**Primero muestra, despues escribe.** El boton "Fechas de alta" clasifica
+en tres: las que cierran -la cantidad reconstruida es la que figura hoy-,
+las que no, con las dos cantidades y el motivo, y las que no tienen
+operaciones en el rango. Solo se guarda lo que cierra, y recien al
+confirmar. Si la cantidad no coincide, la fecha es de otra posicion.
+
+Las dos que se sabe que no van a cerrar: lo que entro por transferencia
+desde otro broker no tiene compra, y donde hubo split el broker ajusto la
+cantidad pero las operaciones viejas siguen en la escala anterior.
+
+**El PPC de las operaciones va sin comisiones**, asi que por defecto no
+pisa el que este cargado a mano. Hay un boton aparte para pisarlo.
+
+Se usan `cantidadOperada`, `precioOperado` y `montoOperado`, nunca
+`cantidad`, `precio` ni `monto`: los primeros son lo ejecutado y los
+segundos lo que se pidio, que a veces viene en pesos en vez de nominales.
+`montoOperado` ya trae la base de cotizacion aplicada, asi que el
+cociente contra cantidad por precio la delata sin tener que deducirla del
+tipo de tenencia.
+
 ## 0.36.1
 
 **Todo lo de la API de IOL quedo junto**, dentro de "Consultar la API de

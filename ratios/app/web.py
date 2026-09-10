@@ -15,6 +15,7 @@ import costos as CO
 import curva as CU
 import historico as H
 import opciones as OP
+import operaciones as OPS
 import posicion as P
 import respaldo
 from iol import IOLError
@@ -1232,6 +1233,60 @@ def crear_app(monitor):
             except IOLError as e:
                 salida.append({"broker": nombre, "error": str(e)})
         return jsonify({"cuentas": salida})
+
+    @app.post("/api/iol/operaciones/altas")
+    def iol_altas():
+        """Reconstruye fecha de alta y PPC desde las operaciones.
+
+        Con `aplicar` en false -el default- no escribe nada: devuelve que
+        cierra y que no. Solo se guarda lo que cierra: si la cantidad que
+        sale de las operaciones no es la que figura hoy, la fecha de alta
+        es de otra posicion, y una fecha mal puesta arrastra el ajuste
+        por evento societario y la medicion desde el origen.
+        """
+        d = request.get_json(silent=True) or {}
+        desde = (d.get("desde") or "").strip() or None
+        hasta = (d.get("hasta") or "").strip() or None
+        aplicar = bool(d.get("aplicar"))
+        pisar = bool(d.get("pisar"))
+        salida = []
+        for nombre, cli in _cuentas_iol():
+            try:
+                with cli.como("boton"):
+                    ops = cli.operaciones(desde, hasta)
+            except IOLError as e:
+                salida.append({"broker": nombre, "error": str(e)})
+                continue
+            if not isinstance(ops, list):
+                salida.append({"broker": nombre,
+                               "error": "respuesta inesperada"})
+                continue
+            rec = OPS.reconstruir(ops)
+            ten = db.tenencias(nombre)
+            r = OPS.conciliar(rec, ten)
+            r["broker"] = nombre
+            r["operaciones"] = len(ops)
+            if aplicar:
+                escritas = 0
+                for f in r["cierran"]:
+                    campos = {"fecha_alta": f["fecha_alta"],
+                              "precision": "exacta"}
+                    # El PPC cargado a mano no se pisa salvo que se pida:
+                    # el de las operaciones va sin comisiones y el tuyo
+                    # puede ser mejor.
+                    actual = next((t for t in ten
+                                   if t["simbolo"] == f["simbolo"]), None)
+                    if f["ppc"] and (pisar or not (actual or {}).get("ppc")):
+                        campos["ppc"] = f["ppc"]
+                        campos["ppc_base"] = 1
+                    try:
+                        db.actualizar_tenencia(nombre, f["simbolo"], campos)
+                        escritas += 1
+                    except (TypeError, ValueError) as e:
+                        log.warning("alta %s: %s", f["simbolo"], e)
+                r["escritas"] = escritas
+            salida.append(r)
+        return jsonify({"cuentas": salida, "aplicado": aplicar})
 
     @app.post("/api/tenencias/traer")
     def tenencias_traer():

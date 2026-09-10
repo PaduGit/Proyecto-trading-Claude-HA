@@ -700,6 +700,8 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
         Estado de cuenta</button>
       <button class="secundario" id="probar-ops" style="width:auto;padding:0 14px">
         Operaciones</button>
+      <button class="secundario" id="probar-altas" style="width:auto;padding:0 14px">
+        Fechas de alta</button>
     </div>
     <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;
                 align-items:center">
@@ -713,6 +715,9 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       número cuando un saldo no cierra. Las operaciones, sin fechas, traen
       los últimos noventa días; pedilas por año para las posiciones
       viejas.</p>
+    <p class="nota">"Fechas de alta" recorre las operaciones hacia adelante
+      y arma la fecha en que empezó la posición que tenés hoy. Primero
+      muestra qué cierra y qué no; no escribe hasta que lo confirmes.</p>
     <div id="ec-out"></div>
 
     <div class="filtro-etq" style="margin:14px 0 6px">Instrumentos</div>
@@ -2407,6 +2412,7 @@ $("#probar-ec").addEventListener("click", async e => {
 });
 
 let opsUlt = null;
+let altasUlt = null;
 
 /* Cuenta cuantas hay de cada tipo y deja un ejemplo de cada uno. Es lo
    que hace falta para escribir el importador sin tener que pegar miles
@@ -2438,11 +2444,73 @@ function opsResumen(d){
 
 $("#ec-out").addEventListener("click", ev => {
   const b = ev.target;
+  if(b.id === "altas-aplicar" || b.id === "altas-pisar"){
+    pedirAltas(true, b.id === "altas-pisar", b);
+    return;
+  }
   if(!opsUlt) return;
   if(b.id === "ops-copiar")
     copiarTexto(JSON.stringify(opsUlt, null, 1), b);
   else if(b.id === "ops-resumen")
     copiarTexto(opsResumen(opsUlt), b);
+});
+
+async function pedirAltas(aplicar, pisar, btn){
+  const out = $("#ec-out");
+  const hoy = new Date();
+  const iso = f => f.toISOString().slice(0, 10);
+  const desde = $("#ops-desde").value ||
+                iso(new Date(hoy.getTime() - 90 * 86400000));
+  const hasta = $("#ops-hasta").value || iso(hoy);
+  btn.disabled = true;
+  out.innerHTML = '<div class="nota">Reconstruyendo…</div>';
+  try{
+    const d = await (await fetch(base + "api/iol/operaciones/altas", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({desde, hasta, aplicar, pisar})})).json();
+    altasUlt = d;
+    out.innerHTML = (d.cuentas || []).map(c => {
+      if(c.error) return '<div style="margin-top:10px"><b>' + esc(c.broker) +
+        '</b><div class="msg error">' + esc(c.error) + '</div></div>';
+      const fila = f => '<div class="fila"><span>' + esc(f.simbolo) +
+        '</span><span class="t">' +
+        (f.fecha_alta ? esc(f.fecha_alta) : "—") +
+        (f.motivo ? " · " + esc(f.motivo) + " (" + ent(f.cantidad) +
+          " contra " + ent(f.reconstruida) + ")"
+          : (f.ppc ? " · PPC " + num(f.ppc, 2) : "")) +
+        '</span></div>';
+      return '<div style="margin-top:10px"><b>' + esc(c.broker) + '</b>' +
+        ' <span class="t">' + c.operaciones + ' operaciones</span>' +
+        (c.escritas !== undefined
+          ? '<div class="msg">' + c.escritas + ' escritas.</div>' : "") +
+        '<div class="pos-pie" style="display:block;margin-top:6px">Cierran (' +
+          c.cierran.length + ')</div>' +
+        (c.cierran.map(fila).join("") ||
+          '<div class="vacio">Ninguna.</div>') +
+        (c.difieren.length
+          ? '<div class="pos-pie" style="display:block;margin-top:6px">' +
+            'No cierran (' + c.difieren.length + ')</div>' +
+            c.difieren.map(fila).join("") : "") +
+        (c.sin_operaciones.length
+          ? '<div class="nota" style="margin-top:6px">Sin operaciones en el ' +
+            'rango: ' + c.sin_operaciones.map(x => esc(x.simbolo)).join(", ") +
+            '</div>' : "") +
+        '</div>';
+    }).join("") || '<div class="vacio">Sin cuentas.</div>';
+    if(!aplicar && (d.cuentas || []).some(c => (c.cierran || []).length))
+      out.innerHTML += '<div class="acciones" style="margin-top:8px">' +
+        '<button class="primario" id="altas-aplicar">Guardar las que ' +
+        'cierran</button>' +
+        '<button id="altas-pisar">Guardar y pisar el PPC cargado</button>' +
+        '</div>';
+  }catch(err){
+    out.innerHTML = '<div class="msg error">No se pudo reconstruir.</div>';
+  }finally{ btn.disabled = false; }
+}
+
+$("#probar-altas").addEventListener("click", e => {
+  e.preventDefault(); e.stopPropagation();
+  pedirAltas(false, false, e.target);
 });
 
 $("#probar-ops").addEventListener("click", async e => {
