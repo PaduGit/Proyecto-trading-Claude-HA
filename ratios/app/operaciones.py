@@ -82,7 +82,47 @@ def base_de(op):
     return None
 
 
-def reconstruir(operaciones):
+def simbolo_base(sim, conocidos):
+    """`AO29D` es el mismo bono que `AO29`, pero solo si `AO29` existe.
+
+    La `D` final marca la especie que liquida en dolares y el broker la
+    opera con ticker propio, aunque en la tenencia figure sumada: AO29
+    daba 5.565 contra 5.471 reconstruidos, y la diferencia eran
+    exactamente los 94 nominales de una compra de AO29D.
+
+    No se corta la `D` a ciegas. `BDED` es un ticker entero y `BDE` no
+    existe: se corta solo cuando lo que queda tambien aparece, en las
+    operaciones o en la tenencia. Sacar una letra porque si es como se
+    inventan especies que no estan.
+    """
+    sim = (sim or "").strip().upper()
+    for suf in (" US$", " USD"):
+        if sim.endswith(suf):
+            sim = sim[:-len(suf)].strip()
+    if len(sim) > 2 and sim.endswith("D") and sim[:-1] in conocidos:
+        return sim[:-1]
+    return sim
+
+
+def factor_redondo(a, b):
+    """Si una cantidad es un multiplo limpio de la otra, cual.
+
+    Un 2 a 1 exacto no es una compra que falta: es un cambio de ratio del
+    CEDEAR o un split. Se dice, no se aplica.
+    """
+    if not (a and b):
+        return None
+    grande, chico = (a, b) if abs(a) >= abs(b) else (b, a)
+    if not chico:
+        return None
+    r = abs(grande / chico)
+    for f in (2, 3, 4, 5, 6, 8, 10, 20, 25, 50, 100):
+        if abs(r - f) < 0.005 * f:
+            return f
+    return None
+
+
+def reconstruir(operaciones, conocidos=None):
     """Por simbolo: cantidad, fecha de alta y PPC de la tenencia actual.
 
     La fecha de alta es el ultimo cruce de cero hacia arriba, no la
@@ -94,11 +134,15 @@ def reconstruir(operaciones):
     convencion del broker. **Va sin comisiones**: `montoOperado` es el
     bruto.
     """
+    limpias = [c for c in (limpiar(o) for o in operaciones) if c]
+    # Los simbolos que se sabe que existen: los de las operaciones mas
+    # los de la tenencia. Es contra esto que se decide si una `D` final
+    # es un sufijo o parte del nombre.
+    vistos = {c["simbolo"] for c in limpias} | set(conocidos or ())
     porsim = {}
-    for o in operaciones:
-        c = limpiar(o)
-        if c:
-            porsim.setdefault(c["simbolo"], []).append(c)
+    for c in limpias:
+        c["simbolo"] = simbolo_base(c["simbolo"], vistos)
+        porsim.setdefault(c["simbolo"], []).append(c)
 
     salida = {}
     for sim, ops in porsim.items():
@@ -148,6 +192,11 @@ def reconstruir(operaciones):
     return salida
 
 
+# Ni ARS ni MEP son titulos: son el saldo en moneda. Nunca van a tener
+# operaciones y solo ensucian el informe.
+SIN_OPERAR = ("moneda",)
+
+
 def conciliar(reconstruido, tenencia, tolerancia=0.01):
     """Compara lo reconstruido contra lo que hay, sin escribir nada.
 
@@ -164,14 +213,27 @@ def conciliar(reconstruido, tenencia, tolerancia=0.01):
     puede ser simplemente que se compraron antes.
     """
     cierran, difieren, sin_ops = [], [], []
+    conocidos = set(reconstruido)
+    # La tenencia trae AO29 y AO29D en una sola fila; las operaciones
+    # vienen separadas. Se agrupa por simbolo base de los dos lados.
+    juntas = {}
     for t in tenencia:
+        if (t.get("tipo") or "").lower() in SIN_OPERAR:
+            continue
+        base = simbolo_base(t["simbolo"], conocidos)
+        d = juntas.setdefault(base, {"simbolo": base, "cantidad": 0.0,
+                                     "filas": []})
+        d["cantidad"] += t.get("cantidad") or 0
+        d["filas"].append(t["simbolo"])
+
+    for t in juntas.values():
         sim = t["simbolo"]
         r = reconstruido.get(sim)
         actual = t.get("cantidad") or 0
         if not r:
             sin_ops.append({"simbolo": sim, "cantidad": actual})
             continue
-        fila = {"simbolo": sim, "cantidad": actual,
+        fila = {"simbolo": sim, "filas": t["filas"], "cantidad": actual,
                 "reconstruida": r["cantidad"], "fecha_alta": r["fecha_alta"],
                 "ppc": r["ppc"], "ppc_base": r["ppc_base"],
                 "base_cotizacion": r["base_cotizacion"],
@@ -180,8 +242,13 @@ def conciliar(reconstruido, tenencia, tolerancia=0.01):
         if abs(actual - r["cantidad"]) / ref <= tolerancia and r["fecha_alta"]:
             cierran.append(fila)
         else:
+            f = factor_redondo(actual, r["cantidad"])
             if not r["fecha_alta"]:
                 fila["motivo"] = "no se pudo ubicar el inicio"
+            elif f:
+                fila["motivo"] = ("parece un ajuste de %d a 1: split o "
+                                  "cambio de ratio del CEDEAR" % f)
+                fila["factor"] = f
             elif abs(r["cantidad"]) > abs(actual):
                 fila["motivo"] = "las operaciones dan más de lo que hay"
             else:

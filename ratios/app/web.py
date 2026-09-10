@@ -1261,29 +1261,40 @@ def crear_app(monitor):
                 salida.append({"broker": nombre,
                                "error": "respuesta inesperada"})
                 continue
-            rec = OPS.reconstruir(ops)
             ten = db.tenencias(nombre)
+            rec = OPS.reconstruir(ops, [t["simbolo"] for t in ten])
             r = OPS.conciliar(rec, ten)
             r["broker"] = nombre
             r["operaciones"] = len(ops)
+            # La mas vieja que trajo la consulta. Si es posterior a lo
+            # que se pidio, el rango no llego tan atras y varias de las
+            # que "dan menos de lo que hay" son solo eso.
+            fechas = [str(o.get("fechaOperada") or "")[:10] for o in ops]
+            r["desde_real"] = min([f for f in fechas if f] or [""])
             if aplicar:
                 escritas = 0
                 for f in r["cierran"]:
                     campos = {"fecha_alta": f["fecha_alta"],
                               "precision": "exacta"}
+                    # La posicion puede estar en dos filas -AO29 y
+                    # AO29D-: el alta es la misma para las dos.
+                    destinos = f.get("filas") or [f["simbolo"]]
                     # El PPC cargado a mano no se pisa salvo que se pida:
                     # el de las operaciones va sin comisiones y el tuyo
                     # puede ser mejor.
-                    actual = next((t for t in ten
-                                   if t["simbolo"] == f["simbolo"]), None)
-                    if f["ppc"] and (pisar or not (actual or {}).get("ppc")):
-                        campos["ppc"] = f["ppc"]
-                        campos["ppc_base"] = 1
-                    try:
-                        db.actualizar_tenencia(nombre, f["simbolo"], campos)
-                        escritas += 1
-                    except (TypeError, ValueError) as e:
-                        log.warning("alta %s: %s", f["simbolo"], e)
+                    for sim in destinos:
+                        actual = next((t for t in ten
+                                       if t["simbolo"] == sim), None)
+                        campos_sim = dict(campos)
+                        if f["ppc"] and (pisar
+                                         or not (actual or {}).get("ppc")):
+                            campos_sim["ppc"] = f["ppc"]
+                            campos_sim["ppc_base"] = 1
+                        try:
+                            db.actualizar_tenencia(nombre, sim, campos_sim)
+                            escritas += 1
+                        except (TypeError, ValueError) as e:
+                            log.warning("alta %s: %s", sim, e)
                 r["escritas"] = escritas
             salida.append(r)
         return jsonify({"cuentas": salida, "aplicado": aplicar})

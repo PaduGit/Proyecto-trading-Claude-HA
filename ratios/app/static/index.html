@@ -2473,6 +2473,8 @@ async function pedirAltas(aplicar, pisar, btn){
       if(c.error) return '<div style="margin-top:10px"><b>' + esc(c.broker) +
         '</b><div class="msg error">' + esc(c.error) + '</div></div>';
       const fila = f => '<div class="fila"><span>' + esc(f.simbolo) +
+        ((f.filas || []).length > 1
+          ? ' <span class="t">' + f.filas.map(esc).join("+") + '</span>' : "") +
         '</span><span class="t">' +
         (f.fecha_alta ? esc(f.fecha_alta) : "—") +
         (f.motivo ? " · " + esc(f.motivo) + " (" + ent(f.cantidad) +
@@ -2480,7 +2482,9 @@ async function pedirAltas(aplicar, pisar, btn){
           : (f.ppc ? " · PPC " + num(f.ppc, 2) : "")) +
         '</span></div>';
       return '<div style="margin-top:10px"><b>' + esc(c.broker) + '</b>' +
-        ' <span class="t">' + c.operaciones + ' operaciones</span>' +
+        ' <span class="t">' + c.operaciones + ' operaciones' +
+        (c.desde_real ? ", la más vieja del " + esc(c.desde_real) : "") +
+        '</span>' +
         (c.escritas !== undefined
           ? '<div class="msg">' + c.escritas + ' escritas.</div>' : "") +
         '<div class="pos-pie" style="display:block;margin-top:6px">Cierran (' +

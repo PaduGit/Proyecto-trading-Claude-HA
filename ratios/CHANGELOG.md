@@ -1,5 +1,27 @@
 # Registro de cambios
 
+## 0.37.1
+
+**`AO29D` cuenta como `AO29` al reconstruir.** La tenencia los muestra en
+una sola fila y las operaciones vienen con ticker separado: AO29 daba
+5.565 contra 5.471, y la diferencia eran exactamente los 94 nominales de
+una compra de AO29D. La `D` final no se corta a ciegas: solo cuando lo
+que queda tambien aparece en las operaciones o en la tenencia. `BDED` es
+un ticker entero y `BDE` no existe. Si la tenencia tiene las dos filas
+separadas, se suman para comparar y el alta se escribe en las dos.
+
+**Las monedas quedan fuera del informe.** ARS y MEP no son titulos y
+nunca van a tener operaciones.
+
+**Una diferencia que es un multiplo limpio se nombra como tal.** FSLR con
+200 contra 100 dice "parece un ajuste de 2 a 1: split o cambio de ratio
+del CEDEAR" en vez de "las operaciones dan menos de lo que hay". Se
+detectan factores de 2 a 100. No se aplica nada, solo se nombra.
+
+**Se informa la operacion mas vieja que trajo la consulta**, al lado del
+conteo. Si es posterior a lo que se pidio, el rango no llego tan atras y
+varias de las que no cierran son solo eso.
+
 ## 0.37.0
 
 **Fechas de alta y PPC reconstruidos desde las operaciones de IOL.**
