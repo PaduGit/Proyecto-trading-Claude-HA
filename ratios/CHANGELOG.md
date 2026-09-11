@@ -1,5 +1,12 @@
 # Registro de cambios
 
+## 0.38.1
+
+**Guardar una posicion de FCI reventaba.** `fci_nombre` quedo en la
+lista de campos permitidos de `actualizar_tenencia` pero no en la de los
+que se tratan como texto, asi que caia en el `float(v)` del final. Error
+introducido en 0.38.0.
+
 ## 0.38.0
 
 **Los FCI dejan de estar sin precio.** Existian como tipo de tenencia y

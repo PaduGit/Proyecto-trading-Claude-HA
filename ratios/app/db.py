@@ -1538,7 +1538,10 @@ def actualizar_tenencia(broker, simbolo, campos):
             v = (v or "").strip().lower() or None
             if v and v not in ("exacta", "mes", "antes"):
                 raise ValueError("precisión inválida: %s" % v)
-        elif k in ("fecha_alta", "revisar"):
+        elif k in ("fecha_alta", "revisar", "fci_nombre"):
+            # `fci_nombre` es el nombre del fondo en CAFCI. Sin esta
+            # linea caia en el `float(v)` de abajo y guardar la posicion
+            # de un FCI reventaba.
             v = (v or "").strip() or None
         elif k == "par_ticker":
             v = (v or "").strip().upper() or None
