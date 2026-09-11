@@ -250,6 +250,14 @@ class IOL:
             q.append("fechaHasta=%s" % hasta)
         return self._get("/api/v2/operaciones?" + "&".join(q), timeout=60)
 
+    def fci(self):
+        """Los fondos, con el valor de cuotaparte en `ultimoOperado`.
+
+        Un FCI no cotiza en ningun panel: no tiene puntas ni volumen, y
+        por eso no aparecia en ningun precio. Este endpoint lo da directo.
+        """
+        return self._get("/api/v2/Titulos/FCI", timeout=30)
+
     def serie(self, mercado, simbolo, desde, hasta, ajustada="sinAjustar"):
         path = ("/api/v2/%s/Titulos/%s/Cotizacion/seriehistorica/%s/%s/%s"
                 % (mercado, simbolo, desde, hasta, ajustada))
@@ -262,6 +270,28 @@ def _f(v):
         return x if x > 0 else 0.0
     except (TypeError, ValueError):
         return 0.0
+
+
+def normalizar_fci(d):
+    """Un fondo, en la forma de una cotizacion.
+
+    No hay puntas ni volumen: la cuotaparte es el precio, y se suscribe y
+    rescata a ese valor. `ref` es lo unico que hace falta para valuar.
+    """
+    v = _f(d.get("ultimoOperado"))
+    if not v:
+        return None
+    return {
+        "simbolo": (d.get("simbolo") or "").strip().upper(),
+        "ultimo": v, "compra": 0.0, "venta": 0.0,
+        "vol_compra": 0.0, "vol_venta": 0.0, "medio": 0.0, "ref": v,
+        "variacion": _f(d.get("variacion")),
+        "volumen": 0.0, "lote": 0.0,
+        "moneda": d.get("moneda") or "",
+        "instrumento": "fci",
+        "descripcion": d.get("descripcion") or "",
+        "rescate": d.get("rescate") or "",
+    }
 
 
 def normalizar(d, simbolo):

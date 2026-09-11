@@ -1077,7 +1077,7 @@ def init_alertas():
     for col in ("ppc REAL", "fecha_alta TEXT", "precision TEXT",
                 "ppc_base REAL", "stop REAL", "objetivo REAL",
                 "par_ticker TEXT", "ratio_min REAL", "ratio_max REAL",
-                "revisar TEXT"):
+                "revisar TEXT", "fci_nombre TEXT"):
         if col.split()[0] not in cols:
             c.execute("ALTER TABLE tenencia ADD COLUMN " + col)
     try:
@@ -1522,7 +1522,8 @@ def actualizar_tenencia(broker, simbolo, campos):
     actualizar contra el saldo real pero obliga a mandar todo para
     corregir un dato. Aca se cambia lo que se pasa y nada mas.
     """
-    permitidos = ("cantidad", "tipo", "ppc", "ppc_base", "fecha_alta",
+    permitidos = ("fci_nombre", "cantidad", "tipo", "ppc", "ppc_base",
+                  "fecha_alta",
                   "precision") + CAMPOS_POSICION
     sets, args = [], []
     for k in permitidos:

@@ -32,6 +32,8 @@ class Monitor:
         # Cotizaciones descartadas por no operar hace dias: no sirven
         # para operar, si para valuar.
         self._viejas = {}
+        # La cuotaparte de los fondos se publica una vez por dia.
+        self._fci_dia, self._fci_cache = None, {}
         self._pares_ts = None
 
         self.snapshot = {}
@@ -363,6 +365,12 @@ class Monitor:
                 if not (c.get("compra") or c.get("venta")):
                     planos += 1
                 mapa[sim] = c
+        # Los fondos van aparte: no estan en ningun panel y no tienen
+        # puntas. Solo se piden si hay alguno en la tenencia.
+        try:
+            mapa.update(self._bajar_fci())
+        except Exception as e:
+            log.debug("fci: %s", e)
         if total:
             self.hay_rueda = planos < total
         self.orleans_fallas = fallas
@@ -388,6 +396,51 @@ class Monitor:
         else:
             self.fuente = "iol"
         return mapa
+
+    def _bajar_fci(self):
+        """Cuotapartes de los fondos que tengas, por simbolo.
+
+        Un FCI existe como tipo de tenencia y no cotiza en ningun panel:
+        hasta ahora quedaba sin precio y su posicion no entraba en el
+        total de la cartera.
+        """
+        from iol import normalizar_fci
+        fondos = [t for t in db.tenencias()
+                  if (t.get("tipo") or "").lower() == "fci"]
+        if not fondos:
+            return {}
+        # Una vez por dia: la cuotaparte se publica una sola vez y pedirla
+        # cada ciclo gasta cupo para el mismo numero.
+        hoy = date.today().isoformat()
+        if self._fci_dia == hoy:
+            return dict(self._fci_cache)
+
+        out = {}
+        quiero = {t["simbolo"] for t in fondos}
+        try:
+            for f in (self.iol.fci() or []):
+                c = normalizar_fci(f)
+                if c and c["simbolo"] in quiero:
+                    out[c["simbolo"]] = c
+        except Exception as e:
+            log.debug("fci de iol: %s", e)
+
+        # Los que IOL no comercializa no estan en su listado. Para esos,
+        # el nombre del fondo en CAFCI, que se carga a mano una vez.
+        faltan = [t for t in fondos
+                  if t["simbolo"] not in out and t.get("fci_nombre")]
+        if faltan:
+            import cafci
+            catalogo = cafci.bajar()
+            for t in faltan:
+                c = cafci.cotizacion(catalogo.get(
+                    (t["fci_nombre"] or "").strip().lower()), hoy)
+                if c:
+                    c["simbolo"] = t["simbolo"]
+                    out[t["simbolo"]] = c
+
+        self._fci_dia, self._fci_cache = hoy, dict(out)
+        return out
 
     def bajar_byma(self):
         """Paneles de Open BYMA Data, con veinte minutos de retraso.

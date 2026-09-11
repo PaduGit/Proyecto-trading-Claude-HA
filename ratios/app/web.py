@@ -255,16 +255,50 @@ def crear_app(monitor):
 
     # -- posicion -----------------------------------------------------
 
+    def _mep():
+        """El MEP de la configuracion, o None si no se puede calcular."""
+        try:
+            return (BO.calcular_mep(
+                monitor.cotizaciones_vigentes(),
+                monitor.cfg.get("mep_par_pesos") or "AL30",
+                monitor.cfg.get("mep_par_usd") or "AL30D"
+            ).get("medio") or 0) or None
+        except Exception as e:
+            log.debug("mep: %s", e)
+            return None
+
     def _precios_vigentes():
-        """Precio de referencia de todo lo que ya esta en cache.
+        """Precio de referencia de todo lo que ya esta en cache, en pesos.
 
         No pide nada: se usa al guardar la tenencia, para que el diff
         registre el precio del momento de la foto, y para valuar. Incluye
         las que no operan hace dias: para valuar, un precio viejo es
         mucho mejor que ninguno.
+
+        Lo que cotiza en dolares se pasa a pesos al MEP. Un fondo en
+        dolares tiene la cuotaparte en 1,09: sumarla como si fueran 1,09
+        pesos no es un error chico, es la posicion entera desaparecida.
+        Si no hay MEP se deja afuera y figura sin precio, que avisa.
         """
-        return {s: c["ref"] for s, c in
-                monitor.cotizaciones_para_valuar().items() if c.get("ref")}
+        mep, out = None, {}
+        for sim, c in monitor.cotizaciones_para_valuar().items():
+            ref = c.get("ref")
+            if not ref:
+                continue
+            # Solo los fondos, a proposito. Un AO28D tambien cotiza en
+            # dolares, pero eso ya viene funcionando asi desde siempre y
+            # cambiarlo de paso movería el MEP y la valuacion entera sin
+            # haberlo verificado. Un FCI no tenia precio hasta ahora:
+            # ahi no hay comportamiento previo que romper.
+            if (c.get("instrumento") == "fci"
+                    and "dolar" in (c.get("moneda") or "").lower()):
+                if mep is None:
+                    mep = _mep()
+                if not mep:
+                    continue
+                ref = ref * mep
+            out[sim] = ref
+        return out
 
     def _precios_para(grupo):
         """Precio de referencia de cada ticker del grupo.
@@ -1298,6 +1332,24 @@ def crear_app(monitor):
                 r["escritas"] = escritas
             salida.append(r)
         return jsonify({"cuentas": salida, "aplicado": aplicar})
+
+    @app.get("/api/fci/buscar")
+    def fci_buscar():
+        """Busca un fondo en CAFCI por nombre, para atarlo a un simbolo.
+
+        Hay fondos con cuatro clases y nombres casi iguales; elegir mal
+        la clase da un precio parecido y equivocado, que es peor que no
+        tener ninguno. Por eso se elige de una lista y no se escribe.
+        """
+        import cafci
+        q = (request.args.get("q") or "").strip()
+        if len(q) < 3:
+            return jsonify({"fondos": [], "aviso": "escribí al menos 3 letras"})
+        try:
+            return jsonify({"fondos": cafci.buscar(q)[:25]})
+        except Exception as e:
+            log.warning("buscar fci: %s", e)
+            return jsonify({"error": "no se pudo consultar CAFCI"}), 502
 
     @app.post("/api/tenencias/traer")
     def tenencias_traer():

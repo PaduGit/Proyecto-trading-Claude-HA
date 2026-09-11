@@ -4986,6 +4986,42 @@ const CAMPO_POS = {
   revisar:    {etq: "Revisar el", tipo: "date"},
 };
 
+/* La busqueda va contra CAFCI y devuelve el nombre exacto. Escribirlo a
+   mano es como se elige mal la clase: precio parecido y equivocado. */
+let fciTimer = null;
+document.addEventListener("input", ev => {
+  const i = ev.target.closest("[data-fci-buscar]");
+  if(!i) return;
+  const caja = i.closest(".ten-edit").querySelector("[data-fci-out]");
+  clearTimeout(fciTimer);
+  fciTimer = setTimeout(async () => {
+    const q = i.value.trim();
+    if(q.length < 3){ caja.innerHTML = ""; return; }
+    caja.innerHTML = '<div class="nota">Buscando…</div>';
+    try{
+      const d = await (await fetch(base + "api/fci/buscar?q=" +
+        encodeURIComponent(q))).json();
+      if(d.error){ caja.innerHTML = '<div class="msg error">' +
+        esc(d.error) + '</div>'; return; }
+      caja.innerHTML = (d.fondos || []).length
+        ? d.fondos.map(f => '<div class="fila"><span>' + esc(f.nombre) +
+            '</span><span class="t">' + num(f.vcp, 6) + ' · ' +
+            esc(f.fecha) + ' <button data-fci-elegir="' + esc(f.nombre) +
+            '">Usar</button></span></div>').join("")
+        : '<div class="vacio">Sin coincidencias.</div>';
+    }catch(e){
+      caja.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
+    }
+  }, 400);
+});
+document.addEventListener("click", ev => {
+  const b = ev.target.closest("[data-fci-elegir]");
+  if(!b) return;
+  const caja = b.closest(".ten-edit");
+  caja.querySelector("[data-fci-buscar]").value = b.dataset.fciElegir;
+  caja.querySelector("[data-fci-out]").innerHTML = "";
+});
+
 function campoPos(k, t){
   const c = CAMPO_POS[k];
   if(!c) return "";
@@ -5084,6 +5120,16 @@ function tenEditor(t){
     '<label>Fecha de alta<input data-c="fecha_alta" type="date" value="' +
       (t.fecha_alta || "") + '"></label>' +
     '<label>Precisión<select data-c="precision">' + prec + '</select></label>' +
+    /* Un FCI que el broker no comercializa no esta en ningun panel. El
+       precio sale de CAFCI, que identifica por nombre completo con la
+       clase: se elige de la lista, no se escribe. */
+    (t.tipo === "fci"
+      ? '<label style="grid-column:1/-1">Fondo en CAFCI' +
+        '<input data-c="fci_nombre" data-fci-buscar placeholder="' +
+        'escribí parte del nombre y elegí" value="' +
+        esc(t.fci_nombre || "") + '"></label>' +
+        '<div data-fci-out style="grid-column:1/-1"></div>'
+      : "") +
     '<label style="grid-column:1/-1">Estrategia<select data-estr-sel>' +
       ['<option value="">Sin asignar</option>'].concat(
         estrDatos.filter(x => !x.cierre).map(x =>

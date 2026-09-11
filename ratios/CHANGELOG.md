@@ -1,5 +1,43 @@
 # Registro de cambios
 
+## 0.38.0
+
+**Los FCI dejan de estar sin precio.** Existian como tipo de tenencia y
+no cotizan en ningun panel: su posicion quedaba fuera del total de la
+cartera. Ahora hay dos fuentes.
+
+Los que comercializa IOL salen de `/api/v2/Titulos/FCI`, donde
+`ultimoOperado` es el valor de cuotaparte.
+
+Los que no -un fondo de otro broker no aparece en ese listado- salen de
+**ArgentinaDatos**, que republica en JSON la planilla diaria de CAFCI,
+sin clave. La API propia de CAFCI se discontinuo en abril de 2026 y
+devuelve 403.
+
+**El `vcp` de CAFCI viene por mil** y hay que dividirlo. La ficha lo
+aclara al lado: "Valor por cada cuotaparte: 1,040522 (Valor por mil:
+1.040,522)". Sin eso la posicion se veia mil veces mas grande, con un
+numero que no chirria a simple vista. Es el mismo problema de los bonos
+que cotizan por 100, con otro factor.
+
+**CAFCI identifica por nombre, no por ticker.** En el editor de una
+posicion de tipo `fci` hay un campo "Fondo en CAFCI": se escriben tres
+letras, busca, y se elige de la lista. No se escribe a mano a proposito,
+porque un fondo tiene clases A, B, C y Ley 27.743 con precios parecidos y
+distintos, y elegir mal da un numero creible y equivocado.
+
+**Una llamada por dia.** La cuotaparte se publica una sola vez al dia.
+Se cachea con la fecha y solo se consulta CAFCI para lo que IOL no tiene.
+El dato viene con un dia de atraso, asi que la cotizacion se marca vieja
+con su fecha y la cartera la lista en el aviso de precios viejos.
+
+**Un fondo en dolares se pasa a pesos al MEP.** La cuotaparte de IOLDOLD
+esta en 1,09 dolares y `cartera.valuar` suma todo como pesos: sin
+convertir, la posicion entera desaparecia del total. La conversion es
+solo para fondos a proposito: un AO28D tambien cotiza en dolares, pero
+eso viene funcionando asi desde siempre y cambiarlo de paso moveria el
+MEP y la valuacion entera sin haberlo verificado.
+
 ## 0.37.1
 
 **`AO29D` cuenta como `AO29` al reconstruir.** La tenencia los muestra en
