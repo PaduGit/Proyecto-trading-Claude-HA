@@ -202,6 +202,12 @@ def reconstruir(operaciones, conocidos=None, mep_de=None):
             "ppc_usd": (round(costo_usd / nom_usd, 8)
                         if nom_usd and abs(nom_usd - nominales) < 1e-6
                         else None),
+            # Cuantos nominales quedaron sin MEP de su dia. Si son todos,
+            # la serie no llega tan atras como la compra; si son algunos,
+            # hay huecos. Sin esto, "no calculo el PPC en dolares" no
+            # tiene explicacion en ningun lado.
+            "nominales_sin_mep": round(nominales - nom_usd, 6),
+            "primera_compra": ops[0]["fecha"] if ops else None,
             "base_cotizacion": base,
             "operaciones": len(ops),
             "desde_cero": desde_cero,
@@ -254,6 +260,8 @@ def conciliar(reconstruido, tenencia, tolerancia=0.01):
                 "reconstruida": r["cantidad"], "fecha_alta": r["fecha_alta"],
                 "ppc": r["ppc"], "ppc_base": r["ppc_base"],
                 "ppc_usd": r["ppc_usd"],
+                "nominales_sin_mep": r["nominales_sin_mep"],
+                "primera_compra": r["primera_compra"],
                 "base_cotizacion": r["base_cotizacion"],
                 "operaciones": r["operaciones"]}
         ref = max(abs(actual), abs(r["cantidad"]), 1.0)

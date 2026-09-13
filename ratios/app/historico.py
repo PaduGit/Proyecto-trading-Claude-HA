@@ -281,3 +281,59 @@ def resumen():
     return {"filas": r["n"], "especies": r["esp"],
             "desde": r["a"], "hasta": r["b"],
             "ultimo_backfill": db.get_estado("hist_bonos_hasta")}
+
+
+def reconstruir_precios(iol, simbolos, desde=None, hasta=None,
+                        mercado="bCBA"):
+    """Baja solo el precio de cierre, sin calcular nada mas.
+
+    `reconstruir` saltea a proposito los hard dollar que cotizan en pesos:
+    su TIR necesita el MEP de cada dia y no lo tenemos hacia atras. Pero
+    para el MEP no hace falta la TIR, solo el precio de las dos puntas:
+    AL30 en pesos sobre AL30D en dolares. De ahi este camino aparte.
+
+    No pisa lo que ya esta: si un dia tiene punto completo -con TIR, MD y
+    residual- se respeta. Esto solo rellena los dias que faltan, con el
+    precio y el resto en blanco.
+    """
+    init()
+    desde = desde or DESDE
+    hasta = hasta or date.today()
+    if isinstance(desde, str):
+        desde = date.fromisoformat(desde)
+    if isinstance(hasta, str):
+        hasta = date.fromisoformat(hasta)
+
+    c = db.conn()
+    total, detalle = 0, {}
+    for sim in simbolos:
+        sim = (sim or "").strip().upper()
+        if not sim:
+            continue
+        try:
+            serie_iol = iol.serie(mercado, sim, desde.isoformat(),
+                                  hasta.isoformat())
+        except Exception as e:
+            log.warning("serie de %s: %s", sim, e)
+            detalle[sim] = {"error": str(e)}
+            continue
+
+        filas = []
+        for p in (serie_iol or []):
+            f = str(p.get("fechaHora") or p.get("fecha") or "")[:10]
+            precio = p.get("ultimoPrecio") or p.get("cierre")
+            if not f or not precio:
+                continue
+            filas.append((sim, f, float(precio)))
+        if not filas:
+            detalle[sim] = {"puntos": 0}
+            continue
+        # INSERT OR IGNORE: el punto completo, si existe, manda.
+        c.executemany("INSERT OR IGNORE INTO bono_hist (simbolo, fecha, "
+                      "precio) VALUES (?,?,?)", filas)
+        c.commit()
+        detalle[sim] = {"puntos": len(filas),
+                        "desde": min(f for _, f, _ in filas),
+                        "hasta": max(f for _, f, _ in filas)}
+        total += len(filas)
+    return {"puntos": total, "detalle": detalle}

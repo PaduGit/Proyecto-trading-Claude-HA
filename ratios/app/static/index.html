@@ -706,6 +706,8 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
         Operaciones</button>
       <button class="secundario" id="probar-altas" style="width:auto;padding:0 14px">
         Fechas de alta</button>
+      <button class="secundario" id="probar-mep" style="width:auto;padding:0 14px">
+        Serie del MEP</button>
     </div>
     <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;
                 align-items:center">
@@ -719,6 +721,10 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       número cuando un saldo no cierra. Las operaciones, sin fechas, traen
       los últimos noventa días; pedilas por año para las posiciones
       viejas.</p>
+    <p class="nota">"Serie del MEP" baja el cierre de las dos puntas del par
+      hacia atrás. Es lo que fija hasta qué fecha se puede medir en
+      dólares: sin esa serie, una compra vieja queda sin PPC en dólares.
+      Usa el mismo rango de arriba.</p>
     <p class="nota">"Fechas de alta" recorre las operaciones hacia adelante
       y arma la fecha en que empezó la posición que tenés hoy. Primero
       muestra qué cierra y qué no; no escribe hasta que lo confirmes.</p>
@@ -2495,6 +2501,12 @@ async function pedirAltas(aplicar, pisar, btn){
            lo unico que permite comparar contra el cargado sin guardar
            nada. */
         (f.ppc ? " · PPC " + num(f.ppc, 2) : "") +
+        /* Por que no hay PPC en dolares: casi siempre es que la serie de
+           AL30/AL30D no llega tan atras como la compra. */
+        (f.ppc_usd ? " · US$ " + num(f.ppc_usd, 4)
+          : (f.nominales_sin_mep
+             ? " · sin MEP para " + ent(f.nominales_sin_mep) + " nominales"
+             : "")) +
         (f.motivo ? " · " + esc(f.motivo) + " (" + ent(f.cantidad) +
           " contra " + ent(f.reconstruida) + ")" : "") +
         '</span></div>';
@@ -2528,6 +2540,40 @@ async function pedirAltas(aplicar, pisar, btn){
     out.innerHTML = '<div class="msg error">No se pudo reconstruir.</div>';
   }finally{ btn.disabled = false; }
 }
+
+$("#probar-mep").addEventListener("click", async e => {
+  e.preventDefault(); e.stopPropagation();
+  const out = $("#ec-out"), b = e.target;
+  const hoy = new Date();
+  const iso = f => f.toISOString().slice(0, 10);
+  const desde = $("#ops-desde").value ||
+                iso(new Date(hoy.getTime() - 365 * 86400000));
+  const hasta = $("#ops-hasta").value || iso(hoy);
+  b.disabled = true;
+  out.innerHTML = '<div class="nota">Bajando la serie…</div>';
+  try{
+    const d = await (await fetch(base + "api/historico/mep", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({desde, hasta})})).json();
+    if(d.error){ out.innerHTML = '<div class="msg error">' + esc(d.error) +
+      '</div>'; return; }
+    out.innerHTML = '<div class="msg">' + d.puntos + ' puntos nuevos.</div>' +
+      Object.keys(d.detalle || {}).map(k => {
+        const x = d.detalle[k];
+        return '<div class="fila"><span>' + esc(k) + '</span><span class="t">' +
+          (x.error ? esc(x.error)
+                   : x.puntos + (x.desde ? " · " + esc(x.desde) + " a " +
+                                 esc(x.hasta) : "")) + '</span></div>';
+      }).join("") +
+      (d.mep_desde
+        ? '<div class="nota">Se puede medir en dólares desde el ' +
+          esc(d.mep_desde) + ' · ' + d.dias + ' días con las dos puntas.</div>'
+        : '<div class="aviso">Todavía no hay ningún día con las dos ' +
+          'puntas: sin eso no hay MEP histórico.</div>');
+  }catch(err){
+    out.innerHTML = '<div class="msg error">No se pudo bajar.</div>';
+  }finally{ b.disabled = false; }
+});
 
 $("#probar-altas").addEventListener("click", e => {
   e.preventDefault(); e.stopPropagation();

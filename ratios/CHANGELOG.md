@@ -1,5 +1,44 @@
 # Registro de cambios
 
+## 0.41.0
+
+**Serie del MEP hacia atras.** Sin ella, una compra anterior al inicio
+del historico no tiene tipo de cambio y queda sin PPC en dolares.
+
+`reconstruir` saltea a proposito los hard dollar que cotizan en pesos:
+la TIR de AL30 necesita el MEP de cada dia, que es justo lo que no hay
+hacia atras. Circular, y por eso la serie de AL30 nunca se llenaba. Pero
+**para el MEP no hace falta la TIR, solo el precio de las dos puntas**:
+`reconstruir_precios` baja el cierre y guarda el precio, con TIR, MD y
+residual en blanco.
+
+No pisa nada: con `INSERT OR IGNORE`, el dia que ya tiene punto completo
+-AL30D si se reconstruye, porque es en dolares- se respeta. Solo rellena
+lo que falta.
+
+**Boton "Serie del MEP"** en Explorar, con el mismo rango de fechas que
+las operaciones. Al terminar dice cuantos puntos bajo de cada punta y
+desde que fecha se puede medir en dolares: el primer dia con las dos
+puntas, y cuantos dias quedaron cubiertos. Si una punta falla, se muestra
+aparte en vez de cortar todo.
+
+El orden para usarlo: primero Serie del MEP con el rango largo, despues
+Fechas de alta con el mismo rango.
+
+## 0.40.2
+
+**El PPC en dolares estaba atado al de pesos.** Solo se escribia si
+ademas se reemplazaba el PPC en pesos, o sea con "pisar" o en una
+posicion sin PPC. Con los PPC ya cargados no se escribia nunca. Va
+aparte: es una columna nueva y no hay nada cargado a mano que respetar.
+
+**El informe dice por que no hay PPC en dolares.** El reconstructor exige
+que todas las compras tengan MEP de su dia; si a alguna le falta no
+devuelve nada, en vez de promediar con la mitad. Ahora, al lado del PPC,
+va "US$ 110,0000" si se pudo o "sin MEP para 100 nominales" si no, con la
+cantidad exacta que quedo afuera. Casi siempre significa que la serie de
+AL30/AL30D no llega tan atras como la compra.
+
 ## 0.40.1
 
 **El PPC en dolares no se mostraba en ningun lado.** 0.40.0 agrego el

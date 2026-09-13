@@ -1325,8 +1325,13 @@ def crear_app(monitor):
                                          or not (actual or {}).get("ppc")):
                             campos_sim["ppc"] = f["ppc"]
                             campos_sim["ppc_base"] = 1
-                            if f.get("ppc_usd"):
-                                campos_sim["ppc_usd"] = f["ppc_usd"]
+                        # El PPC en dolares va aparte: es una columna que
+                        # no existia y no hay nada cargado a mano que
+                        # respetar. Atado al de pesos, no se escribia
+                        # nunca en las posiciones que ya tenian PPC.
+                        if f.get("ppc_usd") and (pisar
+                                                 or not (actual or {}).get("ppc_usd")):
+                            campos_sim["ppc_usd"] = f["ppc_usd"]
                         try:
                             db.actualizar_tenencia(nombre, sim, campos_sim)
                             escritas += 1
@@ -1773,6 +1778,38 @@ def crear_app(monitor):
             return jsonify({"error": str(e)}), 500
         return jsonify({"puntos": n, "forzado": forzar,
                         "estado": H.resumen()})
+
+    @app.post("/api/historico/mep")
+    def historico_mep():
+        """Reconstruye la serie del MEP hacia atras.
+
+        Solo el precio de las dos puntas del par: para el MEP no hace
+        falta la TIR, que es lo que obliga a `reconstruir` a saltear los
+        hard dollar que cotizan en pesos. Sin esto no se puede medir en
+        dolares ninguna compra anterior al inicio de la serie.
+        """
+        d = request.get_json(silent=True) or {}
+        desde = (d.get("desde") or "").strip() or None
+        hasta = (d.get("hasta") or "").strip() or None
+        par = [monitor.cfg.get("mep_par_pesos") or "AL30",
+               monitor.cfg.get("mep_par_usd") or "AL30D"]
+        try:
+            with monitor.iol.como("boton"):
+                r = H.reconstruir_precios(monitor.iol, par, desde, hasta)
+        except Exception as e:
+            log.warning("serie del mep: %s", e)
+            return jsonify({"error": str(e)}), 500
+        # Desde cuando se puede medir en dolares despues de esto.
+        r["mep_desde"] = None
+        try:
+            comunes = sorted(
+                {x["fecha"] for x in H.serie(par[0])}
+                & {x["fecha"] for x in H.serie(par[1])})
+            r["mep_desde"] = comunes[0] if comunes else None
+            r["dias"] = len(comunes)
+        except Exception as e:
+            log.debug("cobertura del mep: %s", e)
+        return jsonify(r)
 
     @app.get("/api/posicion/exportar")
     def exportar_posicion():
