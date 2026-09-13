@@ -4780,13 +4780,16 @@ function pintarCartera(d){
        otra pregunta: cuanto rindio contra el dolar, no contra el peso.
        Se mide sobre menos cartera, porque necesita `ppc_usd`, y por eso
        dice sobre cuanta. */
-    if(d.resultado_usd_pct != null)
-      h += '<div class="cart-res" style="color:' +
+    h += d.resultado_usd_pct != null
+      ? '<div class="cart-res" style="color:' +
         (d.resultado_usd_pct >= 0 ? "var(--sage)" : "var(--coral)") + '">' +
         (d.resultado_usd_pct >= 0 ? "+" : "") +
         d.resultado_usd_pct.toFixed(2) + '% en dólares' +
         '<span class="tocar">sobre ' +
-        (d.cubierto_usd_pct || 0).toFixed(0) + '% de la cartera</span></div>';
+        (d.cubierto_usd_pct || 0).toFixed(0) + '% de la cartera</span></div>'
+      : '<div class="cart-res" style="color:var(--muted)">— en dólares' +
+        '<span class="tocar">ninguna posición tiene PPC en dólares ' +
+        'todavía</span></div>';
   } else {
     h += '<div class="cart-res" style="color:var(--muted)">' +
       'Sin PPC cargado: no hay resultado que medir.</div>';
@@ -5099,9 +5102,18 @@ function tenFicha(t, p){
     dato("Valor", p.valor == null ? null : plata(p.valor)) +
     dato("Costo", p.costo == null ? null : plata(p.costo)) +
     /* En dolares al MEP de cada compra: un CEDEAR puede hacer +60% en
-       pesos y 0% en dolares, y esa es justamente la pregunta. */
-    dato("En dólares", p.resultado_usd_pct == null ? null :
-      '<span style="color:' + (p.resultado_usd_pct >= 0
+       pesos y 0% en dolares, y esa es justamente la pregunta.
+
+       Las dos filas van siempre, aunque esten vacias. Con `dato()`
+       devolviendo "" cuando falta el valor, la posicion sin `ppc_usd`
+       no mostraba nada y parecia que la funcion no existia. Un guion
+       dice que se puede medir y todavia no se midio. */
+    dato("PPC US$", p.ppc_usd == null
+      ? '<span style="color:var(--muted)">—</span>'
+      : num(p.ppc_usd, 4)) +
+    dato("En dólares", p.resultado_usd_pct == null
+      ? '<span style="color:var(--muted)">—</span>'
+      : '<span style="color:' + (p.resultado_usd_pct >= 0
         ? "var(--sage)" : "var(--coral)") + '">' +
       (p.resultado_usd_pct >= 0 ? "+" : "") +
       num(p.resultado_usd_pct, 2) + '%</span>') +
@@ -5111,6 +5123,12 @@ function tenFicha(t, p){
       num(p.resultado_pct, 3) + '%</span>') +
     dato("Alta", tenAlta(t)) +
     dato("Exposición", p.exposicion ? esc(p.exposicion) : null) +
+    (p.ppc_usd == null
+      ? '<div class="nota" style="grid-column:1/-1">Sin PPC en dólares: ' +
+        'sale de confirmar un aporte con su precio, o de Fechas de alta ' +
+        'en Explorar, que lo calcula compra por compra al MEP de cada ' +
+        'día.</div>'
+      : "") +
     '</div><div class="acciones" style="margin-top:8px">' +
     '<button data-editar-ten>Editar datos</button></div>';
 

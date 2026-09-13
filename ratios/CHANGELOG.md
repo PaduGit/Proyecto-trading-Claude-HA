@@ -1,5 +1,18 @@
 # Registro de cambios
 
+## 0.40.1
+
+**El PPC en dolares no se mostraba en ningun lado.** 0.40.0 agrego el
+resultado pero no el PPC. Ahora estan los dos, en la ficha de la
+posicion.
+
+**Y los campos vacios no se dibujaban.** `dato()` devuelve cadena vacia
+cuando el valor es null, asi que una posicion sin `ppc_usd` no mostraba
+ninguna de las dos filas y parecia que la funcion no existia. Van siempre,
+con un guion cuando no hay dato y una linea que dice de donde sale: de
+confirmar un aporte con su precio, o de Fechas de alta. Lo mismo en el
+total de la cartera.
+
 ## 0.40.0
 
 **Resultado en dolares, al MEP de cada compra.** Un CEDEAR puede hacer
