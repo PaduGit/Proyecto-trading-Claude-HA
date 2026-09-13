@@ -2191,6 +2191,14 @@ def resolver_propuesto(mid, accion, editado=None, unir_con=None):
     if eid:
         registrar_mov_estrategia(eid, d, propuesto_id=mid)
 
+    # Un aporte es plata nueva entrando: el costo unitario cambia. Es la
+    # unica puerta por la que se toca el PPC de una compra, y vale igual
+    # para el broker que informa el PPC y para el que no. Un retiro no lo
+    # toca: vender no cambia lo que costo lo que queda.
+    if d["tipo"] == "aporte" and d.get("entra") and d.get("precio_entra"):
+        _promediar_ppc(d["broker"], d["entra"], d.get("cant_entra"),
+                       d["precio_entra"], d.get("hasta"))
+
     c.execute("UPDATE mov_propuesto SET estado='confirmado' WHERE id=?",
               (mid,))
     if otro:
@@ -2198,6 +2206,43 @@ def resolver_propuesto(mid, accion, editado=None, unir_con=None):
                   "WHERE id=?", (mid, otro["id"]))
     c.commit()
     return "confirmado"
+
+
+def _promediar_ppc(broker, simbolo, cant_entra, precio, ts=None):
+    """Recalcula el PPC de una posicion con la compra que acaba de entrar.
+
+    Promedio ponderado entre lo que ya habia y lo que entro:
+
+        ppc = (cant_antes × ppc + cant_entra × precio) / (cant_antes + cant_entra)
+
+    Las dos puntas se llevan a **por unidad** antes de promediar. El PPC
+    guardado puede estar por unidad o por lamina, y el precio de mercado
+    viene siempre en la base en la que cotiza: promediar sin igualarlos
+    da un numero cien veces mas grande o mas chico.
+
+    La tenencia ya tiene la cantidad nueva cuando esto corre, asi que la
+    anterior sale de restar lo que entro. Sin PPC previo, el de la compra
+    pasa a ser el de toda la posicion: es el mejor dato que hay.
+    """
+    c = conn()
+    t = c.execute("SELECT cantidad, ppc, ppc_base FROM tenencia WHERE "
+                  "broker=? AND simbolo=?", (broker, simbolo)).fetchone()
+    if not t or not cant_entra:
+        return None
+    base = base_cotizacion(simbolo, ts) or 1.0
+    p_nuevo = precio / base
+    cant_ahora = t["cantidad"] or 0
+    cant_antes = cant_ahora - cant_entra
+    if t["ppc"] and cant_antes > 1e-9:
+        p_viejo = t["ppc"] / (t["ppc_base"] or 1)
+        ppc = ((cant_antes * p_viejo + cant_entra * p_nuevo)
+               / (cant_antes + cant_entra))
+    else:
+        ppc = p_nuevo
+    c.execute("UPDATE tenencia SET ppc=?, ppc_base=1 WHERE broker=? AND "
+              "simbolo=?", (round(ppc, 6), broker, simbolo))
+    c.commit()
+    return ppc
 
 
 def registrar_mov_estrategia(eid, d, propuesto_id=None):

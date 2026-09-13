@@ -1,5 +1,32 @@
 # Registro de cambios
 
+## 0.39.0
+
+**El PPC se promedia al confirmar un aporte.** Cuando el diff detecta que
+entraron nominales, la propuesta muestra "Precio al que entró", cargado
+con el ultimo precio que tenia la app y editable. Al confirmar:
+
+    ppc = (cant_antes × ppc + cant_entra × precio) / (cant_antes + cant_entra)
+
+Las dos puntas se llevan a **por unidad** antes de promediar. El PPC
+guardado puede venir por unidad o por lamina y el precio de mercado viene
+siempre en la base en la que cotiza: promediar sin igualarlos da un
+numero cien veces mas grande o mas chico.
+
+Sirve igual para el broker que no informa el PPC: se pega el JSON con la
+cantidad nueva, sale la propuesta, y ahi se pone el precio al que se
+compro. Queda una sola puerta para tocar el PPC de una compra, registrada
+en el ledger, en vez de una edicion suelta sin rastro. Si el campo queda
+vacio, el PPC no se toca. Un retiro tampoco lo toca: vender no cambia lo
+que costo lo que queda.
+
+**El precio actual, en la ficha de la posicion**, al lado del PPC. Es lo
+unico que permite ver de un vistazo si un resultado raro viene de un PPC
+mal cargado o del mercado.
+
+**El reconstructor muestra el PPC tambien en las que no cierran**, como
+referencia, para poder compararlo contra el cargado sin guardar nada.
+
 ## 0.38.1
 
 **Guardar una posicion de FCI reventaba.** `fci_nombre` quedo en la

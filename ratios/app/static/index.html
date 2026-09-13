@@ -2477,9 +2477,12 @@ async function pedirAltas(aplicar, pisar, btn){
           ? ' <span class="t">' + f.filas.map(esc).join("+") + '</span>' : "") +
         '</span><span class="t">' +
         (f.fecha_alta ? esc(f.fecha_alta) : "—") +
+        /* El PPC va tambien en las que no cierran, como referencia: es
+           lo unico que permite comparar contra el cargado sin guardar
+           nada. */
+        (f.ppc ? " · PPC " + num(f.ppc, 2) : "") +
         (f.motivo ? " · " + esc(f.motivo) + " (" + ent(f.cantidad) +
-          " contra " + ent(f.reconstruida) + ")"
-          : (f.ppc ? " · PPC " + num(f.ppc, 2) : "")) +
+          " contra " + ent(f.reconstruida) + ")" : "") +
         '</span></div>';
       return '<div style="margin-top:10px"><b>' + esc(c.broker) + '</b>' +
         ' <span class="t">' + c.operaciones + ' operaciones' +
@@ -4233,7 +4236,18 @@ async function cargarPropuestos(){
           (m.tipo === "rotacion"
             ? " · salieron " + ent(m.cant_sale) + ", entraron " +
               ent(m.cant_entra) : "") +
-        '</div><div class="acciones" style="margin-top:6px">' +
+        '</div>' +
+        /* El precio viene del momento de la foto y se puede corregir:
+           es lo que va a promediar el PPC de la posicion. Vacio, el PPC
+           queda como estaba, que es mejor que promediar contra un
+           precio inventado. */
+        (m.tipo === "aporte"
+          ? '<div class="fila"><span>Precio al que entró</span>' +
+            '<input type="number" step="any" data-precio="' + m.id + '" ' +
+            'value="' + (m.precio_entra == null ? "" : m.precio_entra) +
+            '" style="width:130px"></div>'
+          : "") +
+        '<div class="acciones" style="margin-top:6px">' +
         '<button class="primario" data-prop="' + m.id +
           '" data-accion="confirmar">Confirmar</button>' +
         '<button data-prop="' + m.id + '" data-accion="descartar">' +
@@ -4249,9 +4263,16 @@ $("#prop-out").addEventListener("click", async ev => {
   if(!b) return;
   b.disabled = true;
   try{
+    const inp = $("#prop-out").querySelector(
+      '[data-precio="' + b.dataset.prop + '"]');
+    const cuerpo = {accion: b.dataset.accion};
+    if(inp && b.dataset.accion === "confirmar"){
+      const v = parseFloat(inp.value);
+      cuerpo.editado = {precio_entra: v > 0 ? v : null};
+    }
     await fetch(base + "api/movimientos-propuestos/" + b.dataset.prop,
       {method:"POST", headers:{"Content-Type":"application/json"},
-       body: JSON.stringify({accion: b.dataset.accion})});
+       body: JSON.stringify(cuerpo)});
     cargarPropuestos();
     if(b.dataset.accion === "confirmar"){
       cargarTenencias(); cargarEstrategias();
@@ -5046,6 +5067,10 @@ function tenFicha(t, p){
     esc(t.simbolo) + '"><div class="ficha">' +
     dato("Cantidad", ent(t.cantidad)) +
     dato("PPC", tenPpc(t)) +
+    /* El precio al lado del PPC: es lo unico que permite ver de un
+       vistazo si un resultado raro viene de un PPC mal cargado o del
+       mercado. Va en la misma base en la que cotiza, igual que el PPC. */
+    dato("Precio", p.precio == null ? null : num(p.precio, 3)) +
     dato("Valor", p.valor == null ? null : plata(p.valor)) +
     dato("Costo", p.costo == null ? null : plata(p.costo)) +
     dato("Resultado", p.resultado_pct == null ? null :
