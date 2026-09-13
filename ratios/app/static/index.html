@@ -345,21 +345,25 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
         <a href="#" id="rehacer-curva" role="menuitem">Recalcular desvíos</a>
         <a href="#" id="bajar-hist" role="menuitem">Descargar histórico (CSV)</a>
         <hr>
+        <!-- Registro y Explorar son de diagnostico: se abren cuando algo
+             no cierra, no todos los dias. En la fila de solapas obligaban
+             a arrastrar para llegar a lo que si se usa siempre. -->
+        <a href="#" data-ir="reg" role="menuitem">Registro</a>
+        <a href="#" data-ir="expl" role="menuitem">Explorar</a>
+        <hr>
         <span class="ver">Configuración y registro: Ajustes → Apps → Ratios IOL.
           Desde acá no se puede navegar; Home Assistant lo bloquea.</span>
       </div>
     </div>
   </div>
   <nav role="tablist">
+    <button role="tab" aria-selected="false" data-vista="pos">Tenencias</button>
     <button role="tab" aria-selected="true" data-vista="panel">Ratios</button>
     <button role="tab" aria-selected="false" data-vista="bonos">Bonos</button>
     <button role="tab" aria-selected="false" data-vista="rulo">Rulo</button>
     <button role="tab" aria-selected="false" data-vista="opc">Opciones</button>
     <button role="tab" aria-selected="false" data-vista="plazos">Pases</button>
-    <button role="tab" aria-selected="false" data-vista="pos">Tenencias</button>
     <button role="tab" aria-selected="false" data-vista="alertas">Análisis técnico</button>
-    <button role="tab" aria-selected="false" data-vista="reg">Registro</button>
-    <button role="tab" aria-selected="false" data-vista="expl">Explorar</button>
   </nav>
 </header>
 
@@ -934,24 +938,34 @@ const esc = s => String(s??"").replace(/[<>&]/g, c =>
   ({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]));
 
 /* ---------- navegación ---------- */
+/* Registro y Explorar ya no tienen solapa: se abren desde el menu. Un
+   solo lugar decide que se ve, tenga boton propio o no. */
+function irA(v){
+  vista = v;
+  document.querySelectorAll("nav button").forEach(x =>
+    x.setAttribute("aria-selected", x.dataset.vista === v));
+  ["panel","bonos","rulo","opc","plazos","pos","alertas","reg","expl"]
+    .forEach(x => $("#v-"+x).hidden = (x !== v));
+  if(v === "pos"){ cargarPosicion(); cargarTenencias(); cargarCobros(); }
+  if(v === "bonos") cargarBonos();
+  if(v === "rulo") cargarCircuitos();
+  if(v === "opc") cargarOpciones();
+  if(v === "plazos") cargarPlazos();
+  if(v === "alertas"){ cargarAlertas(); cargarAlertasFecha(); }
+  if(v === "reg") cargarRegistro();
+  if(v === "expl") iniciarExplorar();
+}
+
 document.querySelectorAll("nav button").forEach(b => {
-  b.addEventListener("click", () => {
-    document.querySelectorAll("nav button").forEach(x =>
-      x.setAttribute("aria-selected", x === b));
-    vista = b.dataset.vista;
-    ["panel","bonos","rulo","opc","plazos","pos","alertas","reg","expl"]
-      .forEach(v =>
-      $("#v-"+v).hidden = (v !== vista));
-    if(vista === "pos") cargarPosicion();
-    if(vista === "bonos") cargarBonos();
-    if(vista === "rulo") cargarCircuitos();
-    if(vista === "opc") cargarOpciones();
-    if(vista === "plazos") cargarPlazos();
-    if(vista === "alertas"){ cargarAlertas(); cargarAlertasFecha(); }
-    if(vista === "pos"){ cargarTenencias(); cargarCobros(); }
-    if(vista === "reg") cargarRegistro();
-    if(vista === "expl") iniciarExplorar();
-  });
+  b.addEventListener("click", () => irA(b.dataset.vista));
+});
+
+$("#menu").addEventListener("click", ev => {
+  const a = ev.target.closest("[data-ir]");
+  if(!a) return;
+  ev.preventDefault();
+  $("#menu").hidden = true;
+  irA(a.dataset.ir);
 });
 
 /* ---------- reloj ---------- */
@@ -4762,6 +4776,17 @@ function pintarCartera(d){
       "(" + (rp >= 0 ? "+" : "") + rp.toFixed(2) + "%)" +
       '<span class="tocar">sobre ' + (d.cubierto_pct || 0).toFixed(0) +
       '% con PPC cargado</span></div>';
+    /* El mismo resultado medido en dolares, al MEP de cada compra. Es
+       otra pregunta: cuanto rindio contra el dolar, no contra el peso.
+       Se mide sobre menos cartera, porque necesita `ppc_usd`, y por eso
+       dice sobre cuanta. */
+    if(d.resultado_usd_pct != null)
+      h += '<div class="cart-res" style="color:' +
+        (d.resultado_usd_pct >= 0 ? "var(--sage)" : "var(--coral)") + '">' +
+        (d.resultado_usd_pct >= 0 ? "+" : "") +
+        d.resultado_usd_pct.toFixed(2) + '% en dólares' +
+        '<span class="tocar">sobre ' +
+        (d.cubierto_usd_pct || 0).toFixed(0) + '% de la cartera</span></div>';
   } else {
     h += '<div class="cart-res" style="color:var(--muted)">' +
       'Sin PPC cargado: no hay resultado que medir.</div>';
@@ -5073,6 +5098,13 @@ function tenFicha(t, p){
     dato("Precio", p.precio == null ? null : num(p.precio, 3)) +
     dato("Valor", p.valor == null ? null : plata(p.valor)) +
     dato("Costo", p.costo == null ? null : plata(p.costo)) +
+    /* En dolares al MEP de cada compra: un CEDEAR puede hacer +60% en
+       pesos y 0% en dolares, y esa es justamente la pregunta. */
+    dato("En dólares", p.resultado_usd_pct == null ? null :
+      '<span style="color:' + (p.resultado_usd_pct >= 0
+        ? "var(--sage)" : "var(--coral)") + '">' +
+      (p.resultado_usd_pct >= 0 ? "+" : "") +
+      num(p.resultado_usd_pct, 2) + '%</span>') +
     dato("Resultado", p.resultado_pct == null ? null :
       '<span style="color:' + (p.resultado_pct >= 0 ? "var(--sage)"
         : "var(--coral)") + '">' + (p.resultado_pct >= 0 ? "+" : "") +

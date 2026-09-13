@@ -1077,7 +1077,7 @@ def init_alertas():
     for col in ("ppc REAL", "fecha_alta TEXT", "precision TEXT",
                 "ppc_base REAL", "stop REAL", "objetivo REAL",
                 "par_ticker TEXT", "ratio_min REAL", "ratio_max REAL",
-                "revisar TEXT", "fci_nombre TEXT"):
+                "revisar TEXT", "fci_nombre TEXT", "ppc_usd REAL"):
         if col.split()[0] not in cols:
             c.execute("ALTER TABLE tenencia ADD COLUMN " + col)
     try:
@@ -1523,7 +1523,7 @@ def actualizar_tenencia(broker, simbolo, campos):
     corregir un dato. Aca se cambia lo que se pasa y nada mas.
     """
     permitidos = ("fci_nombre", "cantidad", "tipo", "ppc", "ppc_base",
-                  "fecha_alta",
+                  "ppc_usd", "fecha_alta",
                   "precision") + CAMPOS_POSICION
     sets, args = [], []
     for k in permitidos:
@@ -2225,8 +2225,9 @@ def _promediar_ppc(broker, simbolo, cant_entra, precio, ts=None):
     pasa a ser el de toda la posicion: es el mejor dato que hay.
     """
     c = conn()
-    t = c.execute("SELECT cantidad, ppc, ppc_base FROM tenencia WHERE "
-                  "broker=? AND simbolo=?", (broker, simbolo)).fetchone()
+    t = c.execute("SELECT cantidad, ppc, ppc_base, ppc_usd FROM tenencia "
+                  "WHERE broker=? AND simbolo=?",
+                  (broker, simbolo)).fetchone()
     if not t or not cant_entra:
         return None
     base = base_cotizacion(simbolo, ts) or 1.0
@@ -2239,8 +2240,31 @@ def _promediar_ppc(broker, simbolo, cant_entra, precio, ts=None):
                / (cant_antes + cant_entra))
     else:
         ppc = p_nuevo
-    c.execute("UPDATE tenencia SET ppc=?, ppc_base=1 WHERE broker=? AND "
-              "simbolo=?", (round(ppc, 6), broker, simbolo))
+
+    # El mismo promedio, en dolares al MEP del dia de esta compra. No
+    # alcanza con dividir el PPC en pesos por el dolar de hoy: cada
+    # compra entro a un tipo de cambio distinto, y esa es justamente la
+    # diferencia que se quiere medir.
+    ppc_usd = None
+    import bonos as BO
+    mep = BO.mep_al(str(ts or "")[:10] or datetime.now().date().isoformat())
+    if mep:
+        u_nuevo = p_nuevo / mep
+        if t["ppc_usd"] and cant_antes > 1e-9:
+            ppc_usd = ((cant_antes * t["ppc_usd"] + cant_entra * u_nuevo)
+                       / (cant_antes + cant_entra))
+        else:
+            ppc_usd = u_nuevo
+
+    if ppc_usd:
+        c.execute("UPDATE tenencia SET ppc=?, ppc_base=1, ppc_usd=? WHERE "
+                  "broker=? AND simbolo=?",
+                  (round(ppc, 6), round(ppc_usd, 8), broker, simbolo))
+    else:
+        # Sin MEP de esa fecha no se inventa: el resultado en dolares
+        # queda en guion, que avisa, en vez de mentir.
+        c.execute("UPDATE tenencia SET ppc=?, ppc_base=1 WHERE broker=? AND "
+                  "simbolo=?", (round(ppc, 6), broker, simbolo))
     c.commit()
     return ppc
 

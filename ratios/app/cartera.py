@@ -212,12 +212,23 @@ def valuar(tenencias, precios, mep=None, bonos_cfg=None):
         costo = cant * ppc / ppc_base if ppc else None
         res = (valor - costo) if (valor is not None and costo) else None
 
+        # En dolares: el costo va al MEP de cada compra -por eso hay un
+        # `ppc_usd` propio y no se divide el PPC en pesos por el dolar de
+        # hoy- y el valor al MEP de ahora. Sin `ppc_usd` queda en guion.
+        costo_usd = cant * t["ppc_usd"] if t.get("ppc_usd") else None
+        valor_usd = (valor / mep) if (valor is not None and mep) else None
+
         filas.append({
             "broker": t.get("broker"), "simbolo": sim, "tipo": tipo,
             "cantidad": cant, "precio": precio, "valor": valor,
             "ppc": ppc, "costo": costo, "resultado": res,
             "resultado_pct": (res / costo * 100) if (res is not None and costo)
                              else None,
+            "ppc_usd": t.get("ppc_usd"),
+            "costo_usd": costo_usd,
+            "valor_usd": valor_usd,
+            "resultado_usd_pct": ((valor_usd / costo_usd - 1) * 100)
+                                 if (valor_usd and costo_usd) else None,
             "exposicion": exposicion(t, bonos_cfg),
             "estrategia_id": t.get("estrategia_id"),
             "estrategia": t.get("estrategia"),
@@ -235,10 +246,24 @@ def valuar(tenencias, precios, mep=None, bonos_cfg=None):
                       if f["costo"] and f["valor"] is not None)
     valor_medido = sum(f["valor"] for f in filas
                        if f["costo"] and f["valor"] is not None)
+
+    # El total en dolares se mide solo sobre lo que tiene `ppc_usd`. Una
+    # cartera medida a medias y presentada como entera es peor que una
+    # que dice cuanto abarca, que es lo que ya se hace en pesos.
+    medibles = [f for f in filas if f.get("costo_usd") and f.get("valor_usd")]
+    costo_usd_total = sum(f["costo_usd"] for f in medibles)
+    valor_usd_medido = sum(f["valor_usd"] for f in medibles)
+    medido_usd = valor_usd_medido or None
     return {
         "posiciones": filas,
         "total": total,
         "total_usd": (total / mep) if mep else None,
+        "costo_usd": costo_usd_total or None,
+        "resultado_usd_pct": ((valor_usd_medido / costo_usd_total - 1) * 100)
+                             if costo_usd_total else None,
+        "cubierto_usd_pct": (valor_usd_medido / (total / mep) * 100)
+                            if (mep and total) else None,
+        "medido_usd": medido_usd,
         "mep": mep,
         # El resultado se mide solo sobre lo que tiene costo cargado y
         # precio: mezclarlo con el resto daria un porcentaje sin sentido.

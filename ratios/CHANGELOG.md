@@ -1,5 +1,41 @@
 # Registro de cambios
 
+## 0.40.0
+
+**Resultado en dolares, al MEP de cada compra.** Un CEDEAR puede hacer
++60% en pesos y 0% en dolares: esa es la pregunta que antes no se podia
+contestar. Va en la ficha de cada posicion y en el total de la cartera.
+
+El costo en dolares es una columna propia, `ppc_usd`, y no el PPC en
+pesos dividido por el dolar de hoy: cada compra entro a su tipo de cambio
+y esa es justamente la diferencia que se quiere medir. Se promedia igual
+que el de pesos, pero al MEP del dia de cada compra.
+
+El MEP historico se reconstruye de `bono_hist`: AL30 y AL30D tienen serie
+diaria y las dos cotizan por 100, asi que el cociente sale limpio. Si ese
+dia no hay dato se busca hasta siete dias atras; mas lejos no, porque un
+tipo de cambio de hace dos semanas aplicado a una compra no mide nada.
+
+Se llena por dos caminos: al confirmar un aporte, con el MEP de esa foto,
+y desde el reconstructor de operaciones, compra por compra. Si a alguna
+compra le falta el MEP de su dia, el reconstructor **no devuelve**
+`ppc_usd` en vez de promediar con la mitad: un promedio a medias no es el
+costo en dolares. Lo que no se puede medir queda en guion, y el total
+dice sobre que porcion de la cartera esta medido.
+
+**Menos solapas.** TENENCIAS pasa a ser la primera. Registro y Explorar
+salen de la fila y se abren desde el menu de tres puntos: son de
+diagnostico, se usan cuando algo no cierra, y en la fila obligaban a
+arrastrar para llegar a lo que si se usa todos los dias. Quedan siete.
+
+La navegacion pasa a una sola funcion, `irA(vista)`, para que tenga o no
+boton propio se decida en un solo lugar.
+
+**`mep_al` no puede cortar una confirmacion.** Si la serie no esta, la
+tabla todavia no se creo o la fecha viene mal formada, devuelve None y el
+resultado en dolares queda en guion. Antes reventaba y se llevaba puesta
+la confirmacion del movimiento, que no tiene nada que ver.
+
 ## 0.39.0
 
 **El PPC se promedia al confirmar un aporte.** Cuando el diff detecta que

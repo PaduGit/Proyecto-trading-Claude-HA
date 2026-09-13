@@ -1296,7 +1296,8 @@ def crear_app(monitor):
                                "error": "respuesta inesperada"})
                 continue
             ten = db.tenencias(nombre)
-            rec = OPS.reconstruir(ops, [t["simbolo"] for t in ten])
+            rec = OPS.reconstruir(ops, [t["simbolo"] for t in ten],
+                                  mep_de=BO.mep_al)
             r = OPS.conciliar(rec, ten)
             r["broker"] = nombre
             r["operaciones"] = len(ops)
@@ -1324,6 +1325,8 @@ def crear_app(monitor):
                                          or not (actual or {}).get("ppc")):
                             campos_sim["ppc"] = f["ppc"]
                             campos_sim["ppc_base"] = 1
+                            if f.get("ppc_usd"):
+                                campos_sim["ppc_usd"] = f["ppc_usd"]
                         try:
                             db.actualizar_tenencia(nombre, sim, campos_sim)
                             escritas += 1

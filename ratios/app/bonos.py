@@ -7,7 +7,7 @@ la que realmente conseguís, cada punta se convierte con el MEP que le toca.
 
 import logging
 import os
-from datetime import date
+from datetime import date, datetime, timedelta
 
 import yaml
 
@@ -560,3 +560,33 @@ def rulo(cot, umbral_pct=0.6):
 
     filas.sort(key=lambda f: ((f.get("mep") or {}).get("comprar") or 9e9))
     return {"filas": filas, "ciclos": ciclos}
+
+
+def mep_al(fecha, par_pesos="AL30", par_usd="AL30D", tolerancia=7):
+    """El MEP de una fecha pasada, reconstruido de la serie guardada.
+
+    Las dos puntas del par estan en `bono_hist` con precio diario, y las
+    dos cotizan por cada 100 nominales, asi que el cociente sale limpio.
+
+    Si ese dia no hay dato -feriado, o la serie arranca despues- se busca
+    hacia atras hasta `tolerancia` dias. Mas atras no: un tipo de cambio
+    de hace dos semanas aplicado a una compra no mide nada, y devolver
+    None deja el resultado en guion, que avisa.
+    """
+    import historico as H
+    try:
+        f = fecha if isinstance(fecha, str) else fecha.isoformat()
+        desde = (datetime.fromisoformat(f).date()
+                 - timedelta(days=tolerancia)).isoformat()
+        pesos = {r["fecha"]: r["precio"] for r in H.serie(par_pesos, desde, f)}
+        usd = {r["fecha"]: r["precio"] for r in H.serie(par_usd, desde, f)}
+        for d in sorted(set(pesos) & set(usd), reverse=True):
+            if pesos[d] and usd[d]:
+                return pesos[d] / usd[d]
+    except Exception as e:
+        # Sin serie, con la tabla todavia sin crear o con una fecha mal
+        # formada, esto devuelve None y el resultado en dolares queda en
+        # guion. Que reviente aca cortaria la confirmacion de un
+        # movimiento, que es una operacion que no tiene nada que ver.
+        log.debug("mep al %s: %s", fecha, e)
+    return None

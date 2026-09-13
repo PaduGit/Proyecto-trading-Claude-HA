@@ -122,7 +122,7 @@ def factor_redondo(a, b):
     return None
 
 
-def reconstruir(operaciones, conocidos=None):
+def reconstruir(operaciones, conocidos=None, mep_de=None):
     """Por simbolo: cantidad, fecha de alta y PPC de la tenencia actual.
 
     La fecha de alta es el ultimo cruce de cero hacia arriba, no la
@@ -153,6 +153,8 @@ def reconstruir(operaciones, conocidos=None):
         alta = None
         costo = 0.0          # importe acumulado de la tenencia vigente
         nominales = 0.0      # nominales comprados de la tenencia vigente
+        costo_usd = 0.0      # el mismo importe, al MEP del dia de cada compra
+        nom_usd = 0.0        # nominales que si tuvieron MEP
         base = None
         desde_cero = True
         for o in ops:
@@ -162,17 +164,27 @@ def reconstruir(operaciones, conocidos=None):
                     # arranca una tenencia nueva
                     alta = o["fecha"]
                     costo, nominales = 0.0, 0.0
+                    costo_usd, nom_usd = 0.0, 0.0
                     desde_cero = True
                 cant += o["cantidad"]
                 if o["monto"]:
                     costo += o["monto"]
                     nominales += o["cantidad"]
+                    # Cada compra entro a su propio tipo de cambio: es la
+                    # diferencia que se quiere medir. Las que no tienen
+                    # MEP de ese dia quedan afuera del promedio en vez de
+                    # entrar al de hoy, que no seria el que pagaste.
+                    mep = mep_de(o["fecha"]) if mep_de else None
+                    if mep:
+                        costo_usd += o["monto"] / mep
+                        nom_usd += o["cantidad"]
             else:
                 cant -= o["cantidad"]
                 if cant <= 1e-9:
                     cant = 0.0
                     alta = None
                     costo, nominales = 0.0, 0.0
+                    costo_usd, nom_usd = 0.0, 0.0
         if cant <= 1e-9:
             continue
         salida[sim] = {
@@ -185,6 +197,11 @@ def reconstruir(operaciones, conocidos=None):
             # mas barata de lo que costo.
             "ppc": round(costo / nominales, 6) if nominales else None,
             "ppc_base": 1.0,
+            # Solo si el MEP cubre todas las compras: un promedio armado
+            # con la mitad de las compras no es el costo en dolares.
+            "ppc_usd": (round(costo_usd / nom_usd, 8)
+                        if nom_usd and abs(nom_usd - nominales) < 1e-6
+                        else None),
             "base_cotizacion": base,
             "operaciones": len(ops),
             "desde_cero": desde_cero,
@@ -236,6 +253,7 @@ def conciliar(reconstruido, tenencia, tolerancia=0.01):
         fila = {"simbolo": sim, "filas": t["filas"], "cantidad": actual,
                 "reconstruida": r["cantidad"], "fecha_alta": r["fecha_alta"],
                 "ppc": r["ppc"], "ppc_base": r["ppc_base"],
+                "ppc_usd": r["ppc_usd"],
                 "base_cotizacion": r["base_cotizacion"],
                 "operaciones": r["operaciones"]}
         ref = max(abs(actual), abs(r["cantidad"]), 1.0)
