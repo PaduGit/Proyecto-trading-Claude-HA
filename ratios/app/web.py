@@ -1297,7 +1297,7 @@ def crear_app(monitor):
                 continue
             ten = db.tenencias(nombre)
             rec = OPS.reconstruir(ops, [t["simbolo"] for t in ten],
-                                  mep_de=BO.mep_al)
+                                  mep_de=BO.mep_al, eventos_de=db.eventos)
             r = OPS.conciliar(rec, ten)
             r["broker"] = nombre
             r["operaciones"] = len(ops)

@@ -1,5 +1,24 @@
 # Registro de cambios
 
+## 0.41.1
+
+**El reconstructor aplica los eventos societarios.** Las operaciones
+anteriores a la fecha del evento se llevan a la escala de hoy:
+multiplicar los nominales por el factor y dividir el precio por el mismo
+numero deja el importe pagado igual, que es lo correcto, y el PPC sale en
+la escala actual.
+
+Sin esto, una posicion con compras de los dos lados de un canje no cerraba
+nunca contra la tenencia. Y el cociente entre lo que hay y lo
+reconstruido **no es el factor del evento**: es la mezcla de las dos
+partes. Veinte compradas antes de un canje de factor 6 -hoy ciento
+veinte- mas ochenta despues dan 200 reales y 100 reconstruidas, o sea 2.
+
+Por eso se saca el cartel "parece un ajuste de N a 1", que afirmaba un
+factor inventado. Ahora dice "puede faltar un evento societario: la
+diferencia es un multiplo limpio", y solo aparece si la especie no tiene
+eventos cargados.
+
 ## 0.41.0
 
 **Serie del MEP hacia atras.** Sin ella, una compra anterior al inicio

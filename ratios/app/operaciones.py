@@ -122,7 +122,34 @@ def factor_redondo(a, b):
     return None
 
 
-def reconstruir(operaciones, conocidos=None, mep_de=None):
+def ajustar_por_eventos(ops, eventos):
+    """Lleva las operaciones anteriores a un evento a la escala de hoy.
+
+    Un canje de CEDEAR de 3:1 a 18:1 multiplica por 6 los nominales y
+    divide el precio por 6: **lo pagado no cambia**, cambia en cuantos
+    pedazos esta. Por eso `monto` queda igual.
+
+    Sin esto, una posicion con compras de los dos lados del canje no
+    cierra nunca contra la tenencia, y el cociente entre lo que hay y lo
+    reconstruido **no es el factor del evento**: es la mezcla de las dos
+    partes. 20 compradas antes -hoy 120- mas 80 despues dan 200 reales y
+    100 reconstruidas, o sea 2, con un evento de factor 6.
+    """
+    if not eventos:
+        return ops
+    for ev in sorted(eventos, key=lambda e: e["fecha"]):
+        f, factor = ev["fecha"], ev["factor"]
+        if not factor or factor == 1:
+            continue
+        for o in ops:
+            if o["fecha"] < f:
+                o["cantidad"] *= factor
+                if o["precio"]:
+                    o["precio"] /= factor
+    return ops
+
+
+def reconstruir(operaciones, conocidos=None, mep_de=None, eventos_de=None):
     """Por simbolo: cantidad, fecha de alta y PPC de la tenencia actual.
 
     La fecha de alta es el ultimo cruce de cero hacia arriba, no la
@@ -149,6 +176,8 @@ def reconstruir(operaciones, conocidos=None, mep_de=None):
         # Por fecha y despues por numero: dos operaciones del mismo dia
         # tienen que aplicarse en el orden en que ocurrieron.
         ops.sort(key=lambda x: (x["fecha"], x["numero"] or 0))
+        if eventos_de:
+            ops = ajustar_por_eventos(ops, eventos_de(sim))
         cant = 0.0
         alta = None
         costo = 0.0          # importe acumulado de la tenencia vigente
@@ -208,6 +237,7 @@ def reconstruir(operaciones, conocidos=None, mep_de=None):
             # tiene explicacion en ningun lado.
             "nominales_sin_mep": round(nominales - nom_usd, 6),
             "primera_compra": ops[0]["fecha"] if ops else None,
+            "con_eventos": bool(eventos_de and eventos_de(sim)),
             "base_cotizacion": base,
             "operaciones": len(ops),
             "desde_cero": desde_cero,
@@ -257,6 +287,7 @@ def conciliar(reconstruido, tenencia, tolerancia=0.01):
             sin_ops.append({"simbolo": sim, "cantidad": actual})
             continue
         fila = {"simbolo": sim, "filas": t["filas"], "cantidad": actual,
+                "con_eventos": r.get("con_eventos"),
                 "reconstruida": r["cantidad"], "fecha_alta": r["fecha_alta"],
                 "ppc": r["ppc"], "ppc_base": r["ppc_base"],
                 "ppc_usd": r["ppc_usd"],
@@ -271,10 +302,13 @@ def conciliar(reconstruido, tenencia, tolerancia=0.01):
             f = factor_redondo(actual, r["cantidad"])
             if not r["fecha_alta"]:
                 fila["motivo"] = "no se pudo ubicar el inicio"
-            elif f:
-                fila["motivo"] = ("parece un ajuste de %d a 1: split o "
-                                  "cambio de ratio del CEDEAR" % f)
-                fila["factor"] = f
+            elif f and not r.get("con_eventos"):
+                # El cociente NO es el factor del evento cuando hay
+                # compras de los dos lados: es la mezcla de las dos
+                # partes. Se avisa que puede faltar un evento y no se
+                # dice cual, que seria inventarlo.
+                fila["motivo"] = ("puede faltar un evento societario: "
+                                  "la diferencia es un múltiplo limpio")
             elif abs(r["cantidad"]) > abs(actual):
                 fila["motivo"] = "las operaciones dan más de lo que hay"
             else:
