@@ -18,6 +18,7 @@ import opciones as OP
 import operaciones as OPS
 import posicion as P
 import respaldo
+import rotacion as RO
 from iol import IOLError
 
 log = logging.getLogger("web")
@@ -1425,6 +1426,29 @@ def crear_app(monitor):
                         "calculado": monitor.ultimo_ciclo.isoformat(
                             timespec="seconds") if monitor.ultimo_ciclo else None,
                         "minimo": float(monitor.cfg.get("canje_min_pct") or 1)})
+
+    @app.post("/api/rotacion")
+    def rotacion_calcular():
+        """La orden concreta de una rotacion propuesta.
+
+        La misma cuenta para un canje de curva y para un par de ratios:
+        se vende al bid de la que sale, se compra al ask de la que entra
+        y las comisiones de las dos patas salen de `costos`. Sin
+        `cantidad` se rota toda la tenencia de la especie que sale.
+        """
+        d = request.get_json(silent=True) or {}
+        try:
+            r = RO.calcular(
+                d.get("sale"), d.get("entra"), d.get("cantidad"),
+                monitor.cotizaciones_para_valuar(), db.tenencias(),
+                monitor.cfg.get("comisiones") or {},
+                monitor.cfg.get("derechos_mercado") or {},
+                monitor.cfg.get("iva_pct") or 0,
+                mep=_mep())
+        except Exception as e:
+            log.exception("rotacion")
+            return jsonify({"error": str(e)}), 500
+        return jsonify(r), (400 if r.get("error") else 200)
 
     @app.post("/api/precios/por-especie")
     def precios_por_especie():

@@ -1,5 +1,47 @@
 # Registro de cambios
 
+## 0.42.0
+
+**Las estrategias salen de TENENCIAS y viven en su pestaña.** El
+desplegable era un indice y ademas el formulario de alta, y la tarjeta
+estaba en dos lugares. Ahora cada familia se dibuja donde se opera: par
+en RATIOS, curva y reserva de valor en BONOS, tecnica en ANALISIS
+TECNICO y **opciones en OPCIONES**, que hasta ahora no tenia tarjeta.
+Cada una con su boton de alta -la familia la define la pestaña, no un
+selector- y su **archivo de cerradas**.
+
+El alta y la edicion pasan por un dialogo, asi no dependen de que
+pestaña este abierta. Editar, cerrar, reabrir, borrar y evolucion se
+agregaron a la tarjeta: es el unico lugar donde vive la posicion.
+
+**El desplegable de pares tambien sale.** Cada par se edita y se borra
+desde su tarjeta en RATIOS, que es donde se lo mira. "+ Nuevo par" y
+"Crear desde los grupos" quedan en un desplegable de administracion de
+esa misma pestaña; "Borrar sin especies" pasa a Explorar. El respaldo
+estaba anidado adentro de pares y queda suelto en TENENCIAS.
+
+**Rotacion asistida.** Los canjes de curva y los pares proponian contra
+que rotar y se quedaban en el porcentaje. Ahora arman la orden: cuantos
+nominales salen, cuantos entran y a que precios.
+
+La cuenta vive en un modulo nuevo, `rotacion`, porque es la misma para
+los dos origenes. Se vende al **bid** de la que sale y se compra al
+**ask** de la que entra, las dos llevadas a precio por unidad con su
+base antes de dividir. La comision de venta se descuenta y **la de
+compra se despeja**, porque se paga sobre lo que se compra. Los
+nominales se redondean al mas cercano y el resultado trae el **ratio**,
+el mismo numero que muestra el panel.
+
+Por defecto rota toda la tenencia de la especie que sale, sumando
+brokers y diciendo en cual esta; la cantidad se puede escribir. Si
+alguna punta cotiza en dolares, cruza al MEP.
+
+Avisa sin frenar cuando la punta no tiene volumen para ese tamaño,
+cuando se rota mas de lo que hay y cuando el instrumento no tiene
+comision configurada. Y **no devuelve orden** si no puede saber si una
+especie cotiza por lamina o por unidad: adivinar la base es de donde
+salieron los errores por 100 de este proyecto.
+
 ## 0.41.1
 
 **El reconstructor aplica los eventos societarios.** Las operaciones
