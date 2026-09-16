@@ -2505,11 +2505,55 @@ $("#ec-out").addEventListener("click", ev => {
     return;
   }
   if(!opsUlt) return;
+  /* Una cuenta sola: pegar las dos juntas obliga a recortar a mano, y
+     las 226 operaciones de un año no entran de una desde el telefono. */
+  const uno = ev.target.closest("[data-copiar-cuenta]");
+  if(uno){
+    const c = (opsUlt.cuentas || [])
+      .find(x => x.broker === uno.dataset.copiarCuenta);
+    if(c) copiarTexto(JSON.stringify(c.respuesta, null, 1), uno);
+    return;
+  }
+  const tab = ev.target.closest("[data-ver-tabla]");
+  if(tab){
+    const caja = document.getElementById("opstab-" + tab.dataset.verTabla);
+    if(caja){
+      caja.hidden = !caja.hidden;
+      tab.textContent = caja.hidden ? "Ver como tabla" : "Ver el JSON";
+      const pre = document.getElementById("opsjson-" + tab.dataset.verTabla);
+      if(pre) pre.hidden = !caja.hidden;
+    }
+    return;
+  }
   if(b.id === "ops-copiar")
     copiarTexto(JSON.stringify(opsUlt, null, 1), b);
   else if(b.id === "ops-resumen")
     copiarTexto(opsResumen(opsUlt), b);
 });
+
+/* Las mismas operaciones en una tabla: el JSON sirve para pegarlo, no
+   para leerlo. Las columnas son las que se usan de verdad -lo operado,
+   no lo pedido- mas el importe, que es donde se ve la moneda. */
+function tablaOperaciones(filas){
+  if(!Array.isArray(filas) || !filas.length)
+    return '<div class="vacio">Sin operaciones.</div>';
+  const orden = filas.slice().sort((a, b) =>
+    String(b.fechaOperada || "").localeCompare(String(a.fechaOperada || "")));
+  return '<div style="overflow-x:auto"><table class="tabla">' +
+    '<thead><tr><th>Fecha</th><th>Símbolo</th><th>Tipo</th>' +
+    '<th>Cantidad</th><th>Precio</th>' +
+    '<th>Importe</th></tr></thead><tbody>' +
+    orden.map(o => '<tr><td>' + esc(String(o.fechaOperada || "").slice(0, 10)) +
+      '</td><td>' + esc(o.simbolo || "") + '</td><td>' + esc(o.tipo || "") +
+      '</td><td>' +
+      (o.cantidadOperada == null ? "—" : num(o.cantidadOperada, 2)) +
+      '</td><td>' +
+      (o.precioOperado == null ? "—" : num(o.precioOperado, 4)) +
+      '</td><td>' +
+      (o.montoOperado == null ? "—" : num(o.montoOperado, 2)) +
+      '</td></tr>').join("") +
+    '</tbody></table></div>';
+}
 
 async function pedirAltas(aplicar, pisar, btn){
   const out = $("#ec-out");
@@ -2536,7 +2580,15 @@ async function pedirAltas(aplicar, pisar, btn){
         /* El PPC va tambien en las que no cierran, como referencia: es
            lo unico que permite comparar contra el cargado sin guardar
            nada. */
-        (f.ppc ? " · PPC " + num(f.ppc, 2) : "") +
+        (f.ppc ? " · PPC " + num(f.ppc, 2)
+          : (f.nominales_sin_pesos
+             ? " · sin MEP para pasar a pesos " + ent(f.nominales_sin_pesos) +
+               " nominales comprados en dólares"
+             : "")) +
+        /* Una posicion comprada en las dos monedas -QQQ y QQQD son la
+           misma tenencia- es donde el PPC se mezclaba. Que se vea. */
+        ((f.monedas || []).length > 1 ? ' <span class="t">pesos y dólares</span>'
+          : "") +
         /* Por que no hay PPC en dolares: casi siempre es que la serie de
            AL30/AL30D no llega tan atras como la compra. */
         (f.ppc_usd ? " · US$ " + num(f.ppc_usd, 4)
@@ -2632,12 +2684,19 @@ $("#probar-ops").addEventListener("click", async e => {
       method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({desde: desde, hasta: hasta})})).json();
     opsUlt = d;
-    out.innerHTML = (d.cuentas || []).map(c =>
+    out.innerHTML = (d.cuentas || []).map((c, i) =>
       '<div style="margin-top:10px"><b>' + esc(c.broker) + '</b>' +
       (Array.isArray(c.respuesta)
         ? ' <span class="t">' + c.respuesta.length + ' operaciones</span>' : "") +
       (c.error ? '<div class="msg error">' + esc(c.error) + '</div>'
-               : '<pre style="font-family:var(--mono);font-size:10px;' +
+               : '<div class="acciones" style="margin:6px 0">' +
+                 '<button data-ver-tabla="' + i + '">Ver como tabla</button>' +
+                 '<button data-copiar-cuenta="' + esc(c.broker) + '">' +
+                 'Copiar ' + esc(c.broker) + '</button></div>' +
+                 '<div id="opstab-' + i + '" hidden>' +
+                 tablaOperaciones(c.respuesta) + '</div>' +
+                 '<pre id="opsjson-' + i + '" ' +
+                 'style="font-family:var(--mono);font-size:10px;' +
                  'white-space:pre-wrap;word-break:break-all;' +
                  'background:var(--panel);border:1px solid var(--rule);' +
                  'padding:8px;border-radius:4px;max-height:50vh;overflow:auto">' +
@@ -5217,6 +5276,12 @@ function tenEditor(t){
     '<label>Base del PPC<input data-c="ppc_base" type="number" step="any" ' +
       'placeholder="según el tipo" value="' +
       (t.ppc_base == null ? "" : t.ppc_base) + '"></label>' +
+    /* Columna propia, no el PPC en pesos dividido por el dolar de hoy:
+       cada compra entro a su tipo de cambio y esa es la diferencia que
+       se quiere medir. Va siempre por unidad, como el de pesos. */
+    '<label>PPC en dólares<input data-c="ppc_usd" type="number" step="any" ' +
+      'placeholder="por unidad" value="' +
+      (t.ppc_usd == null ? "" : t.ppc_usd) + '"></label>' +
     '<label>Fecha de alta<input data-c="fecha_alta" type="date" value="' +
       (t.fecha_alta || "") + '"></label>' +
     '<label>Precisión<select data-c="precision">' + prec + '</select></label>' +

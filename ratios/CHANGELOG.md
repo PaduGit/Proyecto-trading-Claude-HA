@@ -1,5 +1,44 @@
 # Registro de cambios
 
+## 0.43.0
+
+**El PPC tiene en cuenta la moneda de cada compra.** La API de IOL no
+devuelve ningun campo de moneda: lo unico que la indica es el simbolo, y
+`montoOperado` viene en la moneda de la operacion. Hasta ahora todo se
+sumaba como pesos.
+
+Una compra de QQQD por 2.360 dolares entraba al promedio de QQQ -que es
+el mismo CEDEAR, y por eso se pliega- junto a importes en pesos. Y
+`ppc_usd` era peor: dividia por el MEP un importe que ya estaba en
+dolares, y quedaba unas mil cuatrocientas veces mas chico.
+
+La moneda se decide **antes** de plegar el simbolo, porque despues QQQD
+y QQQ son indistinguibles. Tres formas, las tres en los datos reales:
+sufijo ` US$`, `D` final con la misma guarda que ya existia -solo si lo
+que queda tambien aparece, para no inventar monedas como no se inventan
+especies- y una lista explicita para los fondos en dolares, que no
+tienen ninguna marca: `IOLDOLD` no termina en D.
+
+Una compra en dolares **es** el costo en dolares y alimenta `ppc_usd`
+directo; su PPC en pesos se arma multiplicando por el MEP del dia. Si
+falta el MEP de ese dia, la posicion queda **sin PPC en pesos** en vez
+de con uno armado con la mitad de las compras, y el informe dice
+cuantos nominales quedaron afuera. Las compradas en las dos monedas se
+marcan.
+
+QQQ pasa de 15.011,80 a 28.570; AO29, de 1.289,68 a 1.375,09.
+
+**El PPC en dolares se puede editar** en el editor de una posicion, al
+lado de la base del PPC. Va por unidad, como el de pesos. La columna ya
+existia y el backend ya la aceptaba: faltaba el campo en pantalla.
+
+**Operaciones de IOL, por cuenta y en tabla.** Cada cuenta tiene su
+boton de copiar -solo su arreglo, sin el envoltorio ni la otra- y un
+"Ver como tabla" que alterna con el JSON. Seis columnas: fecha, simbolo,
+tipo, cantidad, precio e importe. Son `cantidadOperada`, `precioOperado`
+y `montoOperado`, no las de la orden: verlas al lado invita a
+confundirlas. Y el importe es donde se lee la moneda de un vistazo.
+
 ## 0.42.0
 
 **Las estrategias salen de TENENCIAS y viven en su pestaña.** El

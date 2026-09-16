@@ -52,6 +52,10 @@ def limpiar(o):
         return None
     return {
         "simbolo": str(o.get("simbolo") or "").strip().upper(),
+        # El simbolo tal como vino, antes de plegar la `D` final. Es lo
+        # unico que dice en que moneda esta `montoOperado`: la API no
+        # devuelve ningun campo de moneda.
+        "simbolo_crudo": str(o.get("simbolo") or "").strip().upper(),
         "fecha": fecha,
         "tipo": o.get("tipo"),
         "signo": signo,
@@ -102,6 +106,36 @@ def simbolo_base(sim, conocidos):
     if len(sim) > 2 and sim.endswith("D") and sim[:-1] in conocidos:
         return sim[:-1]
     return sim
+
+
+# Fondos que cotizan en dolares y no tienen ninguna marca en el ticker:
+# no terminan en D ni traen el sufijo ` US$`. Sin esta lista, una
+# suscripcion de 10.000 dolares entra al promedio como 10.000 pesos.
+FCI_USD = ("IOLDOLD",)
+
+
+def en_dolares(sim_crudo, conocidos):
+    """Si el importe de esa operacion esta en dolares.
+
+    La API no devuelve la moneda: el unico dato es el simbolo. Tres
+    formas, y las tres estan en los datos reales:
+
+    - Sufijo ` US$`: la pata en dolares de un cobro duplicado.
+    - `D` final con la misma guarda que `simbolo_base`: `AO29D` y `QQQD`
+      liquidan en dolares, `BDED` es un ticker entero. Sin la guarda se
+      inventan monedas igual que se inventan especies.
+    - Un fondo de la lista de arriba, que no tiene marca ninguna.
+
+    Un CEDEAR en D cotiza por unidad y un bono en D por lamina: la
+    moneda y la base son preguntas distintas y se contestan aparte.
+    """
+    sim = (sim_crudo or "").strip().upper()
+    for suf in (" US$", " USD"):
+        if sim.endswith(suf):
+            return True
+    if sim in FCI_USD:
+        return True
+    return len(sim) > 2 and sim.endswith("D") and sim[:-1] in conocidos
 
 
 def factor_redondo(a, b):
@@ -168,6 +202,10 @@ def reconstruir(operaciones, conocidos=None, mep_de=None, eventos_de=None):
     vistos = {c["simbolo"] for c in limpias} | set(conocidos or ())
     porsim = {}
     for c in limpias:
+        # La moneda se decide con el simbolo original, antes de plegarlo:
+        # despues de plegar, `QQQD` y `QQQ` son indistinguibles y el
+        # importe en dolares se suma como si fueran pesos.
+        c["usd"] = en_dolares(c.get("simbolo_crudo") or c["simbolo"], vistos)
         c["simbolo"] = simbolo_base(c["simbolo"], vistos)
         porsim.setdefault(c["simbolo"], []).append(c)
 
@@ -180,10 +218,12 @@ def reconstruir(operaciones, conocidos=None, mep_de=None, eventos_de=None):
             ops = ajustar_por_eventos(ops, eventos_de(sim))
         cant = 0.0
         alta = None
-        costo = 0.0          # importe acumulado de la tenencia vigente
-        nominales = 0.0      # nominales comprados de la tenencia vigente
-        costo_usd = 0.0      # el mismo importe, al MEP del dia de cada compra
-        nom_usd = 0.0        # nominales que si tuvieron MEP
+        costo = 0.0          # importe en pesos de la tenencia vigente
+        nominales = 0.0      # nominales que pudieron valuarse en pesos
+        costo_usd = 0.0      # el mismo importe, en dolares
+        nom_usd = 0.0        # nominales que pudieron valuarse en dolares
+        comprados = 0.0      # nominales comprados con importe, sin importar moneda
+        monedas = set()      # en cuales se pago la tenencia vigente
         base = None
         desde_cero = True
         for o in ops:
@@ -194,19 +234,33 @@ def reconstruir(operaciones, conocidos=None, mep_de=None, eventos_de=None):
                     alta = o["fecha"]
                     costo, nominales = 0.0, 0.0
                     costo_usd, nom_usd = 0.0, 0.0
+                    comprados = 0.0
+                    monedas = set()
                     desde_cero = True
                 cant += o["cantidad"]
                 if o["monto"]:
-                    costo += o["monto"]
-                    nominales += o["cantidad"]
+                    comprados += o["cantidad"]
+                    monedas.add("USD" if o.get("usd") else "ARS")
                     # Cada compra entro a su propio tipo de cambio: es la
                     # diferencia que se quiere medir. Las que no tienen
                     # MEP de ese dia quedan afuera del promedio en vez de
                     # entrar al de hoy, que no seria el que pagaste.
                     mep = mep_de(o["fecha"]) if mep_de else None
-                    if mep:
-                        costo_usd += o["monto"] / mep
+                    if o.get("usd"):
+                        # Pagada en dolares: ese importe ES el costo en
+                        # dolares, no hay que dividirlo por nada. Dividir
+                        # aca por el MEP lo dejaba mil veces mas chico.
+                        costo_usd += o["monto"]
                         nom_usd += o["cantidad"]
+                        if mep:
+                            costo += o["monto"] * mep
+                            nominales += o["cantidad"]
+                    else:
+                        costo += o["monto"]
+                        nominales += o["cantidad"]
+                        if mep:
+                            costo_usd += o["monto"] / mep
+                            nom_usd += o["cantidad"]
             else:
                 cant -= o["cantidad"]
                 if cant <= 1e-9:
@@ -214,6 +268,8 @@ def reconstruir(operaciones, conocidos=None, mep_de=None, eventos_de=None):
                     alta = None
                     costo, nominales = 0.0, 0.0
                     costo_usd, nom_usd = 0.0, 0.0
+                    comprados = 0.0
+                    monedas = set()
         if cant <= 1e-9:
             continue
         salida[sim] = {
@@ -224,18 +280,30 @@ def reconstruir(operaciones, conocidos=None, mep_de=None, eventos_de=None):
             # del PPC dice en que unidad esta el costo, no en cual cotiza
             # el mercado. Ponerle 100 aca haria una posicion cien veces
             # mas barata de lo que costo.
-            "ppc": round(costo / nominales, 6) if nominales else None,
+            # Solo si todas las compras pudieron llevarse a pesos. Una
+            # posicion comprada mitad en pesos y mitad en dolares sin el
+            # MEP de esos dias no tiene PPC en pesos: tiene la mitad.
+            "ppc": (round(costo / nominales, 6)
+                    if nominales and abs(nominales - comprados) < 1e-6
+                    else None),
             "ppc_base": 1.0,
-            # Solo si el MEP cubre todas las compras: un promedio armado
-            # con la mitad de las compras no es el costo en dolares.
+            # Lo mismo del otro lado: un promedio armado con la mitad de
+            # las compras no es el costo en dolares.
             "ppc_usd": (round(costo_usd / nom_usd, 8)
-                        if nom_usd and abs(nom_usd - nominales) < 1e-6
+                        if nom_usd and abs(nom_usd - comprados) < 1e-6
                         else None),
             # Cuantos nominales quedaron sin MEP de su dia. Si son todos,
             # la serie no llega tan atras como la compra; si son algunos,
             # hay huecos. Sin esto, "no calculo el PPC en dolares" no
             # tiene explicacion en ningun lado.
-            "nominales_sin_mep": round(nominales - nom_usd, 6),
+            "nominales_sin_mep": round(comprados - nom_usd, 6),
+            # Y cuantos quedaron sin PPC en pesos, que es el caso nuevo:
+            # una compra en dolares sin MEP de ese dia.
+            "nominales_sin_pesos": round(comprados - nominales, 6),
+            # Si la posicion mezcla compras en las dos monedas. Es el
+            # caso que hacia falta mirar: QQQ comprado en pesos y en QQQD
+            # es una sola tenencia con dos monedas adentro.
+            "monedas": sorted(monedas),
             "primera_compra": ops[0]["fecha"] if ops else None,
             "con_eventos": bool(eventos_de and eventos_de(sim)),
             "base_cotizacion": base,
@@ -292,6 +360,8 @@ def conciliar(reconstruido, tenencia, tolerancia=0.01):
                 "ppc": r["ppc"], "ppc_base": r["ppc_base"],
                 "ppc_usd": r["ppc_usd"],
                 "nominales_sin_mep": r["nominales_sin_mep"],
+                "nominales_sin_pesos": r["nominales_sin_pesos"],
+                "monedas": r["monedas"],
                 "primera_compra": r["primera_compra"],
                 "base_cotizacion": r["base_cotizacion"],
                 "operaciones": r["operaciones"]}
