@@ -4870,7 +4870,10 @@ function pintarCartera(d){
         (d.resultado_usd_pct >= 0 ? "+" : "") +
         d.resultado_usd_pct.toFixed(2) + '% en dólares' +
         '<span class="tocar">sobre ' +
-        (d.cubierto_usd_pct || 0).toFixed(0) + '% de la cartera</span></div>'
+        (d.cubierto_usd_pct || 0).toFixed(0) + '% de la cartera' +
+        (d.estimado_usd_pct
+          ? ", " + d.estimado_usd_pct.toFixed(0) + "% estimado con el MEP " +
+            "de la fecha de alta" : "") + '</span></div>'
       : '<div class="cart-res" style="color:var(--muted)">— en dólares' +
         '<span class="tocar">ninguna posición tiene PPC en dólares ' +
         'todavía</span></div>';
@@ -5192,15 +5195,22 @@ function tenFicha(t, p){
        devolviendo "" cuando falta el valor, la posicion sin `ppc_usd`
        no mostraba nada y parecia que la funcion no existia. Un guion
        dice que se puede medir y todavia no se midio. */
+    /* El estimado lleva ~ adelante: es el MEP de la fecha de alta, no el
+       de cada compra. Sin la marca, una aproximacion se lee igual que
+       una medicion. */
     dato("PPC US$", p.ppc_usd == null
       ? '<span style="color:var(--muted)">—</span>'
-      : num(p.ppc_usd, 4)) +
+      : (p.ppc_usd_estimado ? "~ " : "") + num(p.ppc_usd, 4)) +
     dato("En dólares", p.resultado_usd_pct == null
       ? '<span style="color:var(--muted)">—</span>'
       : '<span style="color:' + (p.resultado_usd_pct >= 0
         ? "var(--sage)" : "var(--coral)") + '">' +
+      (p.ppc_usd_estimado ? "~ " : "") +
       (p.resultado_usd_pct >= 0 ? "+" : "") +
       num(p.resultado_usd_pct, 2) + '%</span>') +
+    (p.ppc_usd_estimado
+      ? '<div class="nota">El PPC en dólares está estimado con el MEP de ' +
+        'la fecha de alta, no con el de cada compra.</div>' : "") +
     dato("Resultado", p.resultado_pct == null ? null :
       '<span style="color:' + (p.resultado_pct >= 0 ? "var(--sage)"
         : "var(--coral)") + '">' + (p.resultado_pct >= 0 ? "+" : "") +
@@ -5278,9 +5288,10 @@ function tenEditor(t){
       (t.ppc_base == null ? "" : t.ppc_base) + '"></label>' +
     /* Columna propia, no el PPC en pesos dividido por el dolar de hoy:
        cada compra entro a su tipo de cambio y esa es la diferencia que
-       se quiere medir. Va siempre por unidad, como el de pesos. */
+       se quiere medir. Va en la misma base que el de pesos: `ppc_base`
+       es una sola y describe a los dos. */
     '<label>PPC en dólares<input data-c="ppc_usd" type="number" step="any" ' +
-      'placeholder="por unidad" value="' +
+      'placeholder="en la misma base que el PPC" value="' +
       (t.ppc_usd == null ? "" : t.ppc_usd) + '"></label>' +
     '<label>Fecha de alta<input data-c="fecha_alta" type="date" value="' +
       (t.fecha_alta || "") + '"></label>' +

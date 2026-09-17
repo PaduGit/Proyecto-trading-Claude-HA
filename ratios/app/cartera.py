@@ -177,6 +177,22 @@ def exposicion(t, bonos_cfg):
     return ETIQUETAS.get(tipo, "Sin clasificar")
 
 
+def _mep_de(fecha, cache):
+    """El MEP de un dia, una sola consulta por fecha.
+
+    `mep_al` ya busca hasta siete dias habiles hacia atras si ese dia no
+    tiene dato. Devuelve None si no hay: entonces no se estima nada.
+    """
+    if fecha in cache:
+        return cache[fecha]
+    try:
+        import bonos as BO
+        cache[fecha] = BO.mep_al(fecha)
+    except Exception:
+        cache[fecha] = None
+    return cache[fecha]
+
+
 def valuar(tenencias, precios, mep=None, bonos_cfg=None):
     """Arma la cartera valuada.
 
@@ -186,6 +202,7 @@ def valuar(tenencias, precios, mep=None, bonos_cfg=None):
     parece completo y no lo es.
     """
     filas, faltan = [], []
+    _mep_cache = {}
     for t in tenencias or []:
         tipo = (t.get("tipo") or "otros").lower()
         sim = t["simbolo"]
@@ -215,7 +232,24 @@ def valuar(tenencias, precios, mep=None, bonos_cfg=None):
         # En dolares: el costo va al MEP de cada compra -por eso hay un
         # `ppc_usd` propio y no se divide el PPC en pesos por el dolar de
         # hoy- y el valor al MEP de ahora. Sin `ppc_usd` queda en guion.
-        costo_usd = cant * t["ppc_usd"] if t.get("ppc_usd") else None
+        #
+        # `ppc_base` es una sola y vale para los dos PPC: el de pesos y el
+        # de dolares estan siempre en la misma unidad. Sin dividir aca, un
+        # bono con PPC por lamina daba un costo en dolares cien veces mas
+        # grande y el resultado se pegaba a -100%.
+        #
+        # Veta y ECO se cargan pegando JSON: nunca van a tener
+        # operaciones de donde salga el PPC en dolares medido. Para esas,
+        # se estima con el MEP de la fecha de alta. Es una aproximacion y
+        # va marcada: si la posicion crecio despues del alta, el grueso
+        # del capital entro a otro tipo de cambio, y una fecha de alta
+        # mal puesta se propaga hasta aca.
+        ppc_usd, ppc_usd_est = t.get("ppc_usd"), False
+        if not ppc_usd and ppc and t.get("fecha_alta"):
+            m = _mep_de(str(t["fecha_alta"])[:10], _mep_cache)
+            if m:
+                ppc_usd, ppc_usd_est = ppc / m, True
+        costo_usd = (cant * ppc_usd / ppc_base) if ppc_usd else None
         valor_usd = (valor / mep) if (valor is not None and mep) else None
 
         filas.append({
@@ -224,7 +258,10 @@ def valuar(tenencias, precios, mep=None, bonos_cfg=None):
             "ppc": ppc, "costo": costo, "resultado": res,
             "resultado_pct": (res / costo * 100) if (res is not None and costo)
                              else None,
-            "ppc_usd": t.get("ppc_usd"),
+            "ppc_usd": ppc_usd,
+            # Para que la pantalla pueda distinguir el medido del
+            # estimado en vez de mostrar los dos como si fueran lo mismo.
+            "ppc_usd_estimado": ppc_usd_est or None,
             "costo_usd": costo_usd,
             "valor_usd": valor_usd,
             "resultado_usd_pct": ((valor_usd / costo_usd - 1) * 100)
@@ -250,9 +287,15 @@ def valuar(tenencias, precios, mep=None, bonos_cfg=None):
     # El total en dolares se mide solo sobre lo que tiene `ppc_usd`. Una
     # cartera medida a medias y presentada como entera es peor que una
     # que dice cuanto abarca, que es lo que ya se hace en pesos.
+    # Lo estimado con el MEP del alta entra al total: cubre mas cartera,
+    # que es lo que se buscaba. Pero se informa cuanto del total es
+    # estimado, porque un numero que no dice de que esta hecho es el
+    # mismo problema que una cartera medida a medias.
     medibles = [f for f in filas if f.get("costo_usd") and f.get("valor_usd")]
     costo_usd_total = sum(f["costo_usd"] for f in medibles)
     valor_usd_medido = sum(f["valor_usd"] for f in medibles)
+    valor_usd_est = sum(f["valor_usd"] for f in medibles
+                        if f.get("ppc_usd_estimado"))
     medido_usd = valor_usd_medido or None
     return {
         "posiciones": filas,
@@ -261,6 +304,8 @@ def valuar(tenencias, precios, mep=None, bonos_cfg=None):
         "costo_usd": costo_usd_total or None,
         "resultado_usd_pct": ((valor_usd_medido / costo_usd_total - 1) * 100)
                              if costo_usd_total else None,
+        "estimado_usd_pct": ((valor_usd_est / valor_usd_medido * 100)
+                             if valor_usd_medido and valor_usd_est else None),
         "cubierto_usd_pct": (valor_usd_medido / (total / mep) * 100)
                             if (mep and total) else None,
         "medido_usd": medido_usd,

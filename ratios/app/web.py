@@ -1330,9 +1330,17 @@ def crear_app(monitor):
                         # no existia y no hay nada cargado a mano que
                         # respetar. Atado al de pesos, no se escribia
                         # nunca en las posiciones que ya tenian PPC.
+                        #
+                        # El que sale del reconstructor es por unidad,
+                        # pero `ppc_base` es una sola para los dos PPC:
+                        # si el de pesos no se pisa, la fila conserva su
+                        # base y el de dolares tiene que entrar en esa
+                        # misma unidad, no en la suya.
                         if f.get("ppc_usd") and (pisar
                                                  or not (actual or {}).get("ppc_usd")):
-                            campos_sim["ppc_usd"] = f["ppc_usd"]
+                            b = (1 if campos_sim.get("ppc_base") == 1
+                                 else ((actual or {}).get("ppc_base") or 1))
+                            campos_sim["ppc_usd"] = f["ppc_usd"] * b
                         try:
                             db.actualizar_tenencia(nombre, sim, campos_sim)
                             escritas += 1

@@ -1,5 +1,35 @@
 # Registro de cambios
 
+## 0.44.0
+
+**El PPC en dolares tambien respeta `ppc_base`.** Era una sola linea:
+el costo en pesos se dividia por la base y el costo en dolares no. Un
+bono con el PPC por lamina daba un costo en dolares cien veces mas
+grande y el resultado se pegaba a -100%. MR43O pasa de -100% a -47,86%.
+
+La base es una sola y describe a los dos PPC. Se arreglo en los tres
+lugares donde se rompia: la valuacion de la cartera, el promediado al
+confirmar un aporte -que mezclaba un valor por lamina con uno por
+unidad- y la importacion de operaciones, que cuando **no** pisa el PPC
+en pesos deja la fila con su base vieja y ahora lleva el PPC en dolares
+a esa misma unidad en vez de escribirlo por unidad.
+
+**PPC en dolares estimado para las cuentas que se cargan a mano.** Veta
+y ECO se cargan pegando JSON: nunca van a tener operaciones de donde
+salga el PPC en dolares medido, asi que su resultado en dolares era
+siempre un guion. Ahora se estima con el MEP de la **fecha de alta**,
+con la tolerancia de siete dias que ya tenia `mep_al`.
+
+Se calcula al vuelo y **no se guarda**: la columna `ppc_usd` sigue
+queriendo decir "medido", una aproximacion no queda congelada en la base
+y se recalcula sola si se corrige la fecha de alta.
+
+Va marcado con `~` en el PPC y en el resultado, y la tarjeta explica que
+sale del MEP del alta y no del de cada compra. Entra al total en
+dolares, que ahora cubre mas cartera, y la leyenda dice que porcentaje
+del total es estimado. Sin MEP de esa fecha, o sin fecha de alta, queda
+en guion: no se inventa.
+
 ## 0.43.0
 
 **El PPC tiene en cuenta la moneda de cada compra.** La API de IOL no

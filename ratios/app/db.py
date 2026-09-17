@@ -2251,7 +2251,10 @@ def _promediar_ppc(broker, simbolo, cant_entra, precio, ts=None):
     if mep:
         u_nuevo = p_nuevo / mep
         if t["ppc_usd"] and cant_antes > 1e-9:
-            ppc_usd = ((cant_antes * t["ppc_usd"] + cant_entra * u_nuevo)
+            # El guardado esta en la base de la fila, igual que el de
+            # pesos: hay que llevarlo a por unidad antes de promediar.
+            u_viejo = t["ppc_usd"] / (t["ppc_base"] or 1)
+            ppc_usd = ((cant_antes * u_viejo + cant_entra * u_nuevo)
                        / (cant_antes + cant_entra))
         else:
             ppc_usd = u_nuevo
