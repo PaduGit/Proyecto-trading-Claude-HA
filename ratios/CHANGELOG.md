@@ -1,5 +1,43 @@
 # Registro de cambios
 
+## 0.45.0
+
+**Reserva de valor mide tenencia por tenencia.** La estrategia pasa a ser
+una etiqueta que agrupa. Cada especie se mide contra su propio PPC y con
+el patron corrido desde **su propia fecha de alta**; el numero de la
+estrategia es el promedio ponderado por costo.
+
+Antes se sumaba todo y se comparaba contra un unico factor del patron
+medido desde el alta de la estrategia, que se heredaba de la posicion
+desde la que se creo. Un bono comprado en 2024 terminaba comparado contra
+un dolar medido desde 2026. Y habia dos mediciones que se contradecian:
+la tarjeta decia "sin punto de partida" y el chip de la tenencia daba
+-23,1%. Ahora las dos hacen la misma cuenta y dan el mismo numero.
+
+La tarjeta muestra una tabla por especie -alta, cuanto rindio, cuanto
+hizo el patron y la diferencia-, que es lo que deja ver cual le gana al
+patron y cual no. Una especie sin PPC o sin fecha de alta queda afuera
+del promedio y se lista con el motivo, y la tarjeta dice sobre que
+porcentaje del costo esta midiendo.
+
+Sin ledger no hay punto de partida que reclamar: para esta familia se
+van el cartel de "usar la tenencia actual" y los botones Movimientos y
+Cargar uno. Evolucion sigue: sale de la foto diaria, no del ledger.
+
+Las otras cuatro familias no cambian. En par y curva la rotacion es el
+punto y las cuotapartes existen para eso.
+
+**El patron dolar es el MEP.** Se mide contra el dolar billete, no
+contra el mayorista A3500. Un dolar linked ajusta por el A3500: medirlo
+contra el A3500 es compararlo con su propio ajuste, y con brecha el
+numero daria ganancia mientras en dolares reales se perdio. El A3500 se
+queda donde sirve, en el valor tecnico y la TIR. En pantalla dice "Dolar
+MEP" para que no haya dudas de cual es.
+
+**DNC3O figuraba dos veces en `bonos.yaml`**, con distinto emisor. YAML
+se quedaba con la segunda en silencio. Se saco la primera, que no se
+usaba.
+
 ## 0.44.0
 
 **El PPC en dolares tambien respeta `ppc_base`.** Era una sola linea:

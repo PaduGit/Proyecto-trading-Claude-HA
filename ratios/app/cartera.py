@@ -43,8 +43,14 @@ def patron_valor(patron, f=None):
             import cer as C
             return C.valor(f) if f != _date.today() else C.vigente()
         if patron == "dolar":
-            import dolar as D
-            return D.valor(f) if f != _date.today() else D.vigente()
+            # El MEP, no el mayorista A3500. Son dos preguntas distintas
+            # y esta es la del billete: un dolar linked ajusta por el
+            # A3500, asi que medirlo contra el A3500 es compararlo con su
+            # propio ajuste. Con brecha el numero daria ganancia mientras
+            # en dolares reales se perdio. El A3500 se queda donde sirve:
+            # valor tecnico y TIR de los dolar linked.
+            import bonos as BO
+            return BO.mep_al(f.isoformat() if not isinstance(f, str) else f)
         if patron == "badlar":
             import badlar as B
             return B.valor(f) if f != _date.today() else B.vigente()
@@ -140,13 +146,39 @@ def medir(estrategias_, posiciones):
 
         pat = e.get("patron")
         if pat and costo:
-            factor, nota = factor_patron(pat, e)
-            if factor:
-                d["patron_pct"] = (factor - 1) * 100
-                # Lo unico que importa: si le gano o le perdio a la vara.
-                d["contra_patron_pct"] = ((medido / costo) / factor - 1) * 100
+            if e.get("familia") == "reserva_renta_fija":
+                # Tenencia por tenencia, cada una contra el patron desde
+                # su propia fecha de alta, y despues el promedio
+                # ponderado por costo. Es la misma cuenta que hace la
+                # tarjeta: si las dos pantallas miden distinto, una de
+                # las dos miente y no se sabe cual.
+                num = pat_num = peso = 0.0
+                for p in pos:
+                    c, v = p.get("costo"), p.get("valor")
+                    alta = (p.get("fecha_alta") or "").strip() or None
+                    if not (c and v is not None and alta):
+                        continue
+                    factor, nota = factor_patron(pat, dict(e, alta=alta))
+                    if not factor:
+                        d["nota"] = nota
+                        continue
+                    num += ((v / c) / factor - 1) * c
+                    pat_num += (factor - 1) * c
+                    peso += c
+                if peso:
+                    d["patron_pct"] = pat_num / peso * 100
+                    d["contra_patron_pct"] = num / peso * 100
+                    d["cubierto_patron_pct"] = peso / costo * 100
+                elif not d["nota"]:
+                    d["nota"] = "ninguna especie tiene fecha de alta"
             else:
-                d["nota"] = nota
+                factor, nota = factor_patron(pat, e)
+                if factor:
+                    d["patron_pct"] = (factor - 1) * 100
+                    # Lo unico que importa: si le gano o le perdio a la vara.
+                    d["contra_patron_pct"] = ((medido / costo) / factor - 1) * 100
+                else:
+                    d["nota"] = nota
         elif pat:
             d["nota"] = "sin PPC cargado en las especies"
         salida.append(d)
@@ -267,6 +299,10 @@ def valuar(tenencias, precios, mep=None, bonos_cfg=None):
             "resultado_usd_pct": ((valor_usd / costo_usd - 1) * 100)
                                  if (valor_usd and costo_usd) else None,
             "exposicion": exposicion(t, bonos_cfg),
+            # La fecha de entrada de ESTA especie: la familia reserva de
+            # valor mide el patron desde aca y no desde el alta de la
+            # estrategia, que puede ser de otro año.
+            "fecha_alta": t.get("fecha_alta"),
             "estrategia_id": t.get("estrategia_id"),
             "estrategia": t.get("estrategia"),
             "extranjero": t.get("extranjero"),

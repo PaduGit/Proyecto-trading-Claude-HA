@@ -662,26 +662,6 @@ bonos:
     nombre: ON Edenor Clase 3 9,75% 2026
     ley: argentina
     moneda: USD
-    emisor: Empresa Distribuidora y Comercializadora Norte (Edenor)
-    emisor_tipo: corporativo
-    tipo: hard_dollar
-    emision: 2024-03-07
-    vencimiento: 2026-11-22
-    base: 30/360
-    amortizacion: {tipo: bullet}
-    interes:
-      frecuencia_meses: 6
-      primer_pago: 2024-11-22
-      tramos:
-        - {desde: 2024-03-07, tasa: 9.75}
-    nota: >-
-      Denominada y pagadera en dolares; la especie que termina en O
-      cotiza en pesos, igual que un AL30. Riesgo corporativo: va en su
-      propia familia y no entra a la curva soberana.
-  DNC3O:
-    nombre: ON Edenor Clase 3 9,75% 2026
-    ley: argentina
-    moneda: USD
     emisor: EDENOR S.A.
     emisor_tipo: corporativo
     tipo: hard_dollar

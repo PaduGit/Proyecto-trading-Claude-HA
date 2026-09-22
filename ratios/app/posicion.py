@@ -206,7 +206,7 @@ def resumen(estrategia, precios):
     vara = VARA.get(estrategia.get("familia") or "", "nominales")
     extra = {}
     if vara == "indice":
-        extra = _contra_indice(estrategia, valor_hoy, precios)
+        extra = _contra_indice(estrategia, precios)
     elif vara == "ppc":
         extra = _contra_ppc(eid, precios)
 
@@ -223,7 +223,11 @@ def resumen(estrategia, precios):
         "rendimiento_pct": ((valor_hoy - 1) * 100)
                            if valor_hoy is not None else None,
         "ganancia_nominal": (eq - ap) if eq is not None else None,
-        "sin_punto_de_partida": cuotas <= 0,
+        # Reserva de valor no usa el ledger: cada tenencia trae su costo
+        # y su fecha, asi que no hay nada que sembrar. Reclamar un punto
+        # de partida que la medicion no necesita era pedir trabajo al
+        # pedo y dejaba la tarjeta con un cartel permanente.
+        "sin_punto_de_partida": (cuotas <= 0) and vara != "indice",
         "sin_medir": sin_medir,
         "pendientes": len(pend),
         "alertas": db.alertas_de_estrategia(eid),
@@ -231,22 +235,98 @@ def resumen(estrategia, precios):
     }
 
 
-def _contra_indice(estrategia, valor_cuota, precios):
+def _contra_indice(estrategia, precios):
     """Cuanto rindio contra el dolar, el CER, la BADLAR o el S&P.
 
     Ganar 80% en pesos no dice nada si el dolar hizo 95%. Lo unico que
     importa es el cociente: por eso el numero que va grande en la tarjeta
     es `contra_patron_pct` y no el rendimiento propio.
+
+    **Esta familia mide tenencia por tenencia.** No hay cuotapartes ni
+    punto de partida: la estrategia es una etiqueta que agrupa, y cada
+    especie trae su propio costo -su PPC- y su propia fecha de entrada.
+    Medir la suma contra un patron calculado desde una unica fecha de
+    alta mezclaba periodos: un bono comprado en 2024 contra un dolar
+    medido desde 2026. Ahora cada una se compara contra su propia vara y
+    el numero de la estrategia es el promedio ponderado por costo.
+
+    Lo que no se puede medir no se promedia a medias: sin PPC no hay
+    costo y sin fecha de alta no hay contra que comparar. Esas especies
+    salen listadas aparte con el motivo.
     """
     from cartera import factor_patron
     pat = estrategia.get("patron")
-    if not pat:
-        return {"patron": None, "nota_patron": "sin patrón declarado"}
-    factor, nota = factor_patron(pat, estrategia, precios)
-    out = {"patron": pat, "patron_pct": ((factor - 1) * 100) if factor else None,
-           "contra_patron_pct": None, "nota_patron": nota}
-    if factor and valor_cuota is not None:
-        out["contra_patron_pct"] = (valor_cuota / factor - 1) * 100
+    eid = estrategia["id"]
+    especies, sin_ppc, sin_alta = [], [], []
+    valor_t = costo_t = 0.0
+    pond_num = pond_pat = pond_costo = 0.0
+
+    for f in db.tenencia_de_estrategia(eid):
+        cant = f["cantidad"] or 0
+        if not cant:
+            continue
+        sim = f["simbolo"]
+        p = precios.get(sim)
+        b = base_de((f["tipo"] or "").lower())
+        v = cant * p / b if p else None
+        ppc = f["ppc"]
+        c = cant * ppc / (f["ppc_base"] or b) if ppc else None
+        if not c:
+            sin_ppc.append(sim)
+            continue
+        if v is None:
+            continue
+        valor_t += v
+        costo_t += c
+        rend = v / c
+
+        # El patron corre desde la fecha de alta de ESTA tenencia. Es el
+        # cambio de fondo: la fecha vive en la especie, no en la
+        # estrategia.
+        alta = (f.get("fecha_alta") or "").strip() or None
+        fila = {"simbolo": sim, "cantidad": cant, "valor": v, "costo": c,
+                "alta": alta, "rendimiento_pct": (rend - 1) * 100,
+                "patron_pct": None, "contra_patron_pct": None, "nota": None}
+        if pat:
+            if not alta:
+                fila["nota"] = "sin fecha de alta"
+                sin_alta.append(sim)
+            else:
+                factor, nota = factor_patron(pat, dict(estrategia, alta=alta),
+                                             precios)
+                if factor:
+                    fila["patron_pct"] = (factor - 1) * 100
+                    fila["contra_patron_pct"] = (rend / factor - 1) * 100
+                    pond_num += (rend / factor - 1) * c
+                    pond_pat += (factor - 1) * c
+                    pond_costo += c
+                else:
+                    fila["nota"] = nota
+        especies.append(fila)
+
+    especies.sort(key=lambda x: x["costo"], reverse=True)
+    out = {
+        "patron": pat,
+        "por_especie": especies,
+        "sin_ppc": sin_ppc,
+        "sin_alta": sin_alta,
+        "valor": valor_t or None,
+        "costo": costo_t or None,
+        "rendimiento_pct": ((valor_t / costo_t - 1) * 100) if costo_t else None,
+        # Las dos ponderadas por costo, sobre las mismas especies: el
+        # patron promedio no es el del dolar a secas, es el que
+        # corresponde a los periodos en que estuvo puesta la plata.
+        "patron_pct": (pond_pat / pond_costo * 100) if pond_costo else None,
+        "contra_patron_pct": (pond_num / pond_costo * 100)
+                             if pond_costo else None,
+        "nota_patron": None if pat else "sin patrón declarado",
+        # Que parte del costo de la estrategia entro al promedio: un
+        # numero que no dice cuanto abarca es el mismo problema que una
+        # cartera medida a medias.
+        "cubierto_pct": (pond_costo / costo_t * 100) if costo_t else None,
+    }
+    if pat and not pond_costo:
+        out["nota_patron"] = "ninguna especie tiene fecha de alta y patrón"
     return out
 
 

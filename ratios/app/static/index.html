@@ -1182,17 +1182,55 @@ function medicion(e, r){
         : "");
   }
 
+  /* Reserva de valor: la estrategia es una etiqueta que agrupa y cada
+     tenencia se mide sola, contra su propio PPC y con el patron corrido
+     desde su propia fecha de alta. El numero grande es el promedio
+     ponderado por costo; debajo va el detalle, que es lo que deja ver
+     cual le gana al patron y cual no. */
   if(vara === "indice"){
-    if(r.contra_patron_pct == null)
-      return '<div class="aviso">' + esc(r.nota_patron || "sin patrón") +
+    const filas = r.por_especie || [];
+    let h = "";
+    if(r.contra_patron_pct == null){
+      h += '<div class="aviso">' + esc(r.nota_patron || "sin patrón") +
         '.</div>';
-    const t = r.contra_patron_pct >= 0 ? "var(--sage)" : "var(--coral)";
-    return '<div style="font-family:var(--mono);font-size:12px;color:' + t +
-      '">' + (r.contra_patron_pct >= 0 ? "+" : "") +
-      num(r.contra_patron_pct, 2) + '% contra ' + esc(r.patron) + '</div>' +
-      '<div class="pos-pie" style="display:block">rindió ' +
-      num(r.rendimiento_pct, 2) + '% y ' + esc(r.patron) + ' hizo ' +
-      num(r.patron_pct, 2) + '% · $' + ent(r.equivalente) + '</div>';
+    } else {
+      const t = r.contra_patron_pct >= 0 ? "var(--sage)" : "var(--coral)";
+      h += '<div style="font-family:var(--mono);font-size:12px;color:' + t +
+        '">' + (r.contra_patron_pct >= 0 ? "+" : "") +
+        num(r.contra_patron_pct, 2) + '% contra ' +
+        esc(NOM_PATRON[r.patron] || r.patron) + '</div>' +
+        '<div class="pos-pie" style="display:block">rindió ' +
+        num(r.rendimiento_pct, 2) + '% y ' +
+        esc(NOM_PATRON[r.patron] || r.patron) + ' hizo ' +
+        num(r.patron_pct, 2) + '% · $' + ent(r.valor) +
+        (r.cubierto_pct != null && r.cubierto_pct < 99.5
+          ? ' · sobre ' + num(r.cubierto_pct, 0) + '% del costo' : "") +
+        '</div>';
+    }
+    if(filas.length)
+      h += '<div style="overflow-x:auto;margin-top:8px">' +
+        '<table class="tabla"><thead><tr><th>Especie</th><th>Alta</th>' +
+        '<th>Rindió</th><th>' + esc(NOM_PATRON[r.patron] || r.patron || "—") +
+        '</th><th>Contra</th></tr></thead><tbody>' +
+        filas.map(f => '<tr><td>' + esc(f.simbolo) + '</td><td>' +
+          esc(f.alta || "—") + '</td><td>' + num(f.rendimiento_pct, 1) +
+          '%</td><td>' + (f.patron_pct == null ? "—"
+            : num(f.patron_pct, 1) + "%") + '</td><td>' +
+          (f.contra_patron_pct == null
+            ? '<span style="opacity:.6">' + esc(f.nota || "—") + '</span>'
+            : '<span style="color:' + (f.contra_patron_pct >= 0
+                ? "var(--sage)" : "var(--coral)") + '">' +
+              (f.contra_patron_pct >= 0 ? "+" : "") +
+              num(f.contra_patron_pct, 1) + '%</span>') +
+          '</td></tr>').join("") + '</tbody></table></div>';
+    if((r.sin_ppc || []).length)
+      h += '<div class="aviso">Sin PPC cargado en ' +
+        r.sin_ppc.map(esc).join(", ") + ': quedan afuera del promedio.</div>';
+    if((r.sin_alta || []).length)
+      h += '<div class="aviso">Sin fecha de alta en ' +
+        r.sin_alta.map(esc).join(", ") + ': no hay desde cuándo comparar ' +
+        'contra el patrón.</div>';
+    return h;
   }
 
   if(!base_)
@@ -1267,10 +1305,16 @@ function bloquePosicion(e){
 
   /* La tarjeta es el unico lugar donde vive la estrategia: si no edita,
      cierra y borra desde aca, esas acciones no existen en ningun lado. */
+  /* Reserva de valor no lee el ledger: cada tenencia trae su costo y su
+     fecha. Dejar los botones que lo escriben seria dejar media funcion
+     hecha, que es el error que el proyecto ya conoce. */
+  const conLedger = (r.vara || "nominales") !== "indice";
   return h + '<div data-evol="' + e.id + '" style="margin-top:10px"></div>' +
     '<div class="acciones">' +
-    '<button onclick="verMovimientos(' + e.id + ')">Movimientos</button>' +
-    '<button onclick="abrirMov(' + e.id + ')">Cargar uno</button>' +
+    (conLedger
+      ? '<button onclick="verMovimientos(' + e.id + ')">Movimientos</button>' +
+        '<button onclick="abrirMov(' + e.id + ')">Cargar uno</button>'
+      : "") +
     '<button data-ver-evol="' + e.id + '">Evolución</button>' +
     '<button data-editar-estr="' + e.id + '">Editar</button>' +
     '<button data-cerrar-estr="' + e.id + '">' +
@@ -4606,8 +4650,8 @@ let estrDatos = [], estrFamilias = [], estrPatrones = [], estrGrupos = [];
 let estrEditando = null;
 let estrMedidas = [];
 
-const NOM_PATRON = {dolar:"Dólar", cer:"CER", badlar:"BADLAR",
-                    tc_entrada:"Tipo de cambio de entrada"};
+const NOM_PATRON = {dolar:"Dólar MEP", cer:"CER", badlar:"BADLAR",
+                    spy:"S&P", tc_entrada:"Tipo de cambio de entrada"};
 const famNombre = f => (estrFamilias.find(x => x.id === f) || {}).nombre || f;
 
 async function cargarEstrategias(){

@@ -2400,7 +2400,8 @@ def tenencia_de_estrategia(eid):
     tenencia del dia en que se sembro el grupo y nunca mas.
     """
     return [dict(r) for r in conn().execute(
-        "SELECT t.broker, t.simbolo, t.cantidad, t.tipo, t.ppc, t.ppc_base "
+        "SELECT t.broker, t.simbolo, t.cantidad, t.tipo, t.ppc, t.ppc_base, "
+        "t.ppc_usd, t.fecha_alta "
         "FROM tenencia t JOIN estrategia_especie e ON e.simbolo = t.simbolo "
         "WHERE e.estrategia_id = ? ORDER BY t.simbolo, t.broker", (eid,))]
 
