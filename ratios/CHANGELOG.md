@@ -1,5 +1,64 @@
 # Registro de cambios
 
+## 0.46.0
+
+**Campo nuevo: `opc_histeresis_pct`, en 3.** Home Assistant no aplica
+valores por defecto sobre una configuracion existente: hay que cargarlo
+a mano.
+
+**Las alertas de opciones avisaban de nuevo sin haber salido del
+umbral.** Un mismo BEAR_PUT aviso cuatro veces en dos horas al 26%, 24%,
+23% y 24%, todos muy por debajo del 33%. El estado de persistencia se
+reconstruia **solo con las combinaciones presentes en ese ciclo**: en
+opciones una combinacion se queda sin puntas a cada rato y desaparece de
+la lista, se caia del diccionario y al ciclo siguiente volvia en blanco
+y avisaba como si fuera un cruce nuevo. Subir la persistencia no
+alcanzaba: un solo ciclo ausente rearmaba el aviso.
+
+Ahora el estado de las que no vinieron se arrastra -ausente no es lo
+mismo que afuera: no suma ciclos, pero tampoco rearma- y se olvida
+recien despues de 40 ciclos sin aparecer. Ademas hay histeresis: una vez
+avisada, la combinacion no se rearma hasta superar el umbral mas
+`opc_histeresis_pct`. Sobre la secuencia real de hoy, de seis avisos
+queda uno, y vuelve a avisar cuando de verdad sale y entra.
+
+**Mapa de combinaciones en OPCIONES.** Cada punto es un spread: el eje
+vertical es el riesgo -mas arriba es mejor-, el horizontal la base
+comprada o cuanto tiene que moverse el papel para empatar. Vertical
+punteada en el spot, horizontal ambar en el umbral de alarma. Verde
+alcista, rojo bajista. Al tocar un punto se abre su detalle completo.
+
+Tres selectores: vencimiento -uno a la vez, porque superpuestos los
+puntos se pisan-, estructura -un alcista y un bajista en la misma base
+son apuestas opuestas- y que mostrar en el eje horizontal. La alerta
+pasa a ser la entrada a esta pantalla en vez de la pantalla misma.
+
+**La tabla de tenencias muestra y ordena por rendimiento en dolares.**
+Va al lado del de pesos, con `~` cuando el PPC en dolares esta estimado,
+para que ordenar por esa columna no mezcle medidos con aproximados sin
+que se note. Agrupando por especie se pondera como el de pesos: el
+resultado del conjunto, no el promedio de los porcentajes.
+
+Dos ordenes nuevos, **Dolares** y **Contra patron**. Lo que no tiene
+dato va al fondo en los dos sentidos: una posicion sin PPC en dolares no
+es la peor, es una que no se midio.
+
+**Chip de precio viejo** en la fila. La cartera ya sabia que especies no
+operan hace dias y las valuaba igual, pero en la tabla se veian como
+cualquier otra.
+
+**El desplegable de una posicion, reordenado.** Arriba la descripcion
+del ticker. Los pares alineados: precio con PPC, PPC con resultado, PPC
+en dolares con el resultado en dolares. La leyenda de cuatro renglones
+del PPC estimado se fue: queda el `~` y la explicacion en el `title`.
+
+Y en renta fija, al desplegar: **TIR, dias al vencimiento, vencimiento,
+proximo pago, ajuste, valor tecnico y paridad**. Los dias van al lado de
+la TIR a proposito: una TIR de -6,65% a ocho dias del vencimiento es
+medio punto de precio anualizado por cuarenta y cinco, y sin el plazo no
+se compara con una a tres años. Se piden al abrir la fila y solo para
+renta fija.
+
 ## 0.45.0
 
 **Reserva de valor mide tenencia por tenencia.** La estrategia pasa a ser

@@ -1547,7 +1547,13 @@ def crear_app(monitor):
         # La medicion de estrategias va siempre sobre la cartera entera:
         # filtrada por broker daria el rendimiento de media estrategia,
         # que no significa nada.
-        completa = CA.valuar(filas, precios, mep, bonos_cfg)
+        # `meta` trae del panel la descripcion y la marca de precio
+        # viejo; `estrs` deja medir cada tenencia contra el patron de su
+        # estrategia sin tener que volver a leer la base por fila.
+        meta = monitor.cotizaciones_para_valuar()
+        estrs = db.estrategias()
+        completa = CA.valuar(filas, precios, mep, bonos_cfg,
+                             meta=meta, estrategias_=estrs)
 
         # Los mismos filtros que la lista: al mirar un solo broker o un
         # solo tipo, el total y los pesos tienen que ser de eso.
@@ -1569,7 +1575,8 @@ def crear_app(monitor):
         elif fa:
             filas = [f for f in filas if f.get("familia") == fa]
         r = (completa if not (br or tp or fa or ex)
-             else CA.valuar(filas, precios, mep, bonos_cfg))
+             else CA.valuar(filas, precios, mep, bonos_cfg,
+                            meta=meta, estrategias_=estrs))
         try:
             r["estrategias"] = CA.medir(db.estrategias(),
                                         completa["posiciones"])

@@ -412,30 +412,65 @@ def analizar(series, spots, cfg, comisiones, cierres=None,
 
 # -- alertas ---------------------------------------------------------
 
+# Cuantos ciclos seguidos puede faltar una combinacion antes de olvidar
+# que ya se aviso. Una opcion ilíquida se queda sin puntas a cada rato y
+# vuelve; una base que dejo de listarse no vuelve nunca.
+AUSENTES_MAX = 40
+
+
 def cruces(filas, previo, cfg):
     """Combinaciones que acaban de cruzar el umbral hacia adentro.
 
     Se avisa en el cruce, no mientras se mantiene: una combinacion que se
     queda barata toda la rueda avisa una vez. Vuelve a armarse cuando sale
     y entra de nuevo.
+
+    **El estado de las que no vinieron en este ciclo se arrastra.** En
+    opciones una combinacion se queda sin puntas a cada rato y desaparece
+    de `filas`; si se la deja caer del diccionario, al ciclo siguiente
+    vuelve con el estado en blanco y avisa de nuevo sin haber salido
+    nunca del umbral. Es lo que hacia que un mismo spread avisara cuatro
+    veces en dos horas al 26%, 24%, 23% y 24%. Ausente no es lo mismo que
+    afuera: no suma ciclos de persistencia, pero tampoco rearma el aviso.
+
+    Ademas hay **histeresis**: una vez avisada, la combinacion no se
+    rearma al volver a cruzar el umbral justo, sino recien cuando supera
+    el umbral mas un margen. Sin esa banda, el ruido de las puntas
+    alrededor del valor exacto alcanza para avisar de nuevo.
     """
     umbral = float(cfg.get("riesgo_max_alarma_pct") or 33)
     lotes_min = int(cfg.get("lotes_min") or 2)
     ciclos = max(1, int(cfg.get("ciclos_persistencia") or 1))
+    banda = float(cfg.get("histeresis_pct") or 3)
 
     estado, avisos = {}, []
+    vistas = set()
     for f in filas:
-        adentro = f["riesgo_pct"] <= umbral and f["lotes"] >= lotes_min
+        vistas.add(f["id"])
         prev = (previo or {}).get(f["id"]) or {}
+        avisado = prev.get("avisado") or False
+        adentro = f["riesgo_pct"] <= umbral and f["lotes"] >= lotes_min
+        # Ya avisada: solo se rearma cuando sale de la banda entera.
+        if avisado and f["riesgo_pct"] <= umbral + banda:
+            estado[f["id"]] = {"adentro": adentro, "ausente": 0,
+                               "seguidos": (prev.get("seguidos") or 0) + 1
+                                           if adentro else 0,
+                               "avisado": True}
+            continue
         seguidos = (prev.get("seguidos") or 0) + 1 if adentro else 0
         estado[f["id"]] = {"adentro": adentro, "seguidos": seguidos,
-                           "avisado": prev.get("avisado") or False}
-        if not adentro:
-            estado[f["id"]]["avisado"] = False
-            continue
-        if seguidos >= ciclos and not prev.get("avisado"):
+                           "ausente": 0, "avisado": False}
+        if adentro and seguidos >= ciclos:
             estado[f["id"]]["avisado"] = True
             avisos.append(f)
+
+    for cid, prev in (previo or {}).items():
+        if cid in vistas:
+            continue
+        ausente = (prev.get("ausente") or 0) + 1
+        if ausente > AUSENTES_MAX:
+            continue
+        estado[cid] = dict(prev, ausente=ausente)
     return avisos, estado
 
 

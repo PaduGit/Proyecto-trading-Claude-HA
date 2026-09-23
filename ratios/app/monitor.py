@@ -1156,6 +1156,11 @@ class Monitor:
             "bear_instrumento": c.get("opc_bear_instrumento", "ambos"),
             "lotes_min": c.get("opc_lotes_min", 2),
             "ciclos_persistencia": c.get("opc_ciclos_persistencia", 1),
+            # Banda para rearmar el aviso: una vez avisada, la
+            # combinacion no vuelve a avisar hasta superar el umbral mas
+            # estos puntos. Es la clave propia de opciones y no la del
+            # `histeresis_pct` de las zonas de ratio, que es otra cosa.
+            "histeresis_pct": c.get("opc_histeresis_pct", 3),
             "ganancia_min_pct": c.get("opc_ganancia_min_pct", 100),
             "dias_min_desarme": c.get("opc_dias_min_desarme", 10),
             "mov_contrario_pct": c.get("opc_mov_contrario_pct", 4),

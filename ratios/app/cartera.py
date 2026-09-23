@@ -225,7 +225,8 @@ def _mep_de(fecha, cache):
     return cache[fecha]
 
 
-def valuar(tenencias, precios, mep=None, bonos_cfg=None):
+def valuar(tenencias, precios, mep=None, bonos_cfg=None, meta=None,
+           estrategias_=None):
     """Arma la cartera valuada.
 
     `precios` es simbolo -> precio de referencia, en la misma base en la
@@ -235,6 +236,11 @@ def valuar(tenencias, precios, mep=None, bonos_cfg=None):
     """
     filas, faltan = [], []
     _mep_cache = {}
+    meta = meta or {}
+    # Para medir cada tenencia contra el patron de SU estrategia hace
+    # falta saber cual es: la familia reserva de valor corre el patron
+    # desde la fecha de alta de cada especie.
+    por_estr = {e["id"]: e for e in (estrategias_ or [])}
     for t in tenencias or []:
         tipo = (t.get("tipo") or "otros").lower()
         sim = t["simbolo"]
@@ -303,11 +309,35 @@ def valuar(tenencias, precios, mep=None, bonos_cfg=None):
             # valor mide el patron desde aca y no desde el alta de la
             # estrategia, que puede ser de otro año.
             "fecha_alta": t.get("fecha_alta"),
+            # Del panel de cotizaciones: el nombre largo para saber que
+            # es, y si el precio con que se valuo es de hace dias. Un
+            # valor calculado con un precio viejo se ve igual que uno de
+            # hoy y no es lo mismo.
+            "descripcion": (meta.get(t["simbolo"]) or {}).get("descripcion") or None,
+            "precio_viejo": bool((meta.get(t["simbolo"]) or {}).get("vieja")) or None,
+            "ultima_operacion": (meta.get(t["simbolo"]) or {}).get("ultima_operacion"),
             "estrategia_id": t.get("estrategia_id"),
             "estrategia": t.get("estrategia"),
             "extranjero": t.get("extranjero"),
             "ajuste_supuesto": t.get("ajuste_supuesto"),
         })
+
+    # Cada tenencia contra el patron de su estrategia, desde su propia
+    # fecha de alta. Es lo que deja ordenar la tabla por "que me esta
+    # ganando y que me esta perdiendo", y es la misma cuenta que hace la
+    # tarjeta: un solo lugar donde se define, dos pantallas que lo leen.
+    for f in filas:
+        f["contra_patron_pct"] = None
+        f["patron"] = None
+        e = por_estr.get(f.get("estrategia_id"))
+        pat = (e or {}).get("patron")
+        alta = (f.get("fecha_alta") or "").strip() or None
+        if not (pat and alta and f.get("costo") and f.get("valor") is not None):
+            continue
+        f["patron"] = pat
+        factor, _ = factor_patron(pat, dict(e, alta=alta), precios)
+        if factor:
+            f["contra_patron_pct"] = ((f["valor"] / f["costo"]) / factor - 1) * 100
 
     total = sum(f["valor"] for f in filas if f["valor"])
     for f in filas:

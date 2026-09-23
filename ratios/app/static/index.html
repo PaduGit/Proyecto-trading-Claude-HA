@@ -459,6 +459,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
     <div id="op-cab"></div>
     <button class="primario" id="op-btn" style="margin-top:12px">
       Buscar spreads</button>
+    <div id="op-mapa" style="margin-top:12px"></div>
     <div id="op-out" style="margin-top:12px"></div>
     <h3 style="margin:20px 0 6px">Posiciones armadas</h3>
     <div id="op-pos"></div>
@@ -3686,6 +3687,9 @@ async function cargarOpciones(){
       return;
     }
     sprDatos = {_umbral: d.umbral_alarma};
+    opcMapa = {filas: d.filas || [], spots: d.spots || {},
+               umbral: d.umbral_alarma, venc: null,
+               estr: "todas", eje: "base", sel: null};
     const t = d.tendencias || {};
     $("#op-cab").innerHTML = Object.keys(d.spots || {}).map(k =>
       '<div class="hallazgo"><h3>' + esc(k) + ' ' + precio(d.spots[k]) + '</h3>' +
@@ -3730,6 +3734,7 @@ async function cargarOpciones(){
       'vende contra el bid. <b>Riesgo</b> es lo máximo que se pierde, medido ' +
       'sobre el ancho de bases. <b>Ejecutable</b> es el mínimo de las dos ' +
       'puntas.</div>';
+    pintarMapaOpc();
   }catch(e){
     out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
   }finally{ $("#op-btn").disabled = false; }
@@ -3737,6 +3742,121 @@ async function cargarOpciones(){
 }
 
 $("#op-btn").addEventListener("click", () => cargarOpciones());
+
+/* ---------- mapa de combinaciones ---------- */
+/* La alerta dice que algo cruzo el umbral; esto dice donde esta parado
+   respecto del spot. Cada punto es una combinacion: el eje Y es el
+   riesgo -abajo es mejor- y el X, la base comprada o cuanto tiene que
+   moverse el papel para empatar. La vertical es el spot y la horizontal
+   el umbral de alarma.
+
+   Un vencimiento por vez y un filtro de estructura, porque un alcista y
+   un bajista en la misma base son apuestas opuestas y mezclados en la
+   misma nube no se puede leer nada. */
+let opcMapa = null;
+
+function pintarMapaOpc(){
+  const cont = $("#op-mapa");
+  if(!cont) return;
+  if(!opcMapa || !opcMapa.filas.length){ cont.innerHTML = ""; return; }
+
+  const vencs = [...new Set(opcMapa.filas.map(f => f.vencimiento))].sort();
+  if(!opcMapa.venc || vencs.indexOf(opcMapa.venc) < 0) opcMapa.venc = vencs[0];
+
+  const ESTR = [["todas","Todas"],["alcistas","Alcistas"],
+                ["bajistas","Bajistas"]];
+  const alcista = e => e === "BULL_CALL" || e === "BULL_PUT";
+  const filas = opcMapa.filas.filter(f =>
+    f.vencimiento === opcMapa.venc &&
+    (opcMapa.estr === "todas"
+      || (opcMapa.estr === "alcistas") === alcista(f.estructura)));
+
+  const chips = (id, ops, actual) => '<div class="filtro-fila">' +
+    ops.map(o => '<button aria-pressed="' + (actual === o[0]) +
+      '" data-mapa="' + id + '" data-val="' + esc(String(o[0])) + '">' +
+      esc(o[1]) + '</button>').join("") + '</div>';
+
+  let h = chips("venc", vencs.map(v => [v, v.slice(5) + " · " +
+      (opcMapa.filas.find(f => f.vencimiento === v) || {}).dias + "d"]),
+      opcMapa.venc) +
+    chips("estr", ESTR, opcMapa.estr) +
+    chips("eje", [["base","Base comprada"],["equilibrio","Mover para empatar"]],
+      opcMapa.eje);
+
+  if(!filas.length){
+    cont.innerHTML = h + '<div class="vacio">Nada con esos filtros.</div>';
+    return;
+  }
+
+  const W = 340, H = 220, mI = 38, mD = 10, mA = 12, mB = 26;
+  const spot = filas[0].spot;
+  const esBase = opcMapa.eje === "base";
+  const xs = filas.map(f => esBase ? f.base_compra : f.var_equilibrio_pct);
+  const ys = filas.map(f => f.riesgo_pct);
+  const refX = esBase ? spot : 0;
+  let x0 = Math.min(...xs, refX), x1 = Math.max(...xs, refX);
+  let y0 = Math.min(...ys), y1 = Math.max(...ys, opcMapa.umbral || 0);
+  if(x1 - x0 < 1e-9){ x0 -= 1; x1 += 1; }
+  if(y1 - y0 < 1e-9){ y0 -= 1; y1 += 1; }
+  const px = v => mI + (v - x0) / (x1 - x0) * (W - mI - mD);
+  /* El riesgo bajo es lo bueno: va arriba, que es donde se lo busca. */
+  const py = v => mA + (v - y0) / (y1 - y0) * (H - mA - mB);
+
+  const color = f => alcista(f.estructura) ? "var(--sage)" : "var(--coral)";
+  const puntos = filas.map((f, i) =>
+    '<circle data-punto="' + esc(f.id) + '" cx="' + px(xs[i]).toFixed(1) +
+    '" cy="' + py(ys[i]).toFixed(1) + '" r="' +
+    (opcMapa.sel === f.id ? 7 : 4.5) + '" fill="' + color(f) +
+    '" fill-opacity="' + (opcMapa.sel === f.id ? 1 : .6) +
+    '" stroke="' + (opcMapa.sel === f.id ? "var(--txt)" : "none") +
+    '" stroke-width="1.5" style="cursor:pointer"></circle>').join("");
+
+  const yU = opcMapa.umbral != null ? py(opcMapa.umbral) : null;
+  h += '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto">' +
+    '<line x1="' + px(refX).toFixed(1) + '" y1="' + mA + '" x2="' +
+      px(refX).toFixed(1) + '" y2="' + (H - mB) +
+      '" stroke="var(--muted)" stroke-dasharray="3 3"></line>' +
+    (yU == null ? "" : '<line x1="' + mI + '" y1="' + yU.toFixed(1) +
+      '" x2="' + (W - mD) + '" y2="' + yU.toFixed(1) +
+      '" stroke="var(--amber)" stroke-dasharray="4 3"></line>') +
+    puntos +
+    '<text x="2" y="' + (mA + 8) + '" fill="var(--muted)" font-size="9">' +
+      num(y0, 0) + '%</text>' +
+    '<text x="2" y="' + (H - mB) + '" fill="var(--muted)" font-size="9">' +
+      num(y1, 0) + '%</text>' +
+    '<text x="' + px(refX).toFixed(1) + '" y="' + (H - 14) +
+      '" fill="var(--muted)" font-size="9" text-anchor="middle">' +
+      (esBase ? "spot " + ent(spot) : "empata acá") + '</text>' +
+    '</svg>' +
+    '<div class="nota">' + filas.length + ' combinaciones · verde alcista, ' +
+    'rojo bajista · eje vertical: riesgo, más arriba es mejor · punteada ' +
+    'ámbar: el umbral de alarma. Tocá un punto.</div>' +
+    '<div id="op-punto"></div>';
+  cont.innerHTML = h;
+  if(opcMapa.sel) pintarPuntoOpc();
+}
+
+function pintarPuntoOpc(){
+  const cont = document.getElementById("op-punto");
+  if(!cont) return;
+  const f = opcMapa.filas.find(x => x.id === opcMapa.sel);
+  cont.innerHTML = f ? sprFila(f) : "";
+}
+
+$("#op-mapa").addEventListener("click", ev => {
+  const c = ev.target.closest("[data-mapa]");
+  if(c){
+    opcMapa[c.dataset.mapa] = c.dataset.val;
+    opcMapa.sel = null;
+    pintarMapaOpc();
+    return;
+  }
+  const p = ev.target.closest("[data-punto]");
+  if(p){
+    opcMapa.sel = opcMapa.sel === p.dataset.punto ? null : p.dataset.punto;
+    pintarMapaOpc();
+  }
+});
 
 function sprMiniGrafico(serie, umbral){
   if(!serie.length) return '<div class="vacio">Todavía no hay cierres ' +
@@ -5017,6 +5137,7 @@ let tenModo = "broker";   // broker | especie
 let tenEditando = "";     // clave de la fila en modo edicion
 
 const ORDENES = [["valor","Valor"],["resultado","Resultado"],
+                 ["dolares","Dólares"],["patron","Contra patrón"],
                  ["simbolo","Especie"],["estrategia","Estrategia"]];
 
 function ordChips(){
@@ -5052,6 +5173,12 @@ function tenPintar(){
     if(tenOrden.col === "valor") return p.valor == null ? -1 : p.valor;
     if(tenOrden.col === "resultado")
       return p.resultado_pct == null ? -9e9 : p.resultado_pct;
+    /* Sin dato van al fondo en cualquier sentido: una posicion sin PPC
+       en dolares no es "la peor", es una que no se midio. */
+    if(tenOrden.col === "dolares")
+      return p.resultado_usd_pct == null ? -1e9 * signo : p.resultado_usd_pct;
+    if(tenOrden.col === "patron")
+      return p.contra_patron_pct == null ? -1e9 * signo : p.contra_patron_pct;
     if(tenOrden.col === "estrategia") return t.estrategia || "\uffff";
     return t.simbolo;
   };
@@ -5083,6 +5210,8 @@ function tenPintar(){
       '<div class="pos-top"><span>' + esc(t.simbolo) +
         (t.ajuste_supuesto ? ' <span class="tocar">aj?</span>' : "") +
         (t.extranjero ? ' <span class="tocar">exterior</span>' : "") +
+        (p.precio_viejo ? ' <span class="tocar" style="color:var(--amber)">' +
+          'precio viejo</span>' : "") +
       '</span><span>' + der + '</span></div>' +
       /* toFixed y no num(): es-AR formatea con coma y "width:34,4%"
          es CSS invalido, asi que la barra quedaba al ancho por defecto. */
@@ -5096,6 +5225,17 @@ function tenPintar(){
       '</span><span style="color:' + tono + '">' +
         (p.resultado_pct == null ? "sin PPC"
           : (p.resultado_pct >= 0 ? "+" : "") + num(p.resultado_pct, 3) + "%") +
+        /* El de dolares al lado del de pesos: son la misma posicion
+           contada de dos formas y la diferencia entre los dos es el
+           dato. El ~ marca el estimado con el MEP del alta, para que
+           ordenar por esta columna no mezcle medidos con aproximados
+           sin que se note. */
+        (p.resultado_usd_pct == null ? ""
+          : ' <span style="color:' + (p.resultado_usd_pct >= 0
+              ? "var(--sage)" : "var(--coral)") + ';opacity:.75">' +
+            (p.ppc_usd_estimado ? "~" : "") +
+            (p.resultado_usd_pct >= 0 ? "+" : "") +
+            num(p.resultado_usd_pct, 1) + '% US$</span>') +
       '</span></div></div>' + (t._suma ? "" : tenFicha(t, p));
   }).join("") +
     '<div class="nota">' + filas.length +
@@ -5128,13 +5268,21 @@ function agrupar(filas, val){
       g = {simbolo: t.simbolo, brokers: [], estrategias: new Set(),
            extranjero: t.extranjero, ajuste_supuesto: t.ajuste_supuesto,
            _suma: {valor: null, costo: 0, peso_pct: 0,
-                   exposicion: p.exposicion}};
+                   valor_usd: null, costo_usd: 0,
+                   exposicion: p.exposicion, precio_viejo: p.precio_viejo,
+                   ppc_usd_estimado: false}};
       m.set(t.simbolo, g);
     }
     g.brokers.push(t.broker);
     if(t.estrategia) g.estrategias.add(t.estrategia);
     if(p.valor != null) g._suma.valor = (g._suma.valor || 0) + p.valor;
     if(p.costo) g._suma.costo += p.costo;
+    /* En dolares se suma igual que en pesos: el conjunto, no el promedio
+       de los porcentajes. Si alguna de las puntas esta estimada, el
+       agrupado queda marcado como estimado. */
+    if(p.valor_usd != null) g._suma.valor_usd = (g._suma.valor_usd || 0) + p.valor_usd;
+    if(p.costo_usd) g._suma.costo_usd += p.costo_usd;
+    if(p.ppc_usd_estimado) g._suma.ppc_usd_estimado = true;
     g._suma.peso_pct += (p.peso_pct || 0);
   });
   return [...m.values()].map(g => {
@@ -5143,6 +5291,8 @@ function agrupar(filas, val){
        posicion chica con +80% no puede pesar igual que una grande. */
     s.resultado_pct = (s.costo && s.valor != null)
       ? (s.valor / s.costo - 1) * 100 : null;
+    s.resultado_usd_pct = (s.costo_usd && s.valor_usd != null)
+      ? (s.valor_usd / s.costo_usd - 1) * 100 : null;
     /* Los nombres y no la cuenta: saber que esta en Veta y en IOL-SOL
        es justamente el dato que se pierde al agrupar. */
     g.broker = g.brokers.join(" · ");
@@ -5222,45 +5372,59 @@ function tenFicha(t, p){
   const dato = (e, v) => v == null || v === "" ? "" :
     '<div class="pos-pie"><span>' + esc(e) + '</span><span>' + v +
     '</span></div>';
+  /* Los pares van juntos: pesos con pesos y dolares con dolares, cada
+     PPC al lado de su resultado. Antes el PPC en dolares y su
+     rendimiento caian en filas distintas de la grilla y habia que
+     buscarlos. */
+  const usd = (v, est) => v == null
+    ? '<span style="color:var(--muted)">—</span>'
+    : (est ? "~ " : "") + v;
+  const pct = (v, dec, est) => v == null
+    ? '<span style="color:var(--muted)">—</span>'
+    : '<span style="color:' + (v >= 0 ? "var(--sage)" : "var(--coral)") +
+      '">' + (est ? "~ " : "") + (v >= 0 ? "+" : "") + num(v, dec) + '%</span>';
+
   let h = '<div class="ten-edit" data-br="' + esc(t.broker) + '" data-sim="' +
-    esc(t.simbolo) + '"><div class="ficha">' +
+    esc(t.simbolo) + '">' +
+    /* Que es esto: el nombre largo del panel. Un ticker como DNC3O no
+       dice nada por si solo tres meses despues de comprarlo. */
+    (p.descripcion
+      ? '<div class="nota" style="margin-bottom:6px">' + esc(p.descripcion) +
+        '</div>' : "") +
+    (p.precio_viejo
+      ? '<div class="aviso">Valuada con un precio viejo' +
+        (p.ultima_operacion ? ", del " + esc(p.ultima_operacion) : "") +
+        '. No opera hace días.</div>' : "") +
+    '<div class="ficha">' +
     dato("Cantidad", ent(t.cantidad)) +
-    dato("PPC", tenPpc(t)) +
     /* El precio al lado del PPC: es lo unico que permite ver de un
        vistazo si un resultado raro viene de un PPC mal cargado o del
        mercado. Va en la misma base en la que cotiza, igual que el PPC. */
     dato("Precio", p.precio == null ? null : num(p.precio, 3)) +
+    dato("PPC", tenPpc(t)) +
+    dato("Resultado", pct(p.resultado_pct, 3)) +
+    /* En dolares al MEP de cada compra: un CEDEAR puede hacer +60% en
+       pesos y 0% en dolares, y esa es justamente la pregunta. El ~ marca
+       el estimado con el MEP del alta; la explicacion va en el title,
+       que no ocupa cuatro renglones de pantalla. */
+    dato("PPC US$", '<span title="' +
+      (p.ppc_usd_estimado
+        ? "Estimado con el MEP de la fecha de alta, no con el de cada compra."
+        : "Promediado al MEP del día de cada compra.") + '">' +
+      usd(p.ppc_usd == null ? null : num(p.ppc_usd, 4), p.ppc_usd_estimado) +
+      '</span>') +
+    dato("En dólares", pct(p.resultado_usd_pct, 2, p.ppc_usd_estimado)) +
     dato("Valor", p.valor == null ? null : plata(p.valor)) +
     dato("Costo", p.costo == null ? null : plata(p.costo)) +
-    /* En dolares al MEP de cada compra: un CEDEAR puede hacer +60% en
-       pesos y 0% en dolares, y esa es justamente la pregunta.
-
-       Las dos filas van siempre, aunque esten vacias. Con `dato()`
-       devolviendo "" cuando falta el valor, la posicion sin `ppc_usd`
-       no mostraba nada y parecia que la funcion no existia. Un guion
-       dice que se puede medir y todavia no se midio. */
-    /* El estimado lleva ~ adelante: es el MEP de la fecha de alta, no el
-       de cada compra. Sin la marca, una aproximacion se lee igual que
-       una medicion. */
-    dato("PPC US$", p.ppc_usd == null
-      ? '<span style="color:var(--muted)">—</span>'
-      : (p.ppc_usd_estimado ? "~ " : "") + num(p.ppc_usd, 4)) +
-    dato("En dólares", p.resultado_usd_pct == null
-      ? '<span style="color:var(--muted)">—</span>'
-      : '<span style="color:' + (p.resultado_usd_pct >= 0
-        ? "var(--sage)" : "var(--coral)") + '">' +
-      (p.ppc_usd_estimado ? "~ " : "") +
-      (p.resultado_usd_pct >= 0 ? "+" : "") +
-      num(p.resultado_usd_pct, 2) + '%</span>') +
-    (p.ppc_usd_estimado
-      ? '<div class="nota">El PPC en dólares está estimado con el MEP de ' +
-        'la fecha de alta, no con el de cada compra.</div>' : "") +
-    dato("Resultado", p.resultado_pct == null ? null :
-      '<span style="color:' + (p.resultado_pct >= 0 ? "var(--sage)"
-        : "var(--coral)") + '">' + (p.resultado_pct >= 0 ? "+" : "") +
-      num(p.resultado_pct, 3) + '%</span>') +
     dato("Alta", tenAlta(t)) +
     dato("Exposición", p.exposicion ? esc(p.exposicion) : null) +
+    (p.contra_patron_pct != null
+      ? dato("Contra " + esc(NOM_PATRON[p.patron] || p.patron),
+             pct(p.contra_patron_pct, 2)) : "") +
+    /* La renta fija se pide al abrir y solo para renta fija: una TIR no
+       se calcula sola y pedirla para toda la cartera seria la tabla de
+       bonos entera por cada fila que se despliega. */
+    '<span id="rf-' + css(t.simbolo) + '" style="display:contents"></span>' +
     (p.ppc_usd == null
       ? '<div class="nota" style="grid-column:1/-1">Sin PPC en dólares: ' +
         'sale de confirmar un aporte con su precio, o de Fechas de alta ' +
@@ -5382,6 +5546,48 @@ function tenEditor(t){
     '<div class="acciones"><button class="primario" data-guardar>Guardar' +
       '</button><button data-borrar-ten>Borrar</button>' +
       '<button data-cerrar>Cerrar</button></div></div>';
+}
+
+/* Renta fija: la TIR, el proximo pago y los dias que faltan. Se pide al
+   desplegar y solo para lo que es renta fija, porque `/api/bonos/<sim>`
+   calcula el flujo entero: pedirlo para toda la cartera seria la tabla
+   de bonos completa cada vez que se toca una fila.
+
+   Los dias al vencimiento van al lado de la TIR a proposito: una TIR de
+   -6,65% a ocho dias del vencimiento es medio punto de precio
+   anualizado por cuarenta y cinco, y sin el plazo no se puede comparar
+   con una a tres años. */
+const RF_TIPOS = ["bonos", "letras", "on", "bcra"];
+const rfCache = {};
+
+async function tenRentaFija(simbolo){
+  const cont = document.getElementById("rf-" + css(simbolo));
+  if(!cont) return;
+  const dato = (e, v) => v == null || v === "" ? "" :
+    '<div class="pos-pie"><span>' + esc(e) + '</span><span>' + v +
+    '</span></div>';
+  let d = rfCache[simbolo];
+  if(d === undefined){
+    try{
+      d = await (await fetch(base + "api/bonos/" + encodeURIComponent(simbolo))).json();
+    }catch(e){ d = null; }
+    rfCache[simbolo] = d;
+  }
+  if(!d || d.error || !d.fila) return;
+  const tir = d.fila.tir_last != null ? d.fila.tir_last : d.fila.tir_bid;
+  const dias = d.vencimiento
+    ? Math.round((new Date(d.vencimiento) - new Date()) / 86400000) : null;
+  cont.innerHTML =
+    dato("TIR", tir == null ? null : num(tir, 2) + "%") +
+    dato("Al vencimiento", dias == null ? null
+      : (dias <= 0 ? "vencido"
+         : dias < 400 ? ent(dias) + " días" : num(dias / 365, 1) + " años")) +
+    dato("Vence", d.vencimiento ? esc(d.vencimiento) : null) +
+    dato("Próximo pago", d.proximo_pago ? esc(d.proximo_pago) : null) +
+    dato("Ajusta por", d.ajuste ? esc(d.ajuste) : "sin ajuste") +
+    dato("Valor técnico", d.valor_tecnico == null ? null
+      : num(d.valor_tecnico, 2)) +
+    dato("Paridad", d.paridad == null ? null : num(d.paridad, 1) + "%");
 }
 
 function tenOrdenar(col){
@@ -5553,6 +5759,12 @@ $("#ten-out").addEventListener("click", async ev => {
     tenAbierta = tenAbierta === clave ? "" : clave;
     tenEditando = "";
     tenPintar();
+    if(tenAbierta){
+      const t = (tenDatos || []).find(
+        x => x.broker === fila.dataset.br && x.simbolo === fila.dataset.sim);
+      if(t && RF_TIPOS.indexOf((t.tipo || "").toLowerCase()) >= 0)
+        tenRentaFija(t.simbolo);
+    }
     return;
   }
   const caja = ev.target.closest(".ten-edit");
