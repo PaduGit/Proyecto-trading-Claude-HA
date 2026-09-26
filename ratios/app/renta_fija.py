@@ -182,6 +182,11 @@ def flujo(esp, desde=None, tasa_var=None):
     no viene, se resuelve contra la fuente configurada.
     """
     desde = desde or date.today()
+    # Los duales CER/TAMAR no tienen cupones: pagan una vez el maximo de
+    # dos patas. Su flujo lo arma su propio modulo.
+    if (esp.get("tipo") or "").strip().lower() == "dual":
+        import dual
+        return dual.filas(esp, desde)
     venc = _fecha(esp["vencimiento"])
     amorts = dict(fechas_amortizacion(esp))
     pagos_int = fechas_interes(esp, venc)

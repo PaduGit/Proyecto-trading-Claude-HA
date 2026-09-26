@@ -1,5 +1,56 @@
 # Registro de cambios
 
+## 0.47.0
+
+**Sin campos nuevos de configuracion.**
+
+**Bonos duales CER/TAMAR.** Cinco nuevos en BONOS: TXMJ8 (Res. Conj.
+25/2026), TXMD8, TXMD9 y TXMJ0 (32/2026) y TXMJ9 (23/2026). Al
+vencimiento pagan el maximo entre el capital ajustado por CER, sin
+margen, y el devengado a TAMAR bancos privados promedio + 3%, en TEM a
+32 dias capitalizable por DIAS 30/360. El margen se suma a la TNA antes
+de convertir. La TAMAR sale de la API del BCRA, variable 44, con la
+misma mecanica que la BADLAR.
+
+La proyeccion usa el mismo criterio que BADLAR y CER: el promedio toma
+lo publicado y completa los dias que faltan con la tasa vigente, y el
+CER se congela en el vigente. Congelar el CER es suponer inflacion cero,
+asi que en la proyeccion casi siempre gana la TAMAR: por eso el detalle
+del bono muestra las dos patas y la **inflacion de equilibrio**, la que
+falta para que la pata CER empate. En la tabla, un chip dice que pata
+paga. Van en su propia familia de curva, DUAL: su TIR es nominal y no se
+compara ni con la CER, que es real, ni con la tasa fija.
+
+**El z-score de los Boncer no aparecia.** Dos causas encadenadas:
+
+- Un bono agregado despues del primer backfill recibia el punto del
+  ciclo diario antes que la reconstruccion, y con un solo punto quedaba
+  afuera para siempre: solo se reconstruia lo que no tenia ninguno.
+  Ahora se detecta tambien el hueco hacia atras, una vez por especie.
+- IOL devuelve 500 en la serie historica de los TZX, TX28 y X30S6 con
+  rangos largos, y responde con un mes. La serie se pide entera y, si
+  falla, de a un mes; un mes que falla se parte en semanas, y una semana
+  que igual falla queda como hueco visible en vez de perder la especie.
+
+Sin esa historia la familia CER tenia menos de cinco bonos antes de
+agosto y no habia curva contra la cual medir el desvio de PARP o DICP.
+
+**La reconstruccion corre en segundo plano.** Dentro de un pedido web
+tardaba mas de lo que espera el ingress: la pantalla decia que habia
+fallado mientras el trabajo seguia. El avance, las especies con
+historia faltante y los huecos se ven en Explorar, Historico de bonos.
+
+**Explorar.** Fotos de tenencia por broker, con lo que cambio en cada
+una contra la anterior: es lo que compara el diff. Listado de variables
+del BCRA con filtro, para encontrar IDs de series. Boton Probar TAMAR.
+
+**Descargar la base** desde el menu de tres puntos, copiada con la API
+de backup de SQLite, nunca el archivo vivo.
+
+**Tres indices menos.** `bono_hist`, `residuo_hist` y `lecturas` tenian
+un indice que repetia su clave primaria: unos 2 MB sin uso, actualizados
+en cada escritura. Se borran al arrancar.
+
 ## 0.46.0
 
 **Campo nuevo: `opc_histeresis_pct`, en 3.** Home Assistant no aplica

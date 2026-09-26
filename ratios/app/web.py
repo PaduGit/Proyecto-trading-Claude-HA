@@ -1802,21 +1802,125 @@ def crear_app(monitor):
     def historico_estado():
         r = H.resumen()
         try:
-            r["sin_serie"] = H.sin_serie()
+            r["sin_serie"] = [{"simbolo": x[0], "desde": str(x[1]),
+                               "hasta": str(x[2]) if x[2] else None}
+                              for x in H.sin_serie()]
         except Exception:
             r["sin_serie"] = []
+        r["progreso"] = dict(H.progreso)
+        r["huecos"] = H.huecos()
         return jsonify(r)
 
     @app.post("/api/historico/reconstruir")
     def historico_reconstruir():
+        """Arranca la reconstruccion en segundo plano y vuelve enseguida.
+
+        Sin forzar completa lo que falta, incluido el hueco hacia atras
+        de las especies agregadas despues del primer backfill. Forzado
+        rehace todo, o una especie.
+        """
         sim = (request.args.get("simbolo") or "").upper() or None
         forzar = request.args.get("forzar") in ("1", "true", "si")
+        arranco = H.en_fondo(monitor.iol, sim, forzar=forzar)
+        return jsonify({"arranco": arranco, "forzado": forzar,
+                        "progreso": dict(H.progreso)})
+
+    @app.get("/api/historico/progreso")
+    def historico_progreso():
+        return jsonify({"progreso": dict(H.progreso), "huecos": H.huecos(),
+                        "estado": H.resumen()})
+
+    @app.get("/api/base/descargar")
+    def base_descargar():
+        """La base entera, copiada con la API de backup de SQLite."""
+        import os as _os
         try:
-            n = H.reconstruir(monitor.iol, sim, forzar=forzar)
+            ruta = db.copia_temporal()
+            with open(ruta, "rb") as fh:
+                datos = fh.read()
+            _os.remove(ruta)
         except Exception as e:
             return jsonify({"error": str(e)}), 500
-        return jsonify({"puntos": n, "forzado": forzar,
-                        "estado": H.resumen()})
+        nombre = "ratios-%s.db" % datetime.now().date().isoformat()
+        return app.response_class(
+            datos, mimetype="application/octet-stream",
+            headers={"Content-Disposition": "attachment; filename=" + nombre})
+
+    @app.get("/api/bcra/variables")
+    def bcra_variables():
+        """El listado de variables monetarias del BCRA, para buscar IDs."""
+        import cer as _cer
+        import red
+        urls = ["https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias",
+                "https://api.bcra.gob.ar/estadisticas/v3.0/monetarias"]
+        ultimo = None
+        for verify in (True, False):
+            for url in urls:
+                try:
+                    r = red.get(url, "bcra_variables", headers=_cer.CABECERAS,
+                                timeout=30, verify=verify)
+                    if r.status_code != 200:
+                        ultimo = "%s -> HTTP %s" % (url, r.status_code)
+                        continue
+                    d = r.json() or {}
+                    lista = d.get("results") or d.get("resultados") or []
+                    out = [{"id": x.get("idVariable"),
+                            "descripcion": (x.get("descripcion") or "").strip(),
+                            "unidad": x.get("unidadExpresion"),
+                            "fecha": x.get("ultFechaInformada") or x.get("fecha"),
+                            "valor": x.get("ultValorInformado") if "ultValorInformado" in x
+                            else x.get("valor")}
+                           for x in lista if isinstance(x, dict)]
+                    return jsonify({"variables": out, "fuente": url})
+                except Exception as e:
+                    ultimo = "%s -> %s" % (url, str(e)[:160])
+        return jsonify({"error": ultimo or "sin respuesta"}), 502
+
+    @app.post("/api/tamar/probar")
+    def tamar_probar():
+        """Fuerza una consulta de la TAMAR y muestra los duales."""
+        from datetime import date as _d, timedelta as _t
+        import tamar as TA
+        import dual as DU
+        TA.reintentar_ya()
+        hoy = _d.today()
+        n = TA.descargar((hoy - _t(days=30)).isoformat(), hoy.isoformat())
+        est = TA.resumen()
+        bonos_cfg, _ = BO.cargar()
+        det = []
+        for tk, cfg in bonos_cfg.items():
+            if not DU.es_dual(cfg):
+                continue
+            try:
+                r = DU.calcular(cfg, hoy)
+            except Exception as e:
+                r = None
+                det.append("%s: %s" % (tk, e))
+                continue
+            if r is None:
+                det.append("%s: sin TAMAR" % tk)
+            else:
+                det.append("%s: TAMAR prom %.2f%% (%d publ. + %d proy.) "
+                           "-> VPV %.2f, gana %s" % (
+                               tk, r["tamar_promedio"], r["tamar_publicados"],
+                               r["tamar_proyectados"], r["vpv"], r["gana"]))
+        return jsonify({"dias_traidos": n, "vigente": TA.vigente(),
+                        "serie": 44, "error": TA.ultimo_error,
+                        "respuesta": TA.ultima_respuesta,
+                        "rango": "%s a %s (%s días)" % (
+                            est["desde"], est["hasta"], est["dias"])
+                        if est["dias"] else None,
+                        "bonos": det})
+
+    @app.get("/api/explorar/fotos")
+    def explorar_fotos():
+        return jsonify({"fotos": db.fotos()})
+
+    @app.get("/api/explorar/foto")
+    def explorar_foto():
+        b = request.args.get("broker") or ""
+        ts = request.args.get("ts") or ""
+        return jsonify(db.foto_detalle(b, ts))
 
     @app.post("/api/historico/mep")
     def historico_mep():

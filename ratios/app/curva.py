@@ -86,7 +86,6 @@ CREATE TABLE IF NOT EXISTS residuo_hist (
     residuo  REAL NOT NULL,
     PRIMARY KEY (simbolo, fecha)
 );
-CREATE INDEX IF NOT EXISTS ix_rh ON residuo_hist(simbolo, fecha);
 """
 
 

@@ -1794,10 +1794,12 @@ class Monitor:
             return 0
 
     def reconstruir_historico(self):
-        """Completa el histórico de las especies que no lo tengan.
+        """Completa el histórico de las especies a las que les falta.
 
         No es global: si agregás un bono nuevo, se reconstruye solo ese
-        en el próximo arranque sin rehacer los que ya están.
+        en el próximo arranque sin rehacer los que ya están. Cuenta
+        también el hueco hacia atrás de las que recibieron el punto del
+        ciclo diario antes que el backfill.
         """
         try:
             import historico as H
@@ -1805,19 +1807,16 @@ class Monitor:
             faltan = H.sin_serie()
             if not faltan:
                 return 0
-            log.info("reconstruyendo el histórico de %d especie(s) desde %s: "
-                     "%s", len(faltan), H.DESDE, ", ".join(faltan[:8]) +
+            log.info("completando el histórico de %d especie(s): %s",
+                     len(faltan), ", ".join(x[0] for x in faltan[:8]) +
                      (" y otras" if len(faltan) > 8 else ""))
-            total = 0
-            for sim in faltan:
-                total += H.reconstruir(self.iol, sim)
+            H.progreso["corriendo"] = True
+            try:
+                total = H.completar(self.iol, faltan)
+            finally:
+                H.progreso["corriendo"] = False
+                H.progreso["actual"] = None
             log.info("histórico de bonos: %d puntos calculados", total)
-            if total:
-                try:
-                    import curva as CU
-                    CU.reconstruir()
-                except Exception as e:
-                    log.warning("residuos: %s", e)
             return total
         except Exception as e:
             log.warning("no se pudo reconstruir el histórico: %s", e)

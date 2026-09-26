@@ -9,6 +9,7 @@ import time
 
 import cer
 import badlar
+import tamar
 import dolar
 import curva
 import db
@@ -147,9 +148,11 @@ def main():
     db.copia_de_seguridad()
     cer.init()
     badlar.init()
+    tamar.init()
     dolar.init()
     historico.init()
     curva.init()
+    db.quitar_indices_redundantes()
 
     notif = Notificador(cfg)
     iol = IOL(cfg["iol_user"], cfg["iol_pass"])

@@ -29,7 +29,6 @@ CREATE TABLE IF NOT EXISTS lecturas (
     qv_den    REAL,
     PRIMARY KEY (alias, ts)
 );
-CREATE INDEX IF NOT EXISTS ix_lecturas_alias_ts ON lecturas(alias, ts);
 
 CREATE TABLE IF NOT EXISTS cierres (
     fecha     TEXT NOT NULL,
@@ -126,6 +125,40 @@ def copia_de_seguridad(destino=None):
     except Exception as e:
         log.warning("copia de seguridad: %s", e)
         return None
+
+
+# Indices que repetian la clave primaria de su tabla: SQLite ya indexa
+# la clave primaria, asi que ocupaban unos 2 MB y cada escritura los
+# actualizaba dos veces sin que ninguna consulta los usara.
+INDICES_REDUNDANTES = ("ix_bh_simbolo", "ix_rh", "ix_lecturas_alias_ts")
+
+
+def quitar_indices_redundantes():
+    c = conn()
+    for nombre in INDICES_REDUNDANTES:
+        try:
+            c.execute("DROP INDEX IF EXISTS " + nombre)
+        except Exception as e:
+            log.warning("indice %s: %s", nombre, e)
+    c.commit()
+
+
+def copia_temporal():
+    """Copia consistente de la base en un archivo temporal, para bajarla.
+
+    Mismo mecanismo que la copia del arranque: la API de backup de
+    SQLite. Copiar el archivo vivo a mitad de una escritura puede dejar
+    una base rota.
+    """
+    import tempfile
+    fd, ruta = tempfile.mkstemp(prefix="ratios-", suffix=".db")
+    os.close(fd)
+    dst = sqlite3.connect(ruta)
+    try:
+        conn().backup(dst)
+    finally:
+        dst.close()
+    return ruta
 
 
 def init():
@@ -2458,6 +2491,49 @@ def borrar_mov_estrategia(mid):
     c = conn()
     c.execute("DELETE FROM estrategia_mov WHERE id=?", (mid,))
     c.commit()
+
+
+def fotos(limite=40):
+    """Fotos de tenencia guardadas, por broker, las mas nuevas primero.
+
+    Es lo que mira el diff: sin verlas, cuando el diff no detecta nada no
+    hay forma de saber si falta una foto, si el broker se llama distinto
+    o si las cantidades son iguales.
+    """
+    c = conn()
+    out = []
+    for r in c.execute(
+            "SELECT broker, ts, MIN(fecha) AS fecha, COUNT(*) AS especies, "
+            "SUM(CASE WHEN cantidad <> 0 THEN 1 ELSE 0 END) AS con_saldo "
+            "FROM tenencia_hist GROUP BY broker, ts "
+            "ORDER BY broker, ts DESC"):
+        out.append(dict(r))
+    por_broker = {}
+    for f in out:
+        por_broker.setdefault(f["broker"], []).append(f)
+    return {b: v[:limite] for b, v in por_broker.items()}
+
+
+def foto_detalle(broker, ts):
+    """Una foto y lo que cambio contra la anterior del mismo broker."""
+    c = conn()
+    actual = {r["simbolo"]: r["cantidad"] for r in c.execute(
+        "SELECT simbolo, cantidad FROM tenencia_hist WHERE broker=? AND ts=?",
+        (broker, ts))}
+    prev = c.execute("SELECT MAX(ts) AS t FROM tenencia_hist "
+                     "WHERE broker=? AND ts < ?", (broker, ts)).fetchone()
+    previo = {}
+    if prev and prev["t"]:
+        previo = {r["simbolo"]: r["cantidad"] for r in c.execute(
+            "SELECT simbolo, cantidad FROM tenencia_hist "
+            "WHERE broker=? AND ts=?", (broker, prev["t"]))}
+    filas = []
+    for sim in sorted(set(actual) | set(previo)):
+        a, b = actual.get(sim), previo.get(sim)
+        filas.append({"simbolo": sim, "cantidad": a, "anterior": b,
+                      "cambio": (a or 0) - (b or 0)})
+    return {"broker": broker, "ts": ts,
+            "anterior": prev["t"] if prev else None, "filas": filas}
 
 
 def snapshot(broker, ts=None):

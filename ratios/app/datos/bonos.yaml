@@ -969,6 +969,103 @@ bonos:
       tramos:
         - {desde: 2026-04-30, tasa: 9.00}
 
+  # ---------------------------------------------------------------
+  # Duales CER/TAMAR: al vencimiento pagan el maximo entre el capital
+  # ajustado por CER (sin margen) y el devengado a TAMAR bancos privados
+  # promedio + margen, en TEM a 32 dias capitalizable por DIAS 30/360.
+  # La cuenta vive en dual.py; el margen se suma a la TNA.
+  # ---------------------------------------------------------------
+
+  TXMJ8:
+    nombre: Bono Dual CER/TAMAR 30/06/2028
+    ley: argentina
+    moneda: ARS
+    tipo: dual
+    margen_tamar: 3.0
+    emision: 2026-05-15
+    vencimiento: 2028-06-30
+    base: 30/360
+    resolucion: Res. Conj. 25/2026
+    cer_base: 0
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 12
+      primer_pago: 2028-06-30
+      tramos:
+        - {desde: 2026-05-15, tasa: 0.0}
+
+  TXMD8:
+    nombre: Bono Dual CER/TAMAR 15/12/2028
+    ley: argentina
+    moneda: ARS
+    tipo: dual
+    margen_tamar: 3.0
+    emision: 2026-06-12
+    vencimiento: 2028-12-15
+    base: 30/360
+    resolucion: Res. Conj. 32/2026
+    cer_base: 0
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 12
+      primer_pago: 2028-12-15
+      tramos:
+        - {desde: 2026-06-12, tasa: 0.0}
+
+  TXMJ9:
+    nombre: Bono Dual CER/TAMAR 29/06/2029
+    ley: argentina
+    moneda: ARS
+    tipo: dual
+    margen_tamar: 3.0
+    emision: 2026-04-30
+    vencimiento: 2029-06-29
+    base: 30/360
+    resolucion: Res. Conj. 23/2026
+    cer_base: 0
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 12
+      primer_pago: 2029-06-29
+      tramos:
+        - {desde: 2026-04-30, tasa: 0.0}
+
+  TXMD9:
+    nombre: Bono Dual CER/TAMAR 14/12/2029
+    ley: argentina
+    moneda: ARS
+    tipo: dual
+    margen_tamar: 3.0
+    emision: 2026-06-12
+    vencimiento: 2029-12-14
+    base: 30/360
+    resolucion: Res. Conj. 32/2026
+    cer_base: 0
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 12
+      primer_pago: 2029-12-14
+      tramos:
+        - {desde: 2026-06-12, tasa: 0.0}
+
+  TXMJ0:
+    nombre: Bono Dual CER/TAMAR 28/06/2030
+    ley: argentina
+    moneda: ARS
+    tipo: dual
+    margen_tamar: 3.0
+    emision: 2026-06-12
+    vencimiento: 2030-06-28
+    base: 30/360
+    resolucion: Res. Conj. 32/2026
+    cer_base: 0
+    amortizacion: {tipo: bullet}
+    interes:
+      frecuencia_meses: 12
+      primer_pago: 2030-06-28
+      tramos:
+        - {desde: 2026-06-12, tasa: 0.0}
+
 equivalencias:
   # Terminan en cero, no en la letra O: escritos con O no los
   # encuentra ningun instrumento y quedan sin cotizacion.

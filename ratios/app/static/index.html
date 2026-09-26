@@ -344,6 +344,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
         <a href="#" id="reintentar-precio" role="menuitem">Reintentar especies sin precio</a>
         <a href="#" id="rehacer-curva" role="menuitem">Recalcular desvíos</a>
         <a href="#" id="bajar-hist" role="menuitem">Descargar histórico (CSV)</a>
+        <a href="#" id="bajar-base" role="menuitem">Descargar base (.db)</a>
         <hr>
         <!-- Registro y Explorar son de diagnostico: se abren cuando algo
              no cierra, no todos los dias. En la fila de solapas obligaban
@@ -629,6 +630,31 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
 
   <section id="v-expl" hidden>
     <div id="e-consumo"></div>
+    <details id="hx-det" style="margin-top:16px">
+      <summary>Histórico de bonos</summary>
+      <div class="nota" style="margin-top:8px">La serie diaria de TIR que
+        alimenta el gráfico de cada bono, y de la que salen los desvíos y
+        el z-score. Una especie agregada después del primer backfill queda
+        con historia faltante hasta que se completa. La serie se pide a IOL
+        de una vez y, si IOL la rechaza, de a un mes; un tramo que igual
+        falla queda como hueco.</div>
+      <div style="display:flex;gap:6px;margin:8px 0;flex-wrap:wrap">
+        <button class="secundario" id="hx-completar" style="width:auto;padding:0 14px">
+          Completar lo que falta</button>
+        <button class="secundario" id="hx-refrescar" style="width:auto;padding:0 14px">
+          Actualizar</button>
+      </div>
+      <div id="hx-out"></div>
+    </details>
+    <details id="fot-det" style="margin-top:12px">
+      <summary>Fotos de tenencia</summary>
+      <div class="nota" style="margin-top:8px">Cada carga de tenencia deja
+        una foto si cambió alguna cantidad. El diff compara las dos últimas
+        de un mismo broker: si no propone nada, acá se ve si falta una
+        foto, si el broker figura con otro nombre o si las cantidades no
+        cambiaron. Tocá una foto para ver qué cambió contra la anterior.</div>
+      <div id="fot-out"></div>
+    </details>
     <details style="margin-top:16px">
       <summary>Mantenimiento de estrategias</summary>
       <div class="nota" style="margin-top:8px">Una estrategia sin ninguna
@@ -665,7 +691,16 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
         Probar A3500</button>
       <button class="secundario" id="probar-badlar" style="width:auto;padding:0 14px">
         Probar BADLAR</button>
+      <button class="secundario" id="probar-tamar" style="width:auto;padding:0 14px">
+        Probar TAMAR</button>
     </div>
+    <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+      <input id="bcv-filtro" placeholder="Filtrar variables (ej. tamar)"
+        style="flex:1 1 160px">
+      <button class="secundario" id="bcv-ver" style="width:auto;padding:0 14px">
+        Variables del BCRA</button>
+    </div>
+    <div id="bcv-out"></div>
     <p class="nota">Cada botón fuerza una descarga, saltea la espera de cinco
       minutos que sigue a un fallo y muestra el error crudo del BCRA.</p>
     <div class="filtro-etq" style="margin:14px 0 6px">API de BYMA</div>
@@ -1854,6 +1889,8 @@ function nombreDe(x){
 }
 async function iniciarExplorar(){
   cargarConsumo();
+  if($("#hx-det").open) cargarHistExpl();
+  if($("#fot-det").open) cargarFotos();
   if(explorarListo) return;
   explorarListo = true;
   await cargarInstrumentos();
@@ -2346,22 +2383,45 @@ $("#bajar-hist").addEventListener("click", e => {
     })
     .catch(() => alert("No se pudo descargar."));
 });
+$("#bajar-base").addEventListener("click", e => {
+  e.preventDefault(); e.stopPropagation();
+  $("#menu").hidden = true;
+  /* Copia hecha con la API de backup de SQLite del lado del servidor:
+     nunca el archivo vivo. Tiene tenencia y PPC. */
+  fetch(base + "api/base/descargar")
+    .then(r => { if(!r.ok) throw new Error(); return r.blob(); })
+    .then(b => {
+      const url = URL.createObjectURL(b);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "ratios-" + new Date().toISOString().slice(0, 10) + ".db";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    })
+    .catch(() => alert("No se pudo descargar la base."));
+});
 $("#rehacer-hist").addEventListener("click", async e => {
   e.preventDefault(); e.stopPropagation();
   $("#menu").hidden = true;
   try{
     const est = await (await fetch(base + "api/historico/estado")).json();
     const faltan = (est.sin_serie || []).length;
+    if(est.progreso && est.progreso.corriendo){
+      alert("Ya hay una reconstrucción en curso. El avance se ve en " +
+            "Explorar → Histórico de bonos.");
+      return;
+    }
     if(!confirm("Histórico actual: " + (est.filas || 0) + " puntos de " +
         (est.especies || 0) + " especies" +
-        (faltan ? "\n" + faltan + " especie(s) sin serie." : "") +
-        "\n\n¿Reconstruir ahora? Puede tardar unos minutos.")) return;
+        (faltan ? "\n" + faltan + " especie(s) con historia faltante."
+                : "\nNo falta historia en ninguna especie.") +
+        "\n\n¿Completar ahora? Corre en segundo plano.")) return;
     const d = await (await fetch(base + "api/historico/reconstruir",
       {method:"POST"})).json();
-    alert(d.error ? "Falló: " + d.error
-      : "Listo: " + d.puntos + " puntos calculados.\n" +
-        "Total: " + (d.estado ? d.estado.filas : "?") + " puntos.");
-  }catch(err){ alert("No se pudo reconstruir."); }
+    alert(d.arranco ? "Arrancó en segundo plano. El avance se ve en " +
+                      "Explorar → Histórico de bonos."
+                    : "Ya hay una reconstrucción en curso.");
+  }catch(err){ alert("No se pudo arrancar."); }
 });
 
 
@@ -2393,16 +2453,16 @@ $("#rehacer-todo").addEventListener("click", async e => {
   if(sim === null) return;
   if(!confirm("Se vuelve a bajar la serie desde 2023 y se recalcula cada " +
       "día" + (sim ? " de " + sim.toUpperCase() : " de todas las especies") +
-      ".\nLos puntos actuales se pisan. Puede tardar varios minutos.\n\n" +
-      "¿Seguimos?")) return;
+      ".\nLos puntos actuales se pisan. Corre en segundo plano y puede " +
+      "tardar varios minutos.\n\n¿Seguimos?")) return;
   try{
     const q = "api/historico/reconstruir?forzar=1" +
       (sim ? "&simbolo=" + encodeURIComponent(sim.trim().toUpperCase()) : "");
     const d = await (await fetch(base + q, {method:"POST"})).json();
-    alert(d.error ? "Falló: " + d.error
-      : "Listo: " + d.puntos + " puntos recalculados.\n" +
-        "Total: " + (d.estado ? d.estado.filas : "?") + " puntos.");
-  }catch(err){ alert("No se pudo recalcular."); }
+    alert(d.arranco ? "Arrancó en segundo plano. El avance se ve en " +
+                      "Explorar → Histórico de bonos."
+                    : "Ya hay una reconstrucción en curso.");
+  }catch(err){ alert("No se pudo arrancar."); }
 });
 
 $("#probar-a3500").addEventListener("click", async e => {
@@ -2777,6 +2837,173 @@ $("#probar-badlar").addEventListener("click", async e => {
   }catch(err){ alert("No se pudo probar."); }
 });
 
+/* ---------- explorar: histórico de bonos ---------- */
+let hxTimer = null;
+async function cargarHistExpl(){
+  const out = $("#hx-out");
+  try{
+    const d = await (await fetch(base + "api/historico/estado")).json();
+    const pr = d.progreso || {};
+    const faltan = d.sin_serie || [];
+    const huecos = Object.entries(d.huecos || {});
+    out.innerHTML = '<dl class="kv">' +
+      '<dt>Puntos</dt><dd>' + ent(d.filas || 0) + ' de ' +
+        ent(d.especies || 0) + ' especies</dd>' +
+      '<dt>Rango</dt><dd>' + esc(d.desde || "—") + ' a ' +
+        esc(d.hasta || "—") + '</dd>' +
+      '<dt>Última reconstrucción</dt><dd>' + esc(d.ultimo_backfill || "—") +
+        '</dd>' +
+      (pr.corriendo
+        ? '<dt>En curso</dt><dd>' + ent(pr.hechas || 0) + ' de ' +
+          ent(pr.total || 0) + (pr.actual ? ' · ' + esc(pr.actual) : "") +
+          ' · ' + ent(pr.puntos || 0) + ' puntos</dd>'
+        : (pr.fin ? '<dt>Última corrida</dt><dd>terminó ' + esc(pr.fin) +
+          ' · ' + ent(pr.puntos || 0) + ' puntos' +
+          (pr.error ? ' · <span style="color:var(--coral)">' +
+            esc(pr.error) + '</span>' : "") + '</dd>' : "")) +
+      '</dl>' +
+      (faltan.length
+        ? '<div class="filtro-etq" style="margin:10px 0 4px">Con historia ' +
+          'faltante (' + faltan.length + ')</div><div class="nota">' +
+          faltan.map(x => esc(x.simbolo) + ' <span style="color:var(--muted)">' +
+            (x.hasta ? esc(x.desde) + ' a ' + esc(x.hasta) : 'sin serie') +
+            '</span>').join(" · ") + '</div>'
+        : '<div class="nota">No falta historia en ninguna especie.</div>') +
+      (huecos.length
+        ? '<div class="filtro-etq" style="margin:10px 0 4px">Huecos y ' +
+          'errores de IOL</div>' + huecos.map(([sim, h]) =>
+            '<div class="nota"><b>' + esc(sim) + '</b> ' +
+            (h.huecos || []).map(x => esc(x[0]) + '–' + esc(x[1])).join(", ") +
+            (h.error ? ' <span style="color:var(--coral)">' + esc(h.error) +
+              '</span>' : "") + ' <span style="color:var(--muted)">(' +
+            esc(h.fecha || "") + ')</span></div>').join("")
+        : "");
+    clearTimeout(hxTimer);
+    if(pr.corriendo && $("#hx-det").open && vista === "expl")
+      hxTimer = setTimeout(cargarHistExpl, 3000);
+  }catch(err){
+    out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
+  }
+}
+$("#hx-det").addEventListener("toggle", () => {
+  if($("#hx-det").open) cargarHistExpl();
+});
+$("#hx-refrescar").addEventListener("click", cargarHistExpl);
+$("#hx-completar").addEventListener("click", async () => {
+  try{
+    const d = await (await fetch(base + "api/historico/reconstruir",
+      {method:"POST"})).json();
+    if(!d.arranco) alert("Ya hay una reconstrucción en curso.");
+    setTimeout(cargarHistExpl, 800);
+  }catch(err){ alert("No se pudo arrancar."); }
+});
+
+/* ---------- explorar: fotos de tenencia ---------- */
+async function cargarFotos(){
+  const out = $("#fot-out");
+  try{
+    const d = await (await fetch(base + "api/explorar/fotos")).json();
+    const brokers = Object.keys(d.fotos || {});
+    if(!brokers.length){
+      out.innerHTML = '<div class="vacio">No hay fotos guardadas.</div>';
+      return;
+    }
+    out.innerHTML = brokers.map(b =>
+      '<div class="filtro-etq" style="margin:10px 0 4px">' + esc(b) + ' · ' +
+        d.fotos[b].length + ' foto(s)</div>' +
+      '<div class="hallazgo" style="padding:6px 10px">' +
+      d.fotos[b].map(f => '<div class="fot-fila tocar" data-br="' + esc(b) +
+        '" data-ts="' + esc(f.ts) + '" style="display:block;margin:3px 0">' +
+        esc(f.ts.replace("T", " ")) + ' · ' + ent(f.especies) +
+        ' especies (' + ent(f.con_saldo) + ' con saldo)</div>').join("") +
+      '</div>').join("") + '<div id="fot-det-out"></div>';
+  }catch(err){
+    out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
+  }
+}
+$("#fot-det").addEventListener("toggle", () => {
+  if($("#fot-det").open) cargarFotos();
+});
+$("#fot-out").addEventListener("click", async e => {
+  const f = e.target.closest(".fot-fila");
+  if(!f) return;
+  const q = "broker=" + encodeURIComponent(f.dataset.br) +
+            "&ts=" + encodeURIComponent(f.dataset.ts);
+  try{
+    const d = await (await fetch(base + "api/explorar/foto?" + q)).json();
+    const cambios = d.filas.filter(x => Math.abs(x.cambio) > 1e-9);
+    $("#fot-det-out").innerHTML = '<div class="hallazgo"><h3>' +
+      esc(d.broker) + ' · ' + esc(d.ts.replace("T", " ")) + '</h3>' +
+      '<p class="nota">' + (d.anterior
+        ? 'Contra la foto del ' + esc(d.anterior.replace("T", " ")) + ': ' +
+          (cambios.length ? cambios.length + ' especie(s) cambiaron.'
+                          : 'ninguna cantidad cambió.')
+        : 'Es la primera foto de este broker: el diff necesita dos.') +
+      '</p><table class="bonos"><thead><tr><th>Especie</th><th>Antes</th>' +
+      '<th>Ahora</th><th>Cambio</th></tr></thead><tbody>' +
+      d.filas.map(x => '<tr' + (Math.abs(x.cambio) > 1e-9 ? '' :
+          ' style="color:var(--muted)"') + '><td>' + esc(x.simbolo) +
+        '</td><td>' + (x.anterior == null ? "—" : num(x.anterior, 2)) +
+        '</td><td>' + (x.cantidad == null ? "—" : num(x.cantidad, 2)) +
+        '</td><td>' + (Math.abs(x.cambio) > 1e-9
+          ? (x.cambio > 0 ? "+" : "") + num(x.cambio, 2) : "") +
+        '</td></tr>').join("") + '</tbody></table></div>';
+  }catch(err){ alert("No se pudo leer la foto."); }
+});
+
+/* ---------- explorar: variables del BCRA y TAMAR ---------- */
+let bcvLista = null;
+function pintarVariables(){
+  const f = ($("#bcv-filtro").value || "").trim().toLowerCase();
+  const lista = (bcvLista || []).filter(v => !f ||
+    (String(v.id) + " " + (v.descripcion || "")).toLowerCase().includes(f));
+  $("#bcv-out").innerHTML = '<div class="hallazgo" style="padding:6px 10px;' +
+    'overflow-x:auto"><table class="bonos"><thead><tr><th>ID</th>' +
+    '<th>Descripción</th><th>Unidad</th><th>Fecha</th><th>Valor</th></tr>' +
+    '</thead><tbody>' + lista.map(v => '<tr><td>' + esc(String(v.id)) +
+      '</td><td style="text-align:left">' + esc(v.descripcion || "") +
+      '</td><td style="text-align:left">' + esc(v.unidad || "") +
+      '</td><td>' + esc(v.fecha || "") + '</td><td>' +
+      (v.valor == null ? "—" : esc(String(v.valor))) + '</td></tr>').join("") +
+    '</tbody></table></div><div class="nota">' + lista.length + ' de ' +
+    (bcvLista || []).length + ' variables</div>';
+}
+$("#bcv-ver").addEventListener("click", async e => {
+  e.preventDefault();
+  $("#bcv-out").innerHTML = '<div class="vacio">Consultando al BCRA…</div>';
+  try{
+    const r = await fetch(base + "api/bcra/variables");
+    const d = await r.json();
+    if(!r.ok){
+      $("#bcv-out").innerHTML = '<div class="msg error">' +
+        esc(d.error || "Falló.") + '</div>';
+      return;
+    }
+    bcvLista = d.variables || [];
+    pintarVariables();
+  }catch(err){
+    $("#bcv-out").innerHTML = '<div class="msg error">No se pudo consultar.</div>';
+  }
+});
+$("#bcv-filtro").addEventListener("input", () => { if(bcvLista) pintarVariables(); });
+$("#probar-tamar").addEventListener("click", async e => {
+  e.preventDefault(); e.stopPropagation();
+  try{
+    const d = await (await fetch(base + "api/tamar/probar",
+      {method:"POST"})).json();
+    if(d.dias_traidos || d.vigente != null){
+      alert("TAMAR (variable " + d.serie + "): " + (d.dias_traidos || 0) +
+            " días traídos.\nVigente (rezagada 10 hábiles): " +
+            (d.vigente ?? "—") + "\nEn la base: " + (d.rango || "—") +
+            "\n\n" + (d.bonos || []).join("\n"));
+    } else {
+      alert("No se pudo obtener la TAMAR.\n\n" + (d.error || "sin detalle") +
+            (d.respuesta ? "\n\nRespuesta del BCRA:\n" +
+             d.respuesta.slice(0,300) : ""));
+    }
+  }catch(err){ alert("No se pudo probar."); }
+});
+
 async function probarNotificacion(){
   $("#menu").hidden = true;
   try{
@@ -2861,7 +3088,14 @@ async function cargarBonos(){
     pintarEstrBonos(d.filas);
     const sinCer = d.filas.filter(f => f.falta_cer).map(f => f.simbolo);
     const sinTc = d.filas.filter(f => f.falta_tc).map(f => f.simbolo);
+    const sinTamar = d.filas.filter(f => f.dual && f.dual.falta_tamar)
+                            .map(f => f.simbolo);
     out.innerHTML =
+      (sinTamar.length
+        ? '<div class="aviso">Sin TIR para ' + sinTamar.map(esc).join(", ") +
+          ': no se pudo obtener la TAMAR del BCRA. Probala en Explorar con ' +
+          '<b>Probar TAMAR</b>.</div>'
+        : "") +
       (sinTc.length
         ? '<div class="aviso">Sin TIR para ' + sinTc.map(esc).join(", ") +
           ': falta el tipo de cambio A3500 del BCRA. Probalo desde el menú ' +
@@ -2894,7 +3128,9 @@ async function cargarBonos(){
         return '<tr class="' + clase +
           (f.falta_cer || f.falta_tc ? " sindato" : "") + '">' +
           '<td class="tk" onclick="verBono(\'' + esc(f.simbolo) + '\')">' +
-          esc(f.simbolo) + '</td>' +
+          esc(f.simbolo) +
+          (f.dual && f.dual.gana ? ' <span class="tocar" title="Pata que paga ' +
+            'en la proyección">' + esc(f.dual.gana) + '</span>' : "") + '</td>' +
           '<td class="md">' + (f.md != null ? f.md.toFixed(1) : "—") + '</td>' +
           '<td' + (f.last_viejo ? ' class="viejo"' : "") + '>' + p(f.last) + '</td>' +
           '<td class="tir' + (f.last_viejo ? " viejo" : "") + '">' +
@@ -2932,6 +3168,37 @@ async function cargarBonos(){
   }
 }
 
+/* Los duales CER/TAMAR pagan al vencimiento el máximo de dos patas. La
+   TIR sale de congelar el CER y proyectar la TAMAR vigente, así que casi
+   siempre gana la TAMAR: la inflación de equilibrio es lo que la TIR no
+   muestra. */
+function dualHtml(x){
+  if(!x) return "";
+  if(x.falta_tamar) return '<div class="aviso">Dual sin TAMAR: probá la ' +
+    'fuente en Explorar con <b>Probar TAMAR</b>.</div>';
+  const eq = x.equilibrio;
+  return '<div class="hallazgo"><h3>Dual CER/TAMAR · paga ' +
+      esc(x.gana) + '</h3><dl class="kv">' +
+    '<dt>Pago proyectado</dt><dd>' + num(x.vpv, 2) + ' cada 100 VNO</dd>' +
+    '<dt>Pata TAMAR</dt><dd>' + num(x.vpv_tamar, 2) + ' · promedio ' +
+      num(x.tamar_promedio, 2) + '% + ' + num(x.margen, 2) + ' → TEM ' +
+      num(x.tem, 3) + '%</dd>' +
+    '<dt>Promedio</dt><dd>' + ent(x.tamar_publicados) + ' días publicados + ' +
+      ent(x.tamar_proyectados) + ' a la tasa vigente</dd>' +
+    '<dt>Pata CER</dt><dd>' + (x.vpv_cer == null ? "—"
+      : num(x.vpv_cer, 2) + ' · CER congelado en el vigente') +
+      ' <span style="color:var(--muted)">(base ' + esc(x.cer_base_fecha) +
+      ')</span></dd>' +
+    (eq ? '<dt>Inflación de equilibrio</dt><dd>' + (eq.ya_supera
+      ? 'la pata CER ya supera a la TAMAR'
+      : num(eq.mensual, 2) + '% mensual (' + num(eq.anual, 1) +
+        '% anual) promedio hasta el vencimiento') + '</dd>' : "") +
+    '</dl><p class="nota">La TIR supone la TAMAR constante en la vigente y ' +
+    'el CER congelado, es decir inflación cero. Si esperás más inflación ' +
+    'que la de equilibrio, la pata CER paga más de lo que muestra la TIR.' +
+    '</p></div>';
+}
+
 async function verBono(sim){
   $("#bono-titulo").textContent = sim;
   $("#bono-cuerpo").innerHTML = '<div class="vacio">Cargando…</div>';
@@ -2949,8 +3216,10 @@ async function verBono(sim){
     const val = (v, s, dec) => v == null ? "—" :
       (dec === 0 ? ent(v) : num(v, dec === undefined ? 2 : dec)) + (s || "");
 
+    const esDual = !!(d.fila && d.fila.dual);
     $("#bono-cuerpo").innerHTML =
       (d.aviso ? '<div class="aviso">' + esc(d.aviso) + '</div>' : "") +
+      dualHtml(d.fila && d.fila.dual) +
       (d.nota ? '<p class="nota">' + esc(d.nota) + '</p>' : "") +
       '<dl class="kv">' +
       (pp ? '<dt>Próximo pago</dt><dd>' + esc(pp.fecha) + ' · ' +
@@ -2962,15 +3231,18 @@ async function verBono(sim){
       '<dt>Duration mod.</dt><dd>' + val(d.md, "", 2) + '</dd>' +
       '<dt>Duration</dt><dd>' + val(d.duration, "", 2) + '</dd>' +
       '<dt>Residual</dt><dd>' + val(d.residual) + '%</dd>' +
-      '<dt>Cupón vigente</dt><dd>' + val(d.cupon_vigente) + '% anual</dd>' +
-      '<dt>Interés corrido</dt><dd>' + val(d.interes_corrido, "", 4) + '</dd>' +
+      (esDual ? "" : '<dt>Cupón vigente</dt><dd>' + val(d.cupon_vigente) +
+        '% anual</dd>') +
+      '<dt>' + (esDual ? "Devengado a hoy" : "Interés corrido") + '</dt><dd>' +
+        val(d.interes_corrido, "", 4) + '</dd>' +
       '<dt>Valor técnico</dt><dd>' + val(d.valor_tecnico) + '</dd>' +
       (d.cer_factor ? '<dt>Factor CER</dt><dd>' + val(d.cer_factor, "", 4) +
         (d.cer_base_fecha ? ' <span style="color:var(--muted)">(base ' +
           esc(d.cer_base_fecha) + ')</span>' : "") + '</dd>' : "") +
       '<dt>Paridad</dt><dd>' + val(d.paridad) + '%</dd>' +
-      '<dt>Current yield</dt><dd>' +
-        (d.cupon_vigente ? val(d.current_yield) + '%' : '0% (cupón cero)') + '</dd>' +
+      (esDual ? "" : '<dt>Current yield</dt><dd>' +
+        (d.cupon_vigente ? val(d.current_yield) + '%' : '0% (cupón cero)') +
+        '</dd>') +
       (d.spread_tir != null ? '<dt>Spread TIR</dt><dd>' +
         val(d.spread_tir) + ' pp entre puntas</dd>' : "") +
       (d.fila && d.fila.cable_pct != null

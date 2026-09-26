@@ -30,7 +30,6 @@ CREATE TABLE IF NOT EXISTS bono_hist (
     badlar    REAL,
     PRIMARY KEY (simbolo, fecha)
 );
-CREATE INDEX IF NOT EXISTS ix_bh_simbolo ON bono_hist(simbolo, fecha);
 """
 
 
@@ -134,7 +133,7 @@ def arranque_badlar(cfg, desde):
 
 
 def reconstruir(iol, simbolo=None, desde=None, hasta=None, mercado="bCBA",
-                forzar=False):
+                forzar=False, marcar=True):
     """Baja los cierres de IOL y calcula la serie.
 
     Por defecto arranca donde quedó, así que solo agrega hacia adelante.
@@ -164,9 +163,7 @@ def reconstruir(iol, simbolo=None, desde=None, hasta=None, mercado="bCBA",
         # día, que no tenemos hacia atrás: se reconstruyen las especies
         # dolarizadas (D y C) y las ajustables por CER. Los bonos que
         # rinden en pesos tampoco necesitan MEP, asi que entran igual.
-        en_pesos = (not (cfg.get("ajuste") or "")
-                    and (cfg.get("moneda") or "").upper() == "ARS")
-        if info["moneda"] not in ("USD", "CER") and not en_pesos:
+        if not reconstruible(cfg, info):
             continue
 
         # con cupon variable el punto de cada dia necesita la tasa de ese
@@ -192,11 +189,11 @@ def reconstruir(iol, simbolo=None, desde=None, hasta=None, mercado="bCBA",
         if arranque < emision:
             arranque = emision
 
-        try:
-            serie = iol.serie(mercado, sim, arranque.isoformat(),
-                              hasta.isoformat())
-        except Exception as e:
-            log.warning("histórico %s: %s", sim, e)
+        serie, huecos, err = serie_en_tramos(iol, mercado, sim, arranque,
+                                             hasta)
+        _anotar(sim, huecos, err)
+        if err and not serie:
+            log.warning("histórico %s: %s", sim, err)
             continue
 
         filas = []
@@ -222,20 +219,239 @@ def reconstruir(iol, simbolo=None, desde=None, hasta=None, mercado="bCBA",
         if n:
             log.info("histórico %s: +%d días", sim, n)
 
-    db.set_estado("hist_bonos_hasta", hasta.isoformat())
+    # un relleno hacia atras no mueve la marca: termina antes de hoy
+    if marcar:
+        db.set_estado("hist_bonos_hasta", hasta.isoformat())
     return total
 
 
-def sin_serie():
-    """Especies con cronograma pero sin ningún punto guardado.
+def reconstruible(cfg, info):
+    """Si la TIR de una especie se puede calcular hacia atras.
 
-    Sirve para reconstruir solo lo que falta: un bono agregado después
-    del primer backfill se completa solo, sin rehacer todo."""
+    Los hard dollar que cotizan en pesos necesitan el MEP de cada dia y
+    no lo tenemos: entran las especies dolarizadas (D y C), las CER y
+    las que rinden en pesos, duales incluidos.
+    """
+    en_pesos = (not (cfg.get("ajuste") or "")
+                and (cfg.get("moneda") or "").upper() == "ARS")
+    return info["moneda"] in ("USD", "CER") or en_pesos
+
+
+def inicio_de(cfg):
+    """Desde cuando tiene sentido pedir la serie: la emision o 2023."""
+    try:
+        return max(RF._fecha(cfg["emision"]), DESDE)
+    except Exception:
+        return DESDE
+
+
+# Margen entre la emision y el primer precio guardado antes de considerar
+# que falta historia: un bono puede tardar unos dias en operar.
+TOLERANCIA_INICIO = 20
+
+
+def sin_serie():
+    """Especies a las que les falta historia, con el tramo que falta.
+
+    Devuelve una lista de (simbolo, desde, hasta). Antes solo contaba las
+    que no tenian ningun punto: un bono agregado a mitad de camino
+    recibia el punto del ciclo diario antes que el backfill, y con uno
+    solo ya quedaba afuera para siempre. Ahora tambien cuenta el hueco
+    hacia atras, una sola vez por especie: si IOL no tiene precios
+    anteriores, el intento queda anotado y no se repite en cada arranque.
+    """
+    bonos_cfg, _ = BO.cargar()
     esps = BO.especies()
-    ya = {r["simbolo"] for r in db.conn().execute(
-        "SELECT DISTINCT simbolo FROM bono_hist")}
-    return [s for s, i in esps.items()
-            if s not in ya and i["moneda"] in ("USD", "CER")]
+    primeras = {r["simbolo"]: r["d0"] for r in db.conn().execute(
+        "SELECT simbolo, MIN(fecha) AS d0 FROM bono_hist GROUP BY simbolo")}
+    intentos = _leer_estado("hist_atras")
+    out = []
+    for sim, info in sorted(esps.items()):
+        cfg = bonos_cfg.get(info["cronograma"])
+        if not cfg or not reconstruible(cfg, info):
+            continue
+        ini = inicio_de(cfg)
+        d0 = primeras.get(sim)
+        if d0 is None:
+            out.append((sim, ini, None))
+            continue
+        d0 = date.fromisoformat(d0)
+        if (d0 - ini).days > TOLERANCIA_INICIO and \
+                intentos.get(sim) != d0.isoformat():
+            out.append((sim, ini, d0 - timedelta(days=1)))
+    return out
+
+
+# -- estado de la reconstruccion -------------------------------------
+
+import json
+import threading
+
+progreso = {"corriendo": False, "actual": None, "hechas": 0, "total": 0,
+            "puntos": 0, "inicio": None, "fin": None, "error": None}
+_lock = threading.Lock()
+
+
+def _leer_estado(clave):
+    try:
+        return json.loads(db.get_estado(clave) or "{}")
+    except Exception:
+        return {}
+
+
+def _anotar(sim, huecos, err):
+    """Huecos y errores por especie, para mostrarlos en pantalla."""
+    d = _leer_estado("hist_huecos")
+    if huecos or err:
+        d[sim] = {"huecos": huecos, "error": err,
+                  "fecha": date.today().isoformat()}
+    else:
+        d.pop(sim, None)
+    db.set_estado("hist_huecos", json.dumps(d))
+
+
+def huecos():
+    return _leer_estado("hist_huecos")
+
+
+def serie_en_tramos(iol, mercado, sim, desde, hasta):
+    """La serie de IOL, partida si hace falta.
+
+    Para varias especies -los Boncer TZX, TX28, X30S6- IOL devuelve 500
+    con rangos largos y responde bien con un mes. Se intenta el rango
+    entero, que para la mayoria anda y cuesta una sola llamada; si
+    falla, se pide de a un mes, y un mes que falla se parte en semanas.
+    Una semana que igual falla queda como hueco, sin perder la especie.
+
+    Devuelve (puntos, huecos, error). Un 429 corta todo: IOL pidio
+    frenar y seguir partiendo solo multiplica las llamadas.
+    """
+    from iol import IOLError
+
+    def pedir(d0, d1):
+        return iol.serie(mercado, sim, d0.isoformat(), d1.isoformat()) or []
+
+    try:
+        return pedir(desde, hasta), [], None
+    except IOLError as e:
+        if getattr(e, "status", None) == 429 or "429" in str(e)[:4]:
+            return [], [], str(e)[:200]
+        primer_error = str(e)[:200]
+    except Exception as e:
+        return [], [], str(e)[:200]
+
+    puntos, huecos_ = [], []
+    d0 = desde
+    while d0 <= hasta:
+        fin_mes = min(RF._sumar_meses(date(d0.year, d0.month, 1), 1)
+                      - timedelta(days=1), hasta)
+        try:
+            puntos += pedir(d0, fin_mes)
+        except Exception as e:
+            if "429" in str(e)[:40]:
+                huecos_.append([d0.isoformat(), hasta.isoformat()])
+                return puntos, huecos_, str(e)[:200]
+            s0 = d0
+            while s0 <= fin_mes:
+                s1 = min(s0 + timedelta(days=6), fin_mes)
+                try:
+                    puntos += pedir(s0, s1)
+                except Exception as e2:
+                    huecos_.append([s0.isoformat(), s1.isoformat()])
+                    log.warning("histórico %s %s a %s: %s", sim, s0, s1,
+                                str(e2)[:120])
+                s0 = s1 + timedelta(days=1)
+        d0 = fin_mes + timedelta(days=1)
+    err = None if puntos else primer_error
+    return puntos, huecos_, err
+
+
+def completar(iol, tareas=None):
+    """Rellena lo que devuelve sin_serie() y rearma los desvios."""
+    tareas = sin_serie() if tareas is None else tareas
+    total = 0
+    intentos = _leer_estado("hist_atras")
+    with _lock:
+        progreso.update({"total": len(tareas), "hechas": 0, "puntos": 0})
+    for sim, d0, d1 in tareas:
+        progreso["actual"] = sim
+        try:
+            if d1 is None:
+                n = reconstruir(iol, sim, desde=d0)
+            else:
+                n = reconstruir(iol, sim, desde=d0, hasta=d1, forzar=True,
+                                marcar=False)
+                primera = db.conn().execute(
+                    "SELECT MIN(fecha) AS f FROM bono_hist WHERE simbolo=?",
+                    (sim,)).fetchone()["f"]
+                intentos[sim] = primera
+                db.set_estado("hist_atras", json.dumps(intentos))
+            total += n
+        except Exception as e:
+            log.warning("histórico %s: %s", sim, e)
+            _anotar(sim, [], str(e)[:200])
+        progreso["hechas"] += 1
+        progreso["puntos"] = total
+    if total:
+        try:
+            import curva as CU
+            CU.reconstruir()
+        except Exception as e:
+            log.warning("residuos: %s", e)
+    return total
+
+
+def en_fondo(iol, simbolo=None, forzar=False):
+    """Corre la reconstruccion en un hilo aparte y vuelve enseguida.
+
+    Dentro de un pedido web, recalcular todo tardaba mas que el tiempo
+    que el ingress de Home Assistant espera: la pantalla decia que habia
+    fallado mientras el trabajo seguia. Ahora el pedido solo lo arranca
+    y el avance se consulta aparte.
+    """
+    if progreso["corriendo"]:
+        return False
+
+    def trabajo():
+        from datetime import datetime as _dt
+        progreso.update({"corriendo": True, "inicio": _dt.now().isoformat(
+            timespec="seconds"), "fin": None, "error": None,
+            "hechas": 0, "total": 0, "puntos": 0, "actual": None})
+        try:
+            if forzar:
+                bonos_cfg, _ = BO.cargar()
+                esps = BO.especies()
+                objetivo = [simbolo] if simbolo else sorted(esps)
+                tareas = []
+                for s in objetivo:
+                    info = esps.get(s)
+                    cfg = bonos_cfg.get(info["cronograma"]) if info else None
+                    if cfg and reconstruible(cfg, info):
+                        tareas.append((s, inicio_de(cfg), None))
+                progreso["total"] = len(tareas)
+                total = 0
+                for s, d0, _ in tareas:
+                    progreso["actual"] = s
+                    try:
+                        total += reconstruir(iol, s, desde=d0, forzar=True)
+                    except Exception as e:
+                        _anotar(s, [], str(e)[:200])
+                    progreso["hechas"] += 1
+                    progreso["puntos"] = total
+                import curva as CU
+                CU.reconstruir()
+            else:
+                completar(iol)
+        except Exception as e:
+            log.warning("reconstruccion en fondo: %s", e)
+            progreso["error"] = str(e)[:200]
+        finally:
+            progreso["corriendo"] = False
+            progreso["actual"] = None
+            progreso["fin"] = _dt.now().isoformat(timespec="seconds")
+
+    threading.Thread(target=trabajo, daemon=True, name="hist-fondo").start()
+    return True
 
 
 def agregar_hoy(cotizaciones, mep=None, f=None):

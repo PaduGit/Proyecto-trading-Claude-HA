@@ -135,6 +135,11 @@ def _familia(cfg, info, simbolo=""):
     """
     emisor = emisor_de(cfg)
     sufijo = "" if emisor == "nacion" else "-" + emisor.upper()
+    # Los duales rinden en pesos nominales, pero su TIR depende de una
+    # tasa proyectada: no se comparan ni con la curva a tasa fija ni con
+    # la CER, que es real.
+    if _tipo(cfg) == "dual":
+        return "DUAL" + sufijo
     ajuste = (cfg.get("ajuste") or "").lower()
     if ajuste == "cer":
         return "CER" + sufijo
@@ -347,7 +352,24 @@ def fila(simbolo, info, cot, mep, liq=None, cer_actual=0):
                            liq.isoformat()),
         "md": md,
         "vencimiento": str(cfg["vencimiento"])[:10],
+        "dual": _dual_resumen(cfg, liq, last or ask or bid),
     }
+
+
+def _dual_resumen(cfg, liq, precio):
+    """Lo que la tabla y el detalle muestran de un dual: que pata gana,
+    el pago proyectado y la inflacion de equilibrio."""
+    import dual as DU
+    if not DU.es_dual(cfg):
+        return None
+    try:
+        r = DU.calcular(cfg, liq)
+    except Exception as e:
+        log.warning("dual %s: %s", cfg.get("nombre"), e)
+        return None
+    if r is None:
+        return {"falta_tamar": True}
+    return r
 
 
 def tabla(cot, liq=None, par_mep=("AL30", "AL30D"), cer_actual=0):
@@ -437,6 +459,13 @@ def detalle(simbolo, cot, liq=None, par_mep=("AL30", "AL30D"), cer_actual=0):
     residual = m.get("residual") or RF.residual(cfg, liq)
     corrido = m.get("interes_corrido") or RF.interes_corrido(cfg, liq, tasa_var=tv)
     tecnico = residual + corrido
+    import dual as DU
+    if DU.es_dual(cfg):
+        # sin cupones: lo devengado es el maximo de las dos patas a hoy
+        vt = DU.tecnico(cfg, liq)
+        residual = 100.0
+        corrido = (vt - 100.0) if vt is not None else 0.0
+        tecnico = vt if vt is not None else 0.0
     # en un bono CER el valor tecnico va ajustado por el coeficiente
     fcer = factor_cer(cfg, cer_actual)
     if fcer and fcer != 1.0:
