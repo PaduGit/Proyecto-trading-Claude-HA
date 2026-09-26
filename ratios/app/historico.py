@@ -41,6 +41,15 @@ def init():
     if "badlar" not in cols:
         c.execute("ALTER TABLE bono_hist ADD COLUMN badlar REAL")
     c.commit()
+    # 0.48.0: con BYMA como fuente, los intentos hacia atras anotados con
+    # IOL solo se vuelven a hacer una vez.
+    try:
+        if db.get_estado("hist_fuente") != "byma":
+            db.set_estado("hist_atras", "{}")
+            db.set_estado("hist_huecos", "{}")
+            db.set_estado("hist_fuente", "byma")
+    except Exception as e:
+        log.warning("estado del histórico: %s", e)
 
 
 def _guardar(filas):
@@ -328,8 +337,25 @@ def serie_en_tramos(iol, mercado, sim, desde, hasta):
     """
     from iol import IOLError
 
+    # BYMA primero: una llamada, y responde donde IOL falla. Si trae
+    # datos se usan tal cual; IOL queda para cuando BYMA no tiene nada.
+    try:
+        import byma as BY
+        pts = BY.historia(sim, desde, hasta)
+        if pts:
+            return pts, [], None
+    except Exception as e:
+        log.info("histórico %s: BYMA sin datos (%s), sigo con IOL", sim,
+                 str(e)[:120])
+
     def pedir(d0, d1):
-        return iol.serie(mercado, sim, d0.isoformat(), d1.isoformat()) or []
+        # El `hasta` de IOL es excluyente: pedido igual al `desde` vuelve
+        # vacio, y cada tramo perdia su ultimo dia.
+        pts = iol.serie(mercado, sim, d0.isoformat(),
+                        (d1 + timedelta(days=1)).isoformat()) or []
+        return [p for p in pts
+                if d0.isoformat() <= str(p.get("fechaHora") or "")[:10]
+                <= d1.isoformat()]
 
     try:
         return pedir(desde, hasta), [], None
@@ -356,10 +382,19 @@ def serie_en_tramos(iol, mercado, sim, desde, hasta):
                 s1 = min(s0 + timedelta(days=6), fin_mes)
                 try:
                     puntos += pedir(s0, s1)
-                except Exception as e2:
-                    huecos_.append([s0.isoformat(), s1.isoformat()])
-                    log.warning("histórico %s %s a %s: %s", sim, s0, s1,
-                                str(e2)[:120])
+                except Exception:
+                    # una semana que falla se pide de a un dia: cada dia
+                    # suelto responde aunque la semana entera no
+                    for i in range((s1 - s0).days + 1):
+                        dia = s0 + timedelta(days=i)
+                        if dia.weekday() >= 5:
+                            continue
+                        try:
+                            puntos += pedir(dia, dia)
+                        except Exception as e3:
+                            huecos_.append([dia.isoformat(), dia.isoformat()])
+                            log.warning("histórico %s %s: %s", sim, dia,
+                                        str(e3)[:120])
                 s0 = s1 + timedelta(days=1)
         d0 = fin_mes + timedelta(days=1)
     err = None if puntos else primer_error

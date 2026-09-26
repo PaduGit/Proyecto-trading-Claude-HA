@@ -136,6 +136,55 @@ class Byma:
                 if str(f.get("settlementType") or "") == buscado]
 
 
+HISTORIA = "/chart/historical-series/history"
+
+
+def historia(simbolo, desde, hasta, cliente=None, plazo="24HS"):
+    """Cierres diarios de una especie desde Open BYMA Data.
+
+    Es la fuente principal del historico de bonos: una sola llamada por
+    especie, cuando la serie de IOL devuelve 500 en rangos largos y en
+    los duales hasta por semana. Las fechas van como Unix a las 00:00 de
+    Buenos Aires -si se convierten en UTC cada punto cae en el dia
+    anterior- y el `to` es excluyente, asi que se pide hasta el dia
+    siguiente. Devuelve el mismo formato que `iol.serie`: una lista de
+    {"fechaHora", "ultimoPrecio"}.
+    """
+    from datetime import datetime, time as _time, timedelta, timezone
+    ba = timezone(timedelta(hours=-3))
+
+    def unix(d):
+        return int(datetime.combine(d, _time(0), ba).timestamp())
+
+    cli = cliente or Byma()
+    ses = cli._sesion()
+    params = {"symbol": "%s %s" % (simbolo, plazo), "resolution": "D",
+              "from": unix(desde), "to": unix(hasta + timedelta(days=1))}
+    try:
+        r = red.get(BASE + HISTORIA, "byma_historia", session=ses,
+                    params=params, timeout=cli.timeout,
+                    verify=cli.verificar_ssl)
+    except requests.RequestException as e:
+        raise BymaError("historia %s: %s" % (simbolo, e))
+    if r.status_code != 200:
+        raise BymaError("historia %s -> HTTP %s" % (simbolo, r.status_code))
+    try:
+        d = r.json() or {}
+    except ValueError:
+        raise BymaError("historia %s: respuesta no es JSON" % simbolo)
+    if d.get("s") != "ok":
+        return []
+    out = []
+    for t, c in zip(d.get("t") or [], d.get("c") or []):
+        if c is None:
+            continue
+        f = datetime.fromtimestamp(t, ba).date()
+        if desde <= f <= hasta:
+            out.append({"fechaHora": f.isoformat() + "T17:00:00",
+                        "ultimoPrecio": c})
+    return out
+
+
 def normalizar(f):
     """Lleva una fila de BYMA a la misma forma que la de IOL.
 

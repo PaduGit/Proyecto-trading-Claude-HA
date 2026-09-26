@@ -96,6 +96,34 @@ def _tipo(cfg):
     return "tasa_fija"
 
 
+def etiqueta(cfg, fila=None):
+    """Etiqueta corta del tipo, para el chip de la tabla.
+
+    La tasa variable muestra su fuente, y el dual la pata que paga en la
+    proyeccion. Devuelve (etiqueta, ayuda).
+    """
+    if not cfg:
+        return None, None
+    t = _tipo(cfg)
+    if t == "dual":
+        gana = ((fila or {}).get("dual") or {}).get("gana")
+        return (("DUAL·" + gana) if gana else "DUAL",
+                "Dual CER/TAMAR" + (": paga " + gana + " en la proyeccion"
+                                    if gana else ""))
+    var = ((cfg.get("interes") or {}).get("variable") or {})
+    if var:
+        f = (var.get("fuente") or "variable").upper()
+        return f, "Tasa variable " + f
+    if t == "hard_dollar":
+        ley = "AR" if (cfg.get("ley") or "").startswith("arg") else "NY"
+        return "HD·" + ley, "Hard dollar, ley " + (
+            "argentina" if ley == "AR" else "Nueva York")
+    return {"cer": ("CER", "Ajusta por CER"),
+            "dolar_linked": ("DL", "Dolar linked"),
+            "tasa_fija": ("FIJA", "Tasa fija en pesos"),
+            "tasa_variable": ("VAR", "Tasa variable")}.get(t, (t.upper(), t))
+
+
 def _moneda_cotiza(info, simbolo):
     """En qué moneda liquida la especie: ARS, MEP o CABLE."""
     if simbolo.endswith("D"):

@@ -1,5 +1,32 @@
 # Registro de cambios
 
+## 0.48.0
+
+**Sin campos nuevos de configuracion.**
+
+**Etiqueta de tipo en cada bono.** Al lado del ticker: HD·NY o HD·AR
+para hard dollar segun la ley, CER, DL, FIJA, la fuente para la tasa
+variable (BADLAR, TAMAR) y DUAL·TAMAR o DUAL·CER segun la pata que paga
+en la proyeccion.
+
+**Filtro "En cartera" en BONOS**, con los nominales en gris al lado del
+ticker. Suma los cuatro brokers y cuenta por bono: una posicion en
+AL30D marca tambien la fila de AL30.
+
+**Historico de bonos desde BYMA.** Open BYMA Data trae la serie diaria
+de una especie en una sola llamada, incluidos los duales, donde la de
+IOL devolvia 500 hasta pidiendo de a una semana. IOL queda de respaldo.
+Las fechas de BYMA se leen en hora de Buenos Aires: en UTC cada punto
+caia en el dia anterior.
+
+**La serie de IOL perdia el ultimo dia de cada tramo.** Su `hasta` es
+excluyente: cada mes y cada semana pedidos por separado en la 0.47.0
+dejaban afuera su ultimo dia. Ahora se pide hasta el dia siguiente, y
+una semana que falla se baja de a un dia en vez de quedar como hueco.
+
+Al arrancar se olvidan los intentos hacia atras anotados con IOL, para
+que las especies que quedaron cortas se vuelvan a pedir por BYMA.
+
 ## 0.47.0
 
 **Sin campos nuevos de configuracion.**

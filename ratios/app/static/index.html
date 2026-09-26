@@ -3129,8 +3129,11 @@ async function cargarBonos(){
           (f.falta_cer || f.falta_tc ? " sindato" : "") + '">' +
           '<td class="tk" onclick="verBono(\'' + esc(f.simbolo) + '\')">' +
           esc(f.simbolo) +
-          (f.dual && f.dual.gana ? ' <span class="tocar" title="Pata que paga ' +
-            'en la proyección">' + esc(f.dual.gana) + '</span>' : "") + '</td>' +
+          (f.etiqueta ? ' <span class="tocar" title="' + esc(f.etiqueta_ayuda ||
+            "") + '">' + esc(f.etiqueta) + '</span>' : "") +
+          (f.en_cartera ? ' <span style="color:var(--muted);font-size:11px" ' +
+            'title="Nominales en cartera, todos los brokers">' +
+            num(f.en_cartera, 0) + '</span>' : "") + '</td>' +
           '<td class="md">' + (f.md != null ? f.md.toFixed(1) : "—") + '</td>' +
           '<td' + (f.last_viejo ? ' class="viejo"' : "") + '>' + p(f.last) + '</td>' +
           '<td class="tir' + (f.last_viejo ? " viejo" : "") + '">' +
@@ -3347,7 +3350,17 @@ function selectorFamilias(filas){
         '" onclick="elegirFiltro(\'' + clave + '\',\'' + k + '\')">' +
         t + '</button>').join("") + '</div></div>';
   };
-  return fila("Ley", LEYES, "ley") +
+  /* cartera: dos opciones, así que no pasa por fila(), que pide tres */
+  const cartera = filas.some(f => f.en_cartera)
+    ? '<div class="filtro-fila"><span class="filtro-etq">Cartera</span>' +
+      '<div class="periodos" style="margin:0">' +
+      [["todas","Todas"],["si","En cartera"]].map(([k,t]) =>
+        '<button aria-pressed="' + ((filtro.cartera || "todas") === k) +
+        '" onclick="elegirFiltro(\'cartera\',\'' + k + '\')">' + t +
+        '</button>').join("") + '</div></div>'
+    : "";
+  return cartera +
+         fila("Ley", LEYES, "ley") +
          fila("Tipo", TIPOS, "tipo") +
          fila("Moneda", MONEDAS, "moneda") +
          fila("Emisor", EMISORES, "emisor");
@@ -3363,7 +3376,8 @@ function filtrarFamilia(filas){
     (filtro.ley === "todas" || f.ley_cod === filtro.ley) &&
     (filtro.tipo === "todos" || f.tipo === filtro.tipo) &&
     (filtro.moneda === "todas" || f.moneda_cotiza === filtro.moneda) &&
-    (filtro.emisor === "todos" || (f.emisor || "nacion") === filtro.emisor));
+    (filtro.emisor === "todos" || (f.emisor || "nacion") === filtro.emisor) &&
+    ((filtro.cartera || "todas") === "todas" || !!f.en_cartera));
 }
 
 /* ---------- orden de la tabla ---------- */

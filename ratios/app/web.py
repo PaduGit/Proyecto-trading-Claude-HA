@@ -469,6 +469,37 @@ def crear_app(monitor):
         _cache_bonos["datos"] = None
         return jsonify({"reintentadas": n})
 
+    def _etiquetar_bonos(filas):
+        """Chip de tipo y nominales en cartera por fila.
+
+        La tenencia se suma por bono, no por especie: una posicion en
+        AL30D marca tambien la fila de AL30, porque es el mismo bono con
+        otra moneda de liquidacion. Cuenta los cuatro brokers.
+        """
+        try:
+            bonos_cfg, _ = BO.cargar()
+            esps = BO.especies()
+        except Exception as e:
+            log.warning("etiquetas de bonos: %s", e)
+            return
+        por_bono = {}
+        try:
+            for r in db.conn().execute(
+                    "SELECT simbolo, SUM(cantidad) AS c FROM tenencia "
+                    "GROUP BY simbolo"):
+                info = esps.get((r["simbolo"] or "").upper())
+                if info and r["c"]:
+                    k = info["cronograma"]
+                    por_bono[k] = por_bono.get(k, 0) + r["c"]
+        except Exception as e:
+            log.warning("tenencia para bonos: %s", e)
+        for f in filas:
+            info = esps.get(f.get("simbolo"))
+            cfg = bonos_cfg.get(info["cronograma"]) if info else None
+            f["etiqueta"], f["etiqueta_ayuda"] = BO.etiqueta(cfg, f)
+            c = por_bono.get(info["cronograma"]) if info else None
+            f["en_cartera"] = c if c and abs(c) > 1e-9 else None
+
     @app.get("/api/bonos")
     def bonos_tabla():
         try:
@@ -476,6 +507,7 @@ def crear_app(monitor):
                    monitor.cfg.get("mep_par_usd") or "AL30D")
             cer = float(monitor.cfg.get("cer_actual") or 0)
             t = BO.tabla(_cot_bonos(), par_mep=par, cer_actual=cer)
+            _etiquetar_bonos(t["filas"])
             try:
                 an = CU.analizar(t["filas"])
                 for f in t["filas"]:
