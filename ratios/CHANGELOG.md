@@ -1,5 +1,28 @@
 # Registro de cambios
 
+## 0.49.0
+
+**Sin campos nuevos de configuracion.**
+
+**BONOS, "En cartera" muestra solo lo cargado en tenencia.** Antes
+marcaba el bono entero: tener AO29 ponia tambien AO29D, y DICP arrastraba
+a DIP0. Las cantidades salen de la fila y pasan al detalle del bono,
+total y por broker. La etiqueta de tipo va siempre en una segunda linea
+debajo del ticker.
+
+**Puntas en su propia tabla.** La ultima punta conocida de cada simbolo
+era una sola fila de `estado` con un JSON de 415 KB, reescrito entero en
+cada ciclo y sin purga. Ahora una fila por simbolo, se escriben solo las
+que cambiaron y se borran las que no se actualizan hace mas de 30 dias.
+La migracion es automatica al arrancar.
+
+**BYMA: una sola sesion.** Cada serie historica abria sesion pidiendo la
+home del portal: dos llamadas por especie. Ahora la sesion se reutiliza
+y se reabre solo si BYMA contesta 401.
+
+**La base se descarga como SQLite**, no como binario generico: la app de
+Home Assistant ignora el nombre y le ponia `.bin`.
+
 ## 0.48.1
 
 **Historico para todos los bonos, no solo los que tienen curva hoy.**

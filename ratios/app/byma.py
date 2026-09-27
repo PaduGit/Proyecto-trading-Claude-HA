@@ -138,6 +138,11 @@ class Byma:
 
 HISTORIA = "/chart/historical-series/history"
 
+# Un solo cliente para todas las series: abrir sesion pide la home del
+# portal para las cookies, y crear un cliente por especie duplicaba las
+# llamadas. Se reabre solo si BYMA contesta 401 porque vencieron.
+_cliente_historia = None
+
 
 def historia(simbolo, desde, hasta, cliente=None, plazo="24HS"):
     """Cierres diarios de una especie desde Open BYMA Data.
@@ -156,16 +161,28 @@ def historia(simbolo, desde, hasta, cliente=None, plazo="24HS"):
     def unix(d):
         return int(datetime.combine(d, _time(0), ba).timestamp())
 
-    cli = cliente or Byma()
-    ses = cli._sesion()
+    global _cliente_historia
+    if cliente is None:
+        if _cliente_historia is None:
+            _cliente_historia = Byma()
+        cli = _cliente_historia
+    else:
+        cli = cliente
     params = {"symbol": "%s %s" % (simbolo, plazo), "resolution": "D",
               "from": unix(desde), "to": unix(hasta + timedelta(days=1))}
-    try:
-        r = red.get(BASE + HISTORIA, "byma_historia", session=ses,
-                    params=params, timeout=cli.timeout,
-                    verify=cli.verificar_ssl)
-    except requests.RequestException as e:
-        raise BymaError("historia %s: %s" % (simbolo, e))
+    r = None
+    for intento in (1, 2):
+        ses = cli._sesion()
+        try:
+            r = red.get(BASE + HISTORIA, "byma_historia", session=ses,
+                        params=params, timeout=cli.timeout,
+                        verify=cli.verificar_ssl)
+        except requests.RequestException as e:
+            raise BymaError("historia %s: %s" % (simbolo, e))
+        if r.status_code == 401 and intento == 1:
+            cli.ses = None      # cookies vencidas: una sesion nueva
+            continue
+        break
     if r.status_code != 200:
         raise BymaError("historia %s -> HTTP %s" % (simbolo, r.status_code))
     try:

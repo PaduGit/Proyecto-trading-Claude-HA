@@ -161,6 +161,83 @@ def copia_temporal():
     return ruta
 
 
+# -- ultima punta conocida por simbolo -------------------------------
+#
+# Antes era una sola fila de `estado` con un JSON de todo el universo:
+# 415 KB reescritos enteros en cada ciclo, y sin purga, asi que
+# arrastraba opciones vencidas y especies que ya no existen. Ahora una
+# fila por simbolo, se escriben solo las que cambiaron y se purgan las
+# que no se actualizan hace mas de DIAS_PUNTAS.
+
+DIAS_PUNTAS = 30
+
+ESQUEMA_PUNTAS = """
+CREATE TABLE IF NOT EXISTS puntas (
+    simbolo TEXT PRIMARY KEY,
+    datos   TEXT NOT NULL,
+    ts      TEXT NOT NULL
+);
+"""
+
+
+def init_puntas():
+    import json
+    c = conn()
+    c.executescript(ESQUEMA_PUNTAS)
+    viejo = c.execute("SELECT valor FROM estado WHERE clave=?",
+                      ("ultimas_puntas",)).fetchone()
+    if viejo:
+        try:
+            d = json.loads(viejo["valor"] or "{}")
+        except Exception:
+            d = {}
+        guardar_puntas(d, commit=False)
+        c.execute("DELETE FROM estado WHERE clave=?", ("ultimas_puntas",))
+        log.info("puntas: %d simbolos migrados a su tabla", len(d))
+    c.commit()
+    purgar_puntas()
+
+
+def _ts_punta(v):
+    return max(str(v.get("ts") or ""), str(v.get("ts_ultimo") or ""))
+
+
+def puntas():
+    import json
+    out = {}
+    for r in conn().execute("SELECT simbolo, datos FROM puntas"):
+        try:
+            out[r["simbolo"]] = json.loads(r["datos"])
+        except Exception:
+            pass
+    return out
+
+
+def guardar_puntas(cambios, commit=True):
+    """Guarda solo los simbolos que cambiaron."""
+    import json
+    if not cambios:
+        return
+    c = conn()
+    c.executemany(
+        "INSERT OR REPLACE INTO puntas (simbolo, datos, ts) VALUES (?,?,?)",
+        [(s, json.dumps(v), _ts_punta(v)) for s, v in cambios.items()])
+    if commit:
+        c.commit()
+
+
+def purgar_puntas(dias=DIAS_PUNTAS):
+    corte = (datetime.now() - timedelta(days=dias)).isoformat(
+        timespec="seconds")
+    c = conn()
+    n = c.execute("DELETE FROM puntas WHERE ts < ?", (corte,)).rowcount
+    c.commit()
+    if n:
+        log.info("puntas: %d simbolos sin actualizar en %d dias, borrados",
+                 n, dias)
+    return n
+
+
 def init():
     c = conn()
     c.executescript(ESQUEMA)

@@ -492,12 +492,9 @@ class Monitor:
 
     # -- ultima punta conocida ----------------------------------------
 
-    CLAVE_PUNTAS = "ultimas_puntas"
-
     def _cargar_puntas(self):
-        import json
         try:
-            return json.loads(db.get_estado(self.CLAVE_PUNTAS) or "{}")
+            return db.puntas()
         except Exception:
             return {}
 
@@ -514,10 +511,9 @@ class Monitor:
         Lo que se rellena queda marcado como viejo. Ningun modulo debe
         alertar sobre esto.
         """
-        import json
         guardadas = self._cargar_puntas()
         ahora = datetime.now().isoformat(timespec="seconds")
-        cambio = False
+        cambios = {}
 
         for sim, c in mapa.items():
             guardado = guardadas.get(sim) or {}
@@ -531,7 +527,7 @@ class Monitor:
                     "ts": ahora}
                 c["punta_vieja"] = False
                 c["punta_ts"] = ahora
-                cambio = True
+                cambios[sim] = guardadas[sim]
                 continue
 
             # Sin puntas igual se guarda el ultimo operado: hay especies
@@ -542,7 +538,7 @@ class Monitor:
                 g.update({"ultimo": c["ultimo"], "ts_ultimo": ahora,
                           "moneda": c.get("moneda") or g.get("moneda") or ""})
                 guardadas[sim] = g
-                cambio = True
+                cambios[sim] = g
 
             if not guardado.get("compra"):
                 c["punta_vieja"] = False    # nunca hubo, no hay que marcar
@@ -556,8 +552,8 @@ class Monitor:
             c["punta_vieja"] = True
             c["punta_ts"] = guardado.get("ts")
 
-        if cambio:
-            db.set_estado(self.CLAVE_PUNTAS, json.dumps(guardadas))
+        if cambios:
+            db.guardar_puntas(cambios)
         return mapa
 
     def mapa_guardado(self):

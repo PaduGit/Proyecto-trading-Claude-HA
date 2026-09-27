@@ -469,36 +469,41 @@ def crear_app(monitor):
         _cache_bonos["datos"] = None
         return jsonify({"reintentadas": n})
 
-    def _etiquetar_bonos(filas):
-        """Chip de tipo y nominales en cartera por fila.
+    def _cartera_por_especie():
+        """Nominales en tenencia por especie, con el detalle por broker.
 
-        La tenencia se suma por bono, no por especie: una posicion en
-        AL30D marca tambien la fila de AL30, porque es el mismo bono con
-        otra moneda de liquidacion. Cuenta los cuatro brokers.
+        Por especie y no por bono: tener AO29 no pone AO29D en cartera.
         """
+        out = {}
+        try:
+            for r in db.conn().execute(
+                    "SELECT broker, simbolo, SUM(cantidad) AS c FROM tenencia "
+                    "GROUP BY broker, simbolo"):
+                if not r["c"] or abs(r["c"]) < 1e-9:
+                    continue
+                sim = (r["simbolo"] or "").upper()
+                e = out.setdefault(sim, {"total": 0.0, "brokers": []})
+                e["total"] += r["c"]
+                e["brokers"].append({"broker": r["broker"],
+                                     "cantidad": r["c"]})
+        except Exception as e:
+            log.warning("tenencia para bonos: %s", e)
+        return out
+
+    def _etiquetar_bonos(filas):
+        """Chip de tipo y marca de cartera por fila."""
         try:
             bonos_cfg, _ = BO.cargar()
             esps = BO.especies()
         except Exception as e:
             log.warning("etiquetas de bonos: %s", e)
             return
-        por_bono = {}
-        try:
-            for r in db.conn().execute(
-                    "SELECT simbolo, SUM(cantidad) AS c FROM tenencia "
-                    "GROUP BY simbolo"):
-                info = esps.get((r["simbolo"] or "").upper())
-                if info and r["c"]:
-                    k = info["cronograma"]
-                    por_bono[k] = por_bono.get(k, 0) + r["c"]
-        except Exception as e:
-            log.warning("tenencia para bonos: %s", e)
+        cartera = _cartera_por_especie()
         for f in filas:
             info = esps.get(f.get("simbolo"))
             cfg = bonos_cfg.get(info["cronograma"]) if info else None
             f["etiqueta"], f["etiqueta_ayuda"] = BO.etiqueta(cfg, f)
-            c = por_bono.get(info["cronograma"]) if info else None
-            f["en_cartera"] = c if c and abs(c) > 1e-9 else None
+            f["en_cartera"] = bool(cartera.get(f.get("simbolo")))
 
     @app.get("/api/bonos")
     def bonos_tabla():
@@ -528,6 +533,7 @@ def crear_app(monitor):
             cot = _cot_bonos()
             d = BO.detalle(simbolo.upper(), cot, par_mep=par, cer_actual=cer)
             if d:
+                d["cartera"] = _cartera_por_especie().get(simbolo.upper())
                 try:
                     t = BO.tabla(cot, par_mep=par, cer_actual=cer)
                     an = CU.analizar(t["filas"])
@@ -1875,7 +1881,7 @@ def crear_app(monitor):
             return jsonify({"error": str(e)}), 500
         nombre = "ratios-%s.db" % datetime.now().date().isoformat()
         return app.response_class(
-            datos, mimetype="application/octet-stream",
+            datos, mimetype="application/vnd.sqlite3",
             headers={"Content-Disposition": "attachment; filename=" + nombre})
 
     @app.get("/api/bcra/variables")

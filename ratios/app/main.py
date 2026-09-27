@@ -153,6 +153,7 @@ def main():
     historico.init()
     curva.init()
     db.quitar_indices_redundantes()
+    db.init_puntas()
 
     notif = Notificador(cfg)
     iol = IOL(cfg["iol_user"], cfg["iol_pass"])

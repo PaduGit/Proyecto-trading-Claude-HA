@@ -2391,7 +2391,10 @@ $("#bajar-base").addEventListener("click", e => {
   fetch(base + "api/base/descargar")
     .then(r => { if(!r.ok) throw new Error(); return r.blob(); })
     .then(b => {
-      const url = URL.createObjectURL(b);
+      /* La app de Home Assistant ignora el nombre de la descarga y pone
+         la extensión según el tipo: con octet-stream salía .bin. */
+      const url = URL.createObjectURL(
+        new Blob([b], {type: "application/vnd.sqlite3"}));
       const a = document.createElement("a");
       a.href = url;
       a.download = "ratios-" + new Date().toISOString().slice(0, 10) + ".db";
@@ -3129,11 +3132,9 @@ async function cargarBonos(){
           (f.falta_cer || f.falta_tc ? " sindato" : "") + '">' +
           '<td class="tk" onclick="verBono(\'' + esc(f.simbolo) + '\')">' +
           esc(f.simbolo) +
-          (f.etiqueta ? ' <span class="tocar" title="' + esc(f.etiqueta_ayuda ||
-            "") + '">' + esc(f.etiqueta) + '</span>' : "") +
-          (f.en_cartera ? ' <span style="color:var(--muted);font-size:11px" ' +
-            'title="Nominales en cartera, todos los brokers">' +
-            num(f.en_cartera, 0) + '</span>' : "") + '</td>' +
+          (f.etiqueta ? '<br><span class="tocar" style="margin-top:2px" ' +
+            'title="' + esc(f.etiqueta_ayuda || "") + '">' +
+            esc(f.etiqueta) + '</span>' : "") + '</td>' +
           '<td class="md">' + (f.md != null ? f.md.toFixed(1) : "—") + '</td>' +
           '<td' + (f.last_viejo ? ' class="viejo"' : "") + '>' + p(f.last) + '</td>' +
           '<td class="tir' + (f.last_viejo ? " viejo" : "") + '">' +
@@ -3223,6 +3224,10 @@ async function verBono(sim){
     $("#bono-cuerpo").innerHTML =
       (d.aviso ? '<div class="aviso">' + esc(d.aviso) + '</div>' : "") +
       dualHtml(d.fila && d.fila.dual) +
+      (d.cartera ? '<div class="hallazgo"><h3>En cartera · ' +
+        num(d.cartera.total, 0) + ' nominales</h3><dl class="kv">' +
+        d.cartera.brokers.map(b => '<dt>' + esc(b.broker) + '</dt><dd>' +
+          num(b.cantidad, 0) + '</dd>').join("") + '</dl></div>' : "") +
       (d.nota ? '<p class="nota">' + esc(d.nota) + '</p>' : "") +
       '<dl class="kv">' +
       (pp ? '<dt>Próximo pago</dt><dd>' + esc(pp.fecha) + ' · ' +
