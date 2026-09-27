@@ -100,6 +100,15 @@ def calcular_punto(simbolo, f, precio, cfg, info, mep=None):
           and (cfg.get("moneda") or "").upper() == "ARS"):
         # bono en pesos: la TIR se calcula en pesos, sin pasar por MEP
         p = precio / (float(cfg.get("nominal_base") or 100) / 100)
+    elif (cfg.get("ajuste") or "").lower() in ("dolar_linked",
+                                                 "dolarlinked", "dl"):
+        # cotiza en pesos y ajusta por A3500: el precio se lleva a dolares
+        # con el tipo de cambio vigente ese dia, como en la tabla en vivo
+        import dolar as DL
+        tc = DL.vigente(f)
+        if not tc:
+            return None
+        p = precio / tc / (float(cfg.get("nominal_base") or 100) / 100)
     elif info["moneda"] == "USD":
         p = precio / (float(cfg.get("nominal_base") or 100) / 100)
     else:
@@ -159,6 +168,7 @@ def reconstruir(iol, simbolo=None, desde=None, hasta=None, mercado="bCBA",
 
     objetivo = [simbolo] if simbolo else sorted(esps)
     total = 0
+    meps = {}
 
     for sim in objetivo:
         info = esps.get(sim)
@@ -168,12 +178,22 @@ def reconstruir(iol, simbolo=None, desde=None, hasta=None, mercado="bCBA",
         if not cfg:
             continue
 
-        # los hard dollar que cotizan en pesos necesitan el MEP de cada
-        # día, que no tenemos hacia atrás: se reconstruyen las especies
-        # dolarizadas (D y C) y las ajustables por CER. Los bonos que
-        # rinden en pesos tampoco necesitan MEP, asi que entran igual.
         if not reconstruible(cfg, info):
             continue
+
+        # Un hard dollar que cotiza en pesos se lleva a dolares con el MEP
+        # de ese dia, reconstruido de AL30 sobre AL30D en esta misma
+        # tabla. Sin MEP ese dia el punto queda sin TIR.
+        necesita_mep = (_tipo_rf(cfg) == "hard_dollar"
+                        and info["moneda"] != "USD")
+        es_dl = (cfg.get("ajuste") or "").lower() in ("dolar_linked",
+                                                      "dolarlinked", "dl")
+        if es_dl:
+            try:
+                import dolar as DL
+                DL.asegurar_rango(arranque_badlar(cfg, desde), date.today())
+            except Exception as e:
+                log.warning("A3500 para %s: %s", sim, e)
 
         # con cupon variable el punto de cada dia necesita la tasa de ese
         # dia: sin la serie entera solo saldrian los ultimos dias
@@ -219,7 +239,15 @@ def reconstruir(iol, simbolo=None, desde=None, hasta=None, mercado="bCBA",
                 f = date.fromisoformat(fecha)
             except ValueError:
                 continue
-            p = calcular_punto(sim, f, precio, cfg, info)
+            mep = None
+            if necesita_mep:
+                if f not in meps:
+                    try:
+                        meps[f] = BO.mep_al(f)
+                    except Exception:
+                        meps[f] = None
+                mep = meps[f]
+            p = calcular_punto(sim, f, precio, cfg, info, mep=mep)
             if p:
                 filas.append(p)
 
@@ -237,13 +265,20 @@ def reconstruir(iol, simbolo=None, desde=None, hasta=None, mercado="bCBA",
 def reconstruible(cfg, info):
     """Si la TIR de una especie se puede calcular hacia atras.
 
-    Los hard dollar que cotizan en pesos necesitan el MEP de cada dia y
-    no lo tenemos: entran las especies dolarizadas (D y C), las CER y
-    las que rinden en pesos, duales incluidos.
+    Hoy entran todas: los hard dollar en pesos se convierten con el MEP
+    de cada dia, reconstruido de AL30 sobre AL30D, y los dolar linked
+    con el A3500. Antes se decidia por la moneda de la especie, y un CER
+    cuya especie figura en pesos -DIP0, PAP0- quedaba afuera aunque su
+    familia tiene curva. Aunque una familia no llegue a los cinco bonos
+    que pide la curva, conviene tener la historia: cuando se agreguen
+    bonos, el desvio se arma sin volver a bajar nada.
     """
-    en_pesos = (not (cfg.get("ajuste") or "")
-                and (cfg.get("moneda") or "").upper() == "ARS")
-    return info["moneda"] in ("USD", "CER") or en_pesos
+    return bool(cfg and info)
+
+
+def _tipo_rf(cfg):
+    import bonos as _BO
+    return _BO._tipo(cfg)
 
 
 def inicio_de(cfg):

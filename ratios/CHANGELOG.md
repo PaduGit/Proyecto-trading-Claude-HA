@@ -1,5 +1,24 @@
 # Registro de cambios
 
+## 0.48.1
+
+**Historico para todos los bonos, no solo los que tienen curva hoy.**
+
+- **Hard dollar en pesos** (AL30, GD30, AE38 y el resto, AO27 a AO29 y
+  las ON en pesos): se excluian porque su TIR necesita el MEP de cada
+  dia. Ese MEP ya estaba guardado, AL30 sobre AL30D desde 2020: ahora se
+  usa. Sin MEP ese dia, el punto queda sin TIR. El z-score de la fila en
+  pesos incluye el arbitraje de tipo de cambio contra AL30; en AL30 da
+  igual que en AL30D.
+- **Dolar linked**: se convierte con el A3500 vigente de cada dia, como
+  en la tabla en vivo.
+- **DIP0 y PAP0** quedaban afuera aunque son CER: el filtro miraba la
+  moneda de la especie, que figura en pesos, y no el tipo del bono.
+
+Las familias que no llegan a cinco bonos siguen sin curva ni z-score,
+pero ya guardan la historia: si se agregan bonos, el desvio se arma sin
+volver a bajar nada.
+
 ## 0.48.0
 
 **Sin campos nuevos de configuracion.**
