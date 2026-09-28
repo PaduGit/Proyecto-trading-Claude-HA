@@ -871,9 +871,10 @@ class Monitor:
         titulo = ("Canje %s → %s" % (nuevos[0]["desde"], nuevos[0]["hacia"])
                   if len(nuevos) == 1 else "%d canjes convenientes" % len(nuevos))
         self.notif.enviar(titulo, "<br><br>".join(lineas), "\n".join(planas))
+        texto = "<b>%s</b><br>%s" % (titulo, "<br><br>".join(lineas))
         for f in nuevos:
             db.registrar_alerta(f["desde"], "canje", f["ganancia_pct"], None,
-                                "%s → %s" % (f["desde"], f["hacia"]))
+                                texto)
         return len(nuevos)
 
     # -- desvíos de curva ---------------------------------------------
@@ -1332,9 +1333,11 @@ class Monitor:
                       % (_n(mejor["equilibrio"]), mejor["var_equilibrio_pct"]))
 
         self.notif.enviar(titulo, "<br>".join(lineas))
+        # el registro guarda la notificacion entera, no solo el titulo
+        texto = "<b>%s</b><br>%s" % (titulo, "<br>".join(lineas))
         for f in avisos:
             db.registrar_alerta(f["id"], "opcion_armado", f["riesgo_pct"],
-                                f["ratio"], titulo)
+                                f["ratio"], texto)
 
     def _avisar_desarme(self, salidas):
         """Tambien en un solo aviso, por la misma razon que el armado."""
@@ -1355,9 +1358,11 @@ class Monitor:
                 pos["subyacente"], _n(pos["base_compra"]),
                 _n(pos["base_venta"]), "; ".join(motivos), plata))
         self.notif.enviar(titulo, "<br>".join(lineas))
+        # el registro guarda la notificacion entera, no solo el titulo
+        texto = "<b>%s</b><br>%s" % (titulo, "<br>".join(lineas))
         for pos, val, _m in salidas:
             db.registrar_alerta(pos["combo"], "opcion_desarme",
-                                (val or {}).get("ganancia_pct"), None, titulo)
+                                (val or {}).get("ganancia_pct"), None, texto)
 
 
     def brokers_extranjeros(self):
@@ -1437,8 +1442,10 @@ class Monitor:
                 a["titulo"], a["fecha"], cuando,
                 "<br>&nbsp;&nbsp;%s" % a["nota"] if a["nota"] else ""))
         self.notif.enviar(titulo, "<br>".join(lineas))
+        # el registro guarda la notificacion entera, no solo el titulo
+        texto = "<b>%s</b><br>%s" % (titulo, "<br>".join(lineas))
         for a in avisos:
-            db.registrar_alerta(str(a["id"]), "fecha", None, None, a["titulo"])
+            db.registrar_alerta(str(a["id"]), "fecha", None, None, texto)
 
 
     # -- cobros -------------------------------------------------------
@@ -1487,9 +1494,11 @@ class Monitor:
             if detalle:
                 lineas.append("&nbsp;&nbsp;%s por cada 100" % " + ".join(detalle))
         self.notif.enviar(titulo, "<br>".join(lineas))
+        # el registro guarda la notificacion entera, no solo el titulo
+        texto = "<b>%s</b><br>%s" % (titulo, "<br>".join(lineas))
         for p in pagos:
             db.registrar_alerta(p["simbolo"], "cobro", p["importe"], None,
-                                titulo)
+                                texto)
 
 
     # -- alertas de precio --------------------------------------------
@@ -1561,9 +1570,10 @@ class Monitor:
             union = " y " if a["modo"] == "todas" else " o "
             lineas.append("<b>%s</b>: %s" % (a["titulo"], union.join(partes)))
         self.notif.enviar(titulo, "<br>".join(lineas))
+        # el registro guarda la notificacion entera, no solo el titulo
+        texto = "<b>%s</b><br>%s" % (titulo, "<br>".join(lineas))
         for a, r in avisos:
-            db.registrar_alerta(str(a["id"]), "precio", None, None,
-                                a["titulo"])
+            db.registrar_alerta(str(a["id"]), "precio", None, None, texto)
 
 
     # -- plazos -------------------------------------------------------
@@ -1621,9 +1631,11 @@ class Monitor:
         lineas.append("Plazo de %d dia%s entre liquidaciones." % (
             m.get("dias") or 1, "" if (m.get("dias") or 1) == 1 else "s"))
         self.notif.enviar(titulo, "<br>".join(lineas))
+        # el registro guarda la notificacion entera, no solo el titulo
+        texto = "<b>%s</b><br>%s" % (titulo, "<br>".join(lineas))
         for f in avisos:
             db.registrar_alerta(f["ticker"], "plazos", f.get("tna_pct"),
-                                None, titulo)
+                                None, texto)
 
 
     # -- rulo ---------------------------------------------------------
@@ -1707,9 +1719,11 @@ class Monitor:
             lineas.append("<b>%+.2f%%</b> desde %s · %s" % (
                 x["resultado_pct"], g.get("desde") or "", ruta))
         self.notif.enviar(titulo, "<br>".join(lineas))
+        # el registro guarda la notificacion entera, no solo el titulo
+        texto = "<b>%s</b><br>%s" % (titulo, "<br>".join(lineas))
         for g, x in avisos:
             db.registrar_alerta(str(g.get("clave")), "rulo",
-                                x.get("resultado_pct"), None, titulo)
+                                x.get("resultado_pct"), None, texto)
 
     # -- snapshot persistente -----------------------------------------
 

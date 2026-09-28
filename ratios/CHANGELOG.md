@@ -1,5 +1,21 @@
 # Registro de cambios
 
+## 0.50.0
+
+**Sin campos nuevos de configuracion.**
+
+**Registro con detalle.** Al tocar una alerta u operacion se abre debajo
+con todo lo guardado: el texto de la notificacion tal cual llego, fecha
+y hora completas, tipo, valor, nivel, precios y volumenes si los tiene,
+y un boton para ir a lo que la disparo (el bono, RATIOS, OPCIONES, BONOS,
+RULO, PASES, alertas o tenencias). Se abre una a la vez.
+
+**Las alertas guardan la notificacion entera.** Solo las de pares y las
+de curva lo hacian. Opciones (armado y desarme), canje, fechas, precios,
+cobros, plazos y rulo guardaban el titulo: los dias al vencimiento, los
+lotes, el equilibrio o el detalle de cada cobro se mandaban y se
+perdian. Las alertas anteriores a esta version quedan con lo que tienen.
+
 ## 0.49.0
 
 **Sin campos nuevos de configuracion.**

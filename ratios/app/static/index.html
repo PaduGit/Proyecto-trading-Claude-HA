@@ -1837,6 +1837,80 @@ function iconoAlerta(tipo){
   return {icono:"•", clase:""};
 }
 
+/* Texto de una notificación guardada: se escapa todo y se devuelven solo
+   las marcas que usan las notificaciones. */
+function textoNotif(m){
+  return esc(m || "")
+    .replace(/&lt;(\/?)(b|i)&gt;/g, "<$1$2>")
+    .replace(/&lt;br\s*\/?&gt;/g, "<br>")
+    .replace(/&amp;nbsp;/g, "&nbsp;")
+    .replace(/\n/g, "<br>");
+}
+const DESTINO_ALERTA = {alta:["panel","Ver en RATIOS"], baja:["panel","Ver en RATIOS"],
+  opcion_armado:["opc","Ver en OPCIONES"], opcion_desarme:["opc","Ver en OPCIONES"],
+  canje:["bonos","Ver en BONOS"], rulo:["rulo","Ver en RULO"],
+  plazos:["plazos","Ver en PASES"], fecha:["alertas","Ver alertas"],
+  precio:["alertas","Ver alertas"], cobro:["pos","Ver tenencias"]};
+let regDatos = {al: [], op: []};
+function detalleAlerta(a){
+  const dest = a.tipo && a.tipo.startsWith("curva_")
+    ? '<button class="secundario" onclick="verBono(\'' + esc(a.alias) +
+      '\')" style="width:auto;padding:0 14px">Ver bono</button>'
+    : (DESTINO_ALERTA[a.tipo] ? '<button class="secundario" onclick="irA(\'' +
+        DESTINO_ALERTA[a.tipo][0] + '\')" style="width:auto;padding:0 14px">' +
+        DESTINO_ALERTA[a.tipo][1] + '</button>' : "");
+  const puntas = (a.p_num != null || a.p_den != null)
+    ? '<dt>Precios</dt><dd>' + (a.p_num != null ? num(a.p_num, 2) : "—") +
+      ' / ' + (a.p_den != null ? num(a.p_den, 2) : "—") + '</dd>' +
+      ((a.qc_num != null || a.qv_num != null || a.qc_den != null ||
+        a.qv_den != null)
+        ? '<dt>Volumen</dt><dd>compra ' + ent(a.qc_num || 0) + ' / ' +
+          ent(a.qc_den || 0) + ' · venta ' + ent(a.qv_num || 0) + ' / ' +
+          ent(a.qv_den || 0) + '</dd>' : "")
+    : "";
+  return '<div class="reg-det" style="padding:8px 4px 12px;border-bottom:' +
+      '1px solid var(--linea, #333)">' +
+    (a.mensaje ? '<div class="nota" style="margin-bottom:8px">' +
+      textoNotif(a.mensaje) + '</div>' : "") +
+    '<dl class="kv"><dt>Fecha</dt><dd>' + esc((a.ts || "").replace("T", " ")) +
+      '</dd><dt>Tipo</dt><dd>' + esc(a.tipo || "") + '</dd>' +
+      (a.ratio != null ? '<dt>Valor</dt><dd>' + num(a.ratio, 4) + '</dd>' : "") +
+      (a.nivel != null ? '<dt>Nivel</dt><dd>' + num(a.nivel, 4) + '</dd>' : "") +
+      puntas + '</dl>' +
+    (dest ? '<div style="margin-top:8px">' + dest + '</div>' : "") + '</div>';
+}
+function detalleOperacion(o){
+  return '<div class="reg-det" style="padding:8px 4px 12px;border-bottom:' +
+      '1px solid var(--linea, #333)"><dl class="kv">' +
+    '<dt>Fecha</dt><dd>' + esc((o.ts || "").replace("T", " ")) + '</dd>' +
+    '<dt>Par</dt><dd>' + esc(o.alias) + '</dd>' +
+    '<dt>Lado</dt><dd>' + esc(o.lado || "") + '</dd>' +
+    '<dt>Cantidad</dt><dd>' + ent(o.cantidad || 0) + '</dd>' +
+    '<dt>Ratio</dt><dd>' + num(o.ratio, 4) + '</dd>' +
+    ((o.precio_num != null || o.precio_den != null)
+      ? '<dt>Precios</dt><dd>' + (o.precio_num != null ? num(o.precio_num, 2)
+        : "—") + ' / ' + (o.precio_den != null ? num(o.precio_den, 2) : "—") +
+        '</dd>' : "") +
+    (o.nota ? '<dt>Nota</dt><dd>' + esc(o.nota) + '</dd>' : "") +
+    '</dl><div style="margin-top:8px"><button class="secundario" ' +
+    'onclick="irA(\'panel\')" style="width:auto;padding:0 14px">Ver en ' +
+    'RATIOS</button></div></div>';
+}
+function abrirRegistro(tipo, i){
+  const id = "reg-" + tipo + "-" + i;
+  const abierto = document.getElementById(id + "-d");
+  document.querySelectorAll(".reg-det").forEach(x => x.remove());
+  if(abierto) return;
+  const fila = document.getElementById(id);
+  if(!fila) return;
+  const d = document.createElement("div");
+  d.id = id + "-d";
+  d.innerHTML = tipo === "al" ? detalleAlerta(regDatos.al[i])
+                              : detalleOperacion(regDatos.op[i]);
+  const det = d.firstElementChild;
+  det.id = id + "-d";
+  fila.after(det);
+}
 async function cargarRegistro(){
   const cont = $("#reg-out");
   try{
@@ -1847,22 +1921,27 @@ async function cargarRegistro(){
       fetch(base + "api/alertas"),
       fetch(base + "api/operaciones")]);
     const [al, op] = await Promise.all([rAl.json(), rOp.json()]);
+    regDatos = {al, op};
     let h = '<div class="hallazgo"><h3>Operaciones</h3>';
-    h += op.length ? op.map(o =>
-      '<div class="fila"><span>' + esc(o.alias) +
+    h += op.length ? op.map((o, i) =>
+      '<div class="fila" id="reg-op-' + i + '" style="cursor:pointer" ' +
+      'onclick="abrirRegistro(\'op\',' + i + ')"><span>' + esc(o.alias) +
       ' <span class="t">' + esc(o.lado) + '</span></span><span>' +
       num(o.ratio) + ' <span class="t">' + ent(o.cantidad) + ' · ' +
       o.ts.slice(5,10) + ' ' + o.ts.slice(11,16) + '</span> ' +
-      '<button onclick="borrarOperacion(' + o.id + ')" style="background:none;' +
+      '<button onclick="event.stopPropagation();borrarOperacion(' + o.id +
+      ')" style="background:none;' +
       'border:none;color:var(--muted);cursor:pointer">×</button></span></div>').join("")
       : '<div class="vacio" style="padding:12px">Nada registrado todavía. ' +
         'Se registran desde la estrategia.</div>';
     h += '</div><div class="hallazgo"><h3>Alertas</h3>';
-    h += al.length ? al.map(a =>
-      '<div class="fila ' + esc(iconoAlerta(a.tipo).clase) + '">' +
+    h += al.length ? al.map((a, i) =>
+      '<div class="fila ' + esc(iconoAlerta(a.tipo).clase) + '" id="reg-al-' +
+      i + '" style="cursor:pointer" onclick="abrirRegistro(\'al\',' + i + ')">' +
       '<span><span class="a">' + iconoAlerta(a.tipo).icono + '</span> ' +
-      esc(a.alias) + '</span><span>' + num(a.ratio) + ' <span class="t">' +
-      a.ts.slice(5,10) + ' ' + a.ts.slice(11,16) + '</span></span></div>').join("")
+      esc(a.alias) + '</span><span>' + (a.ratio == null ? "" : num(a.ratio)) +
+      ' <span class="t">' + a.ts.slice(5,10) + ' ' + a.ts.slice(11,16) +
+      '</span></span></div>').join("")
       : '<div class="vacio" style="padding:12px">Sin alertas todavía.</div>';
     cont.innerHTML = h + '</div>';
   }catch(e){

@@ -2021,7 +2021,9 @@ def crear_app(monitor):
     def alertas():
         filas = db.alertas_recientes(40)
         return jsonify([_fila(f, "id", "ts", "alias", "tipo", "ratio",
-                              "nivel", "p_num", "p_den") for f in filas])
+                              "nivel", "mensaje", "p_num", "p_den",
+                              "qc_num", "qv_num", "qc_den", "qv_den")
+                        for f in filas])
 
     # -- consumo ------------------------------------------------------
 
