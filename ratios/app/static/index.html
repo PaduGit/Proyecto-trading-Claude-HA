@@ -1674,11 +1674,29 @@ function tarjetaSimple(e, etiqueta){
 /* Una familia entera dentro de su pestaña: el titulo, el boton de alta,
    las abiertas y el archivo de las cerradas. El alta se dibuja aunque no
    haya ninguna: sin el boton no hay forma de crear la primera. */
-function pintarEstrFamilia(destino, familia, etiqueta, dibujo){
+function pintarEstrFamilia(destino, familia, etiqueta, dibujo, plegable){
   const cont = $(destino);
   if(!cont) return;
   const lista = estrOtras.filter(e => e.familia === familia && !e.cierre);
   const cerradas = estrOtras.filter(e => e.familia === familia && e.cierre);
+  if(plegable){
+    /* En BONOS van plegadas, como los filtros: la tabla quedaba debajo
+       de todas las tarjetas. El titulo dice cuantas hay abiertas y la
+       eleccion de abrir o cerrar se recuerda por familia. */
+    const clave = "estr-abierta-" + familia;
+    cont.innerHTML = '<details class="filtros"' +
+      (recordado(clave, false) ? " open" : "") +
+      ' ontoggle="recordar(\'' + clave + '\', this.open)"><summary>' +
+      esc(etiqueta) + ' · ' + (lista.length
+        ? '<b>' + lista.length + (lista.length === 1 ? " abierta" : " abiertas") +
+          '</b>'
+        : "ninguna abierta") + '</summary>' +
+      '<div class="u-mb-8"><button class="corto secundario" ' +
+        'data-estr-nueva-fam="' + esc(familia) + '">Nueva</button></div>' +
+      lista.map(dibujo).join("") +
+      archivoFamilia(cerradas, dibujo) + '</details>';
+    return;
+  }
   cont.innerHTML = '<div class="u-m-16-0-6 filtro-fila">' +
     '<h3 class="u-m-0">' + esc(etiqueta) + '</h3>' +
     '<button class="corto secundario" data-estr-nueva-fam="' + esc(familia) + '" ' +
@@ -3289,9 +3307,9 @@ async function pintarEstrBonos(filas){
     canjes = c.canjes || [];
   }catch(e){ /* sin canjes la tarjeta muestra igual el desvio */ }
   pintarEstrFamilia("#curva-estr", "curva", "Curva",
-                    e => tarjetaCurva(e, filas, canjes));
+                    e => tarjetaCurva(e, filas, canjes), true);
   pintarEstrFamilia("#reserva-estr", "reserva_renta_fija", "Reserva de valor",
-                    e => tarjetaSimple(e, "reserva de valor"));
+                    e => tarjetaSimple(e, "reserva de valor"), true);
 }
 
 async function pintarEstrTecnica(){

@@ -61,9 +61,20 @@ def crear_app(monitor):
         # el mismo numero en dos pantallas se desincroniza. Vive en el
         # panel de la estrategia y en ningun otro lado.
 
+        # La sugerencia se calcula al servir y no en el ciclo: el estado
+        # guardado de una version anterior no la traia y fuera de rueda
+        # no aparecia hasta la apertura, y la tenencia tiene que ser la
+        # de ahora, no la del ultimo ciclo.
+        import monitor as MON
+        saldos = MON.saldos_tenencia()
         salida = []
         for f in filas:
-            salida.append(_limpiar(f))
+            out = _limpiar(f)
+            if f.get("num") and f.get("den") and f.get("zona"):
+                out["sugerencia"] = MON.sugerencia_par(
+                    f["num"], f["den"], f["zona"],
+                    {s: saldos[s] for s in (f["num"], f["den"]) if s in saldos})
+            salida.append(out)
 
         return jsonify({
             "pares": salida,
@@ -112,14 +123,16 @@ def crear_app(monitor):
 
         if intradiario:
             desde = (datetime.now() - timedelta(days=dias)).isoformat()
+            cond, extra = db.filtro_horario(monitor.horario())
             filas = db.conn().execute(
-                "SELECT ts, ratio, p_num FROM lecturas WHERE alias=? AND ts>=? "
-                "ORDER BY ts", (alias, desde)).fetchall()
+                "SELECT ts, ratio, p_num FROM lecturas WHERE alias=? AND ts>=?"
+                + cond + " ORDER BY ts", [alias, desde] + extra).fetchall()
             puntos = [{"x": f["ts"], "y": f["ratio"],
                        "f": "propia" if f["p_num"] else "iol"} for f in filas]
         else:
             desde = (datetime.now().date() - timedelta(days=dias)).isoformat()
-            propia = dict(db.serie_propia_diaria(alias, desde))
+            propia = dict(db.serie_propia_diaria(alias, desde,
+                                                 monitor.horario()))
             iol = dict(db.serie_ratio_diaria(par["num"], par["den"], desde))
             puntos = []
             for f in sorted(set(propia) | set(iol)):
@@ -359,7 +372,16 @@ def crear_app(monitor):
         gid = db.crear_grupo(nombre, base, tickers,
                              (d.get("mercado") or "bCBA").strip())
         db.actualizar_par(gid, _campos_par(d, tickers))
+        _tarjeta_al_dia(gid)
         return jsonify({"ok": True, "id": gid})
+
+    def _tarjeta_al_dia(gid):
+        """Sin esto la tarjeta esperaba al proximo ciclo. Si falla, el
+        par igual quedo guardado: no se corta la respuesta."""
+        try:
+            monitor.evaluar_uno(gid)
+        except Exception as e:
+            log.warning("tarjeta del par %s: %s", gid, e)
 
     def _campos_par(d, tickers):
         """Numerador, denominador y zonas. Por defecto el ratio va en el
@@ -403,11 +425,13 @@ def crear_app(monitor):
         db.actualizar_par(gid, campos)
         if tickers != g["tickers"]:
             db.actualizar_tickers(gid, tickers)
+        _tarjeta_al_dia(gid)
         return jsonify({"ok": True})
 
     @app.delete("/api/grupos/<int:gid>")
     def eliminar_grupo(gid):
         db.borrar_grupo(gid)
+        _tarjeta_al_dia(gid)
         return jsonify({"ok": True})
 
     @app.delete("/api/operaciones/<int:oid>")
@@ -2233,8 +2257,7 @@ def _limpiar(f):
         return {}
     out = {k: f.get(k) for k in
            ("id", "alias", "num", "den", "ratio", "zona", "resistencia", "soporte",
-            "z", "ts", "alertas", "error", "alerta_id", "origen", "cerca",
-            "sugerencia")}
+            "z", "ts", "alertas", "error", "alerta_id", "origen", "cerca")}
     est = f.get("est") or {}
     out["est"] = {k: est.get(k) for k in
                   ("n", "media", "desvio", "min", "max", "fuente", "aviso")}

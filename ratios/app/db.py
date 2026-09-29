@@ -343,7 +343,23 @@ def get_estado(clave, default=None):
 # -- lectura ----------------------------------------------------------
 
 
-def serie_propia_diaria(alias, desde=None):
+def filtro_horario(horario):
+    """Condicion SQL que deja afuera las lecturas propias fuera de rueda.
+
+    Un ciclo manual de noche evaluaba con las puntas sueltas que haya a
+    esa hora y, como el cierre del dia es la ultima lectura, las 22:24
+    pisaban el cierre real: el MEP del 28/09 quedo en 1.632.
+    Las lecturas rellenadas con cierres de IOL van a las 23:59 y sin
+    precios (`p_num` en cero): esas se quedan. No se borra nada.
+    `horario` es ("10:30", "17:00"); None no filtra.
+    """
+    if not horario:
+        return "", []
+    return (" AND (COALESCE(p_num, 0) = 0 OR substr(ts, 12, 5) BETWEEN ? AND ?)",
+            [horario[0], horario[1]])
+
+
+def serie_propia_diaria(alias, desde=None, horario=None):
     """Cierre diario del ratio segun nuestras propias lecturas.
 
     Es la serie consistente: siempre el mismo plazo y la misma fuente.
@@ -353,6 +369,9 @@ def serie_propia_diaria(alias, desde=None):
     if desde:
         q += " AND ts >= ?"
         args.append(desde)
+    cond, extra = filtro_horario(horario)
+    q += cond
+    args += extra
     q += " ORDER BY ts"
     ultimo = {}
     for r in conn().execute(q, args):

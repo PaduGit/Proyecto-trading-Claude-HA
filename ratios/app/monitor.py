@@ -146,6 +146,15 @@ class Monitor:
                 return False
         return ini <= ahora.time() <= fin
 
+    def horario(self):
+        """("10:30", "17:00") de la configuracion, o None si no parsea."""
+        try:
+            ini = datetime.strptime(self.cfg["market_open"], "%H:%M")
+            fin = datetime.strptime(self.cfg["market_close"], "%H:%M")
+        except (KeyError, TypeError, ValueError):
+            return None
+        return ini.strftime("%H:%M"), fin.strftime("%H:%M")
+
     def segundos_desde_ciclo(self):
         if not self.ultimo_ciclo:
             return None
@@ -607,7 +616,7 @@ class Monitor:
     def estadistica(self, par):
         """Prefiere nuestras propias lecturas; el historico de IOL es respaldo."""
         desde = (datetime.now().date() - timedelta(days=VENTANA_DIAS)).isoformat()
-        propia = db.serie_propia_diaria(par["alias"], desde)
+        propia = db.serie_propia_diaria(par["alias"], desde, self.horario())
         if len(propia) >= MIN_MUESTRA_PROPIA:
             return _stats([v for _, v in propia], "propia")
 
@@ -711,7 +720,15 @@ class Monitor:
 
     # -- evaluacion ---------------------------------------------------
 
-    def evaluar_par(self, par, mapa):
+    def evaluar_par(self, par, mapa, registrar=True):
+        """Ratio, zona y estado de la tarjeta de un par.
+
+        Con `registrar=False` no deja rastro: no guarda la lectura, no
+        mueve la zona recordada, no alerta ni publica el sensor. Es para
+        dibujar la tarjeta de un par recien creado o editado con precios
+        que pueden ser del ultimo cierre; si movia la zona, el primer
+        ciclo real ya no avisaba al entrar.
+        """
         num = mapa.get(par["num"])
         den = mapa.get(par["den"])
         if not num or not den or not num["ref"] or not den["ref"]:
@@ -721,11 +738,12 @@ class Monitor:
         est = self.estadistica(par)
         previa = self._zona_actual.get(par["alias"], "normal")
         zona, nivel = self._zona(par, ratio, est)
-        if zona != previa:
+        if registrar and zona != previa:
             self._zona_actual[par["alias"]] = zona
             self._guardar_zonas()
 
-        db.guardar_lectura(par["alias"], ratio, num, den)
+        if registrar:
+            db.guardar_lectura(par["alias"], ratio, num, den)
 
         z = None
         if est.get("n", 0) >= MIN_MUESTRA_Z and est.get("desvio"):
@@ -736,8 +754,8 @@ class Monitor:
         viejas = any((mapa.get(par[lado]) or {}).get("punta_vieja")
                      for lado in ("num", "den"))
         # avisa solo al ENTRAR en zona, no mientras se queda
-        if par.get("alertas") and zona != "normal" and previa != zona \
-                and not viejas:
+        if registrar and par.get("alertas") and zona != "normal" \
+                and previa != zona and not viejas:
             msg = self._mensaje(par, ratio, zona, nivel, est, num, den)
             alerta_id = db.registrar_alerta(
                 par["alias"], zona, ratio, nivel, msg, num, den)
@@ -758,8 +776,6 @@ class Monitor:
             "resistencia": par.get("resistencia") or 0,
             "soporte": par.get("soporte") or 0,
             "z": z, "est": est, "p_num": num, "p_den": den,
-            "sugerencia": sugerencia_par(par["num"], par["den"], zona,
-                                         _saldos_par(par)),
             "ts": datetime.now().isoformat(timespec="seconds"),
             "alertas": bool(par.get("alertas")),
             "alerta_id": alerta_id,
@@ -767,7 +783,7 @@ class Monitor:
             "error": None,
         }
 
-        if self.cfg.get("publicar_sensores"):
+        if registrar and self.cfg.get("publicar_sensores"):
             self.notif.publicar_sensor(par["alias"], ratio, {
                 "friendly_name": "Ratio " + par["alias"],
                 "zona": zona,
@@ -1076,9 +1092,13 @@ class Monitor:
             mapa = self.cotizaciones_del_ciclo()
             with self.lock:
                 self.cotizaciones = mapa
+            # Fuera de rueda (un refresco manual de noche) la tarjeta se
+            # actualiza pero no queda registro: las puntas de esa hora son
+            # ordenes sueltas y la lectura pisaba el cierre del dia.
+            en_rueda = self._en_horario()
             for par in self.pares:
                 try:
-                    estado = self.evaluar_par(par, mapa)
+                    estado = self.evaluar_par(par, mapa, registrar=en_rueda)
                     with self.lock:
                         self.snapshot[par["alias"]] = estado
                 except Exception as e:
@@ -1131,6 +1151,42 @@ class Monitor:
             return True
         finally:
             self._pidiendo.release()
+
+    def evaluar_uno(self, gid):
+        """La tarjeta de un par recien creado, editado o borrado.
+
+        Las tarjetas salen de `snapshot`, que se arma en el ciclo, y fuera
+        de rueda no hay ciclo: un par nuevo no aparecia hasta la apertura
+        y uno renombrado desaparecia. Esto lo evalua solo, con las
+        cotizaciones que ya hay -las del ultimo ciclo o las ultimas puntas
+        guardadas-, sin pedir nada a la API y sin registrar nada.
+        """
+        self._pares_ts = None          # los pares se releen de la base
+        pares = self.pares
+        vigentes = {p["alias"] for p in pares}
+        par = next((p for p in pares if p.get("id") == gid), None)
+        with self.lock:
+            # el nombre viejo de un par renombrado, o el de uno borrado
+            for alias in [a for a, v in self.snapshot.items()
+                          if a not in vigentes
+                          or (par and v.get("id") == gid
+                              and a != par["alias"])]:
+                del self.snapshot[alias]
+        if par:
+            try:
+                estado = self.evaluar_par(par, self.cotizaciones_vigentes(),
+                                          registrar=False)
+            except Exception as e:
+                log.info("%s: %s", par["alias"], e)
+                estado = {"id": par.get("id"), "alias": par["alias"],
+                          "num": par["num"], "den": par["den"],
+                          "error": str(e)}
+            with self.lock:
+                self.snapshot[par["alias"]] = estado
+        try:
+            self._guardar_snapshot()
+        except Exception as e:
+            log.debug("guardar snapshot: %s", e)
 
     def ciclo_manual(self):
         """Refresco a pedido, con un minimo entre disparos."""
@@ -1847,7 +1903,8 @@ class Monitor:
         rellenados = 0
 
         for par in self.pares:
-            propios = {f for f, _ in db.serie_propia_diaria(par["alias"], desde)}
+            propios = {f for f, _ in db.serie_propia_diaria(
+                par["alias"], desde, self.horario())}
             serie = db.serie_ratio_diaria(par["num"], par["den"], desde)
             for fecha, ratio in serie:
                 if fecha in propios:
@@ -2035,16 +2092,18 @@ def sugerencia_par(num, den, zona, saldos=None):
             "tenencia": saldos or {}}
 
 
-def _saldos_par(par):
-    """Cantidad de cada punta, sumando los brokers. Sale de `tenencia`."""
+def saldos_tenencia():
+    """Cantidad de cada especie, sumando los brokers. Sale de `tenencia`.
+
+    Una sola consulta para todas las tarjetas del panel.
+    """
     try:
         filas = db.conn().execute(
             "SELECT simbolo, SUM(cantidad) FROM tenencia "
-            "WHERE simbolo IN (?, ?) GROUP BY simbolo",
-            (par["num"], par["den"])).fetchall()
+            "GROUP BY simbolo").fetchall()
         return {r[0]: r[1] for r in filas if r[1]}
     except Exception as e:
-        log.debug("saldos del par: %s", e)
+        log.debug("saldos de tenencia: %s", e)
         return {}
 
 

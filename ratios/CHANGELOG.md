@@ -1,5 +1,34 @@
 # Registro de cambios
 
+## 0.52.0
+
+**Sin campos nuevos de configuracion.**
+
+**BONOS, estrategias plegables.** Curva y Reserva de valor van plegadas,
+como los filtros, y el titulo dice cuantas hay abiertas. Adentro estan el
+boton Nueva, las tarjetas y el archivo. Cada familia recuerda si quedo
+abierta.
+
+**RATIOS, la tarjeta al dia sin esperar el ciclo.** Al crear, editar o
+borrar un par su tarjeta se actualiza en el momento, con las cotizaciones
+que ya hay y sin pedir nada a la API. Antes, fuera de rueda, un par nuevo
+no aparecia hasta la apertura y uno renombrado desaparecia. Esa
+evaluacion no deja rastro: no guarda lectura, no mueve la zona, no alerta.
+
+**La sugerencia se calcula al mostrar el panel**, con la tenencia de ese
+momento. El estado guardado por una version anterior no la traia y no
+aparecia hasta el primer ciclo.
+
+**Las lecturas fuera de horario ya no cuentan.** Un refresco manual de
+noche evaluaba con las puntas sueltas de esa hora y, como el cierre del
+dia es la ultima lectura, pisaba el cierre real: el MEP del 28/09 quedo
+en 1.632. Ahora un ciclo fuera de horario actualiza la tarjeta pero no
+guarda lectura, no mueve la zona ni alerta, y el cierre diario, la
+media, el z y los graficos ignoran las lecturas propias fuera de
+`market_open`-`market_close`. No se borra nada: la del 28/09 queda en la
+base y deja de contar. Los cierres de IOL que completa el relleno semanal
+(a las 23:59, sin precios) se siguen contando.
+
 ## 0.51.0
 
 **Sin campos nuevos de configuracion.**
