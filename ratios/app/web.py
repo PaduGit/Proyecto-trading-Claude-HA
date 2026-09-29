@@ -1871,6 +1871,7 @@ def crear_app(monitor):
             r["sin_serie"] = []
         r["progreso"] = dict(H.progreso)
         r["huecos"] = H.huecos()
+        r["ajustes"] = H.ajustes()
         return jsonify(r)
 
     @app.post("/api/historico/reconstruir")
@@ -1976,7 +1977,19 @@ def crear_app(monitor):
 
     @app.get("/api/explorar/fotos")
     def explorar_fotos():
-        return jsonify({"fotos": db.fotos()})
+        return jsonify({"fotos": db.fotos(),
+                        "sin_tenencia": db.brokers_sin_tenencia()})
+
+    @app.post("/api/explorar/borrar-broker")
+    def explorar_borrar_broker():
+        broker = (request.get_json(silent=True) or {}).get("broker")
+        if not broker:
+            return jsonify({"ok": False, "mensaje": "Falta el broker."}), 400
+        try:
+            borradas = db.borrar_broker(broker)
+        except ValueError as e:
+            return jsonify({"ok": False, "mensaje": str(e)}), 409
+        return jsonify({"ok": True, "borradas": borradas})
 
     @app.get("/api/explorar/foto")
     def explorar_foto():

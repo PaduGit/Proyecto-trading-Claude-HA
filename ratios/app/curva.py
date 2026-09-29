@@ -171,7 +171,7 @@ def monto_punta(f, lado, mep=None):
 
 
 def canjes(filas, an, tenidos, costo_pct=0.5, min_ganancia=1.0,
-           max_dif_md=0.35, min_z=1.0, min_monto=0, mep=None):
+           max_dif_md=0.35, min_z=1.0, min_monto=0, mep=None, min_dz=None):
     """Contra que bono conviene rotar cada uno de los que se tienen.
 
     La cuenta no es "cual rinde mas" sino cuanto se espera que cada uno
@@ -196,6 +196,12 @@ def canjes(filas, an, tenidos, costo_pct=0.5, min_ganancia=1.0,
     curva NO se filtra: `reconstruir` trabaja sobre `bono_hist`, que no
     guarda cantidades, y un filtro que valga hoy y no en la historia
     ensucia el z-score, que es justamente lo que decide el canje.
+
+    `min_dz` exige que el que entra este mas barato por z que el que
+    sale, por al menos ese margen. Sin eso la ganancia se media solo en
+    puntos basicos: un bono con historia ruidosa y z bajo podia ganarle a
+    uno con z alto, y la alerta proponia vender AO29 (z +2,29) para
+    comprar AO28 (z +1,13). Sin z del que sale no se compara.
     """
     por_sim = {f["simbolo"]: f for f in filas}
 
@@ -237,6 +243,9 @@ def canjes(filas, an, tenidos, costo_pct=0.5, min_ganancia=1.0,
             od = an.get(osim) or {}
             if od.get("z") is None or od["z"] < min_z:
                 continue
+            if min_dz is not None:
+                if d.get("z") is None or od["z"] - d["z"] < min_dz:
+                    continue
             rec_b = recorrido(osim)
             if rec_b is None:
                 continue
@@ -247,6 +256,8 @@ def canjes(filas, an, tenidos, costo_pct=0.5, min_ganancia=1.0,
                 mejor = {
                     "hacia": osim, "ganancia_pct": gana,
                     "z_hacia": od["z"], "residuo_hacia": od["residuo"],
+                    "dz": (od["z"] - d["z"]) if d.get("z") is not None
+                          else None,
                     "md_hacia": otro["md"], "tir_hacia": otro.get("tir_last"),
                     "recorrido_hacia": rec_b,
                     "monto_hacia": monto_punta(otro, "ask", mep),

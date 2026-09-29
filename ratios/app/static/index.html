@@ -234,8 +234,9 @@ table.tabla tr.dolar td:first-child{color:var(--amber)}
 .ficha .pos-pie{font-size:11px;margin-top:2px}
 .pos-pie{display:flex;justify-content:space-between;font-family:var(--mono);
   font-size:10px;color:var(--muted);margin-top:4px}
-.avanzado summary{font-family:var(--mono);font-size:10px;color:var(--muted);
-  letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
+/* Todos los titulos desplegables con el formato de "Canjes convenientes":
+   el del navegador. .avanzado y .filtros ya no cambian el titulo. */
+details>summary{cursor:pointer}
 pre.crudo{background:var(--ink);border:1px solid var(--rule);border-radius:3px;
   padding:10px;font-family:var(--mono);font-size:10px;color:var(--muted);
   overflow:auto;max-height:75vh;white-space:pre-wrap;word-break:break-word;
@@ -334,9 +335,6 @@ table.bonos.sin-puntas th.hbid,table.bonos.sin-puntas th.hask{display:none}
   gap:8px;margin-bottom:8px}
 .bonos-barra .resumen{margin:0}
 details.filtros{margin-bottom:10px}
-details.filtros>summary{font-family:var(--mono);font-size:10px;color:var(--muted);
-  letter-spacing:.08em;text-transform:uppercase;cursor:pointer;padding:6px 0}
-details.filtros>summary b{color:var(--amber);font-weight:500}
 details.filtros[open]>summary{margin-bottom:6px}
 
 /* OPCIONES: un spread por fila. */
@@ -1688,8 +1686,7 @@ function pintarEstrFamilia(destino, familia, etiqueta, dibujo, plegable){
       (recordado(clave, false) ? " open" : "") +
       ' ontoggle="recordar(\'' + clave + '\', this.open)"><summary>' +
       esc(etiqueta) + ' · ' + (lista.length
-        ? '<b>' + lista.length + (lista.length === 1 ? " abierta" : " abiertas") +
-          '</b>'
+        ? lista.length + (lista.length === 1 ? " abierta" : " abiertas")
         : "ninguna abierta") + '</summary>' +
       '<div class="u-mb-8"><button class="corto secundario" ' +
         'data-estr-nueva-fam="' + esc(familia) + '">Nueva</button></div>' +
@@ -3119,6 +3116,23 @@ async function cargarHistExpl(){
     const pr = d.progreso || {};
     const faltan = d.sin_serie || [];
     const huecos = Object.entries(d.huecos || {});
+    /* Desajuste de la serie de BYMA: se listan los pagos cuyo factor no
+       quedo verificado contra IOL. Esos bonos entran igual en la curva. */
+    const ajustes = Object.entries(d.ajustes || {});
+    const dudosos = ajustes.map(([sim, ev]) => [sim,
+      Object.entries(ev).filter(([, x]) => x.estado !== "verificado")])
+      .filter(([, ev]) => ev.length);
+    const bloqueAjustes = ajustes.length
+      ? '<div class="u-m-10-0-4 filtro-etq">Serie de BYMA desajustada · ' +
+        ajustes.length + ' especies con pagos</div>' +
+        (dudosos.length
+          ? dudosos.map(([sim, ev]) => '<div class="nota"><b>' + esc(sim) +
+              '</b> ' + ev.map(([ex, x]) => esc(ex) + ' <span class="' +
+                (x.estado === "sin factor" ? "u-coral" : "u-amber") + '">' +
+                esc(x.estado) + '</span>').join(" · ") + '</div>').join("")
+          : '<div class="nota">Todos los factores verificados contra IOL.' +
+            '</div>')
+      : "";
     out.innerHTML = '<dl class="kv">' +
       '<dt>Puntos</dt><dd>' + ent(d.filas || 0) + ' de ' +
         ent(d.especies || 0) + ' especies</dd>' +
@@ -3150,7 +3164,7 @@ async function cargarHistExpl(){
             (h.error ? ' <span class="u-coral">' + esc(h.error) +
               '</span>' : "") + ' <span class="u-muted">(' +
             esc(h.fecha || "") + ')</span></div>').join("")
-        : "");
+        : "") + bloqueAjustes;
     clearTimeout(hxTimer);
     if(pr.corriendo && $("#hx-det").open && vista === "expl")
       hxTimer = setTimeout(cargarHistExpl, 3000);
@@ -3177,13 +3191,19 @@ async function cargarFotos(){
   try{
     const d = await (await fetch(base + "api/explorar/fotos")).json();
     const brokers = Object.keys(d.fotos || {});
+    const vacios = new Set(d.sin_tenencia || []);
     if(!brokers.length){
       out.innerHTML = '<div class="vacio">No hay fotos guardadas.</div>';
       return;
     }
     out.innerHTML = brokers.map(b =>
       '<div class="u-m-10-0-4 filtro-etq">' + esc(b) + ' · ' +
-        d.fotos[b].length + ' foto(s)</div>' +
+        d.fotos[b].length + ' foto(s)' +
+        /* Solo se ofrece borrar un broker sin tenencia: son nombres mal
+           escritos que quedaron con su propia historia de fotos. */
+        (vacios.has(b) ? ' · sin tenencia <button class="corto secundario" ' +
+          'data-borrar-broker="' + esc(b) + '">Borrar broker</button>' : "") +
+        '</div>' +
       '<div class="u-p-6-10 hallazgo">' +
       d.fotos[b].map(f => '<div class="u-block u-m-3-0 fot-fila tocar" data-br="' + esc(b) +
         '" data-ts="' + esc(f.ts) + '">' +
@@ -3198,6 +3218,21 @@ $("#fot-det").addEventListener("toggle", () => {
   if($("#fot-det").open) cargarFotos();
 });
 $("#fot-out").addEventListener("click", async e => {
+  const bb = e.target.closest("[data-borrar-broker]");
+  if(bb){
+    const b = bb.dataset.borrarBroker;
+    if(!confirm('¿Borrar "' + b + '"? Se borran sus fotos y movimientos ' +
+                'propuestos. No tiene tenencia. No se puede deshacer.')) return;
+    try{
+      const r = await fetch(base + "api/explorar/borrar-broker", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({broker: b})});
+      const d = await r.json();
+      if(!d.ok) alert(d.mensaje || "No se pudo borrar.");
+    }catch(err){ alert("No se pudo borrar."); }
+    cargarFotos();
+    return;
+  }
   const f = e.target.closest(".fot-fila");
   if(!f) return;
   const q = "broker=" + encodeURIComponent(f.dataset.br) +
@@ -3382,8 +3417,8 @@ async function cargarBonos(){
         : "") +
       '<details class="filtros"' + (bFiltrosAbierto ? " open" : "") +
         ' ontoggle="bFiltrosAbierto=this.open"><summary>Filtros' +
-        (filtrosActivos() ? ' · <b>' + filtrosActivos() + ' activo' +
-          (filtrosActivos() > 1 ? "s" : "") + '</b>' : "") + '</summary>' +
+        (filtrosActivos() ? ' · ' + filtrosActivos() + ' activo' +
+          (filtrosActivos() > 1 ? "s" : "") : "") + '</summary>' +
         selectorFamilias(d.filas) + '</details>' +
       '<div class="bonos-barra"><div class="resumen">' +
         filtrarFamilia(d.filas).length + ' de ' + d.filas.length +

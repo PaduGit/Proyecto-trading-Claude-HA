@@ -126,15 +126,18 @@ def calcular_punto(simbolo, f, precio, cfg, info, mep=None):
             return None
         tv += float(cfg["interes"]["variable"].get("spread") or 0)
 
-    filas = RF.flujo(cfg, f, tasa_var=tv)
+    # Liquidacion T+1, como en vivo: desde la fecha ex el pago ya no es
+    # del comprador y no puede seguir en el flujo.
+    liq = BO.liquidacion(f)
+    filas = RF.flujo(cfg, liq, tasa_var=tv)
     if not filas:
         return None
-    r = RF.tir(p, cfg, f, filas)
+    r = RF.tir(p, cfg, liq, filas)
     if r is None:
         return None
-    mac, md = RF.duration(p, cfg, f, r, filas)
+    mac, md = RF.duration(p, cfg, liq, r, filas)
     return (simbolo, f.isoformat(), precio, r * 100, md, mac,
-            RF.residual(cfg, f), coef, tv)
+            RF.residual(cfg, liq), coef, tv)
 
 
 def arranque_badlar(cfg, desde):
@@ -224,6 +227,10 @@ def reconstruir(iol, simbolo=None, desde=None, hasta=None, mercado="bCBA",
         if err and not serie:
             log.warning("histórico %s: %s", sim, err)
             continue
+        if serie and serie[0].get("_fuente") == "byma":
+            serie = desajustar(iol, mercado, sim, serie, cfg, info)
+            serie = [p for p in serie
+                     if str(p.get("fechaHora") or "")[:10] <= hasta.isoformat()]
 
         filas = []
         for punto in serie or []:
@@ -260,6 +267,179 @@ def reconstruir(iol, simbolo=None, desde=None, hasta=None, mercado="bCBA",
     if marcar:
         db.set_estado("hist_bonos_hasta", hasta.isoformat())
     return total
+
+
+# -- series de BYMA ajustadas ------------------------------------------
+
+TOLERANCIA_FACTOR = 0.005     # 0,5% entre cronograma e IOL
+
+
+def _fecha_punto(p):
+    try:
+        return date.fromisoformat(str(p.get("fechaHora") or "")[:10])
+    except ValueError:
+        return None
+
+
+def _precio_punto(p):
+    try:
+        return float(p.get("ultimoPrecio") or p.get("cierreAnterior"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _pagos(cfg):
+    """(fecha, total por 100 VN original) de cada pago del cronograma."""
+    try:
+        emi = RF._fecha(cfg["emision"])
+        return [(x["fecha"], x["total"])
+                for x in RF.flujo(cfg, emi - timedelta(days=1))
+                if x.get("total")]
+    except Exception:
+        return []
+
+
+def _pago_en_precio(cfg, info, total, dia, mep=None):
+    """Un pago del cronograma en la misma unidad que el precio.
+
+    Las mismas conversiones que `calcular_punto`, al reves. Sin forma de
+    saber la plata -tasa variable, duales- devuelve None y el factor
+    queda para IOL.
+    """
+    nb = float(cfg.get("nominal_base") or 100) / 100
+    ajuste = (cfg.get("ajuste") or "").lower()
+    if (cfg.get("interes") or {}).get("variable") or \
+            (cfg.get("tipo") or "").strip().lower() == "dual":
+        return None
+    if ajuste == "cer":
+        base = cfg.get("cer_base") or CER.base_de(cfg.get("emision"))
+        coef = _cer_de(dia)
+        return total * coef / base * nb if base and coef else None
+    if not ajuste and (cfg.get("moneda") or "").upper() == "ARS":
+        return total * nb
+    if ajuste in ("dolar_linked", "dolarlinked", "dl"):
+        import dolar as DL
+        tc = DL.vigente(dia)
+        return total * tc * nb if tc else None
+    if info.get("moneda") == "USD":
+        return total * nb
+    return total * mep * nb if mep else None
+
+
+def _cierre_iol(iol, mercado, sim, dia):
+    """Cierre real de un dia, sin ajustar. Un solo dia por pedido: con
+    rangos largos IOL devuelve 500 en varias especies, y el dia suelto
+    responde. El `hasta` de IOL es excluyente."""
+    try:
+        pts = iol.serie(mercado, sim, dia.isoformat(),
+                        (dia + timedelta(days=1)).isoformat(),
+                        ajustada="sinAjustar") or []
+    except Exception as e:
+        log.info("cierre IOL %s %s: %s", sim, dia, str(e)[:120])
+        return None
+    for p in pts:
+        if _fecha_punto(p) == dia:
+            return _precio_punto(p)
+    return None
+
+
+def desajustar(iol, mercado, sim, serie, cfg, info):
+    """Devuelve la serie de BYMA con los precios reales.
+
+    BYMA ajusta hacia atras por cada pago: multiplica todo lo anterior a
+    la fecha ex por 1 - pago / cierre del dia anterior, y los factores se
+    acumulan. AL30D el 07/07/2026 figuraba 56,13 contra 64,40 real
+    (0,8716); antes del 08/01/2026, 0,7630 = 0,8716 x 0,8754.
+
+    Por cada pago, del mas nuevo al mas viejo: el factor sale del
+    cronograma y se verifica contra el cierre real de IOL del ultimo dia
+    con el pago. Si difieren mas de 0,5% manda IOL; si IOL no responde
+    queda el del cronograma, marcado "sin verificar"; si no hay ninguno
+    de los dos, ese tramo queda como vino, marcado "sin factor".
+    Lo que se decide queda en `hist_ajustes`, para Explorar.
+    """
+    pts = sorted((p for p in serie if _fecha_punto(p) and _precio_punto(p)),
+                 key=_fecha_punto)
+    if len(pts) < 2:
+        return serie
+    fechas = [_fecha_punto(p) for p in pts]
+    hoy = date.today()
+    guardado = _leer_estado("hist_ajustes").get(sim) or {}
+    eventos = []
+    for fpago, total in _pagos(cfg):
+        if fpago > hoy or fpago <= fechas[0]:
+            continue
+        # fecha ex: el primer dia que liquida el dia del pago o despues
+        i = next((k for k, d in enumerate(fechas)
+                  if BO.liquidacion(d) >= fpago), None)
+        if i is None or i == 0:
+            continue
+        eventos.append((fechas[i], fechas[i - 1], fpago, total))
+    if not eventos:
+        return serie
+
+    factor_despues = 1.0
+    factores = []                      # (fecha ex, factor acumulado antes)
+    registro = {}
+    for ex, cum, fpago, total in sorted(eventos, reverse=True):
+        clave = ex.isoformat()
+        previo = guardado.get(clave)
+        if previo and previo.get("estado") in ("verificado",
+                                               "corregido con IOL",
+                                               "desde IOL"):
+            f = previo["factor"]       # el factor de un pago no cambia
+            estado = previo["estado"]
+        else:
+            ajustado = _precio_punto(pts[fechas.index(cum)])
+            mep = None
+            if info.get("moneda") != "USD" and not cfg.get("ajuste"):
+                try:
+                    mep = BO.mep_al(cum)
+                except Exception:
+                    mep = None
+            pago = _pago_en_precio(cfg, info, total, cum, mep)
+            # f = 1 - pago / real, con real = ajustado / (f x lo de
+            # despues): despejando, f = 1 / (1 + pago x despues / ajustado)
+            f_cr = (1 / (1 + pago * factor_despues / ajustado)) \
+                if pago and pago > 0 and ajustado else None
+            real_iol = _cierre_iol(iol, mercado, sim, cum)
+            f_iol = (ajustado / real_iol / factor_despues) \
+                if real_iol else None
+            if f_cr and f_iol:
+                if abs(f_cr / f_iol - 1) <= TOLERANCIA_FACTOR:
+                    f, estado = f_cr, "verificado"
+                else:
+                    f, estado = f_iol, "corregido con IOL"
+            elif f_iol:
+                f, estado = f_iol, "desde IOL"
+            elif f_cr:
+                f, estado = f_cr, "sin verificar"
+            else:
+                f, estado = 1.0, "sin factor"
+        factor_despues *= f
+        factores.append((ex, factor_despues))
+        registro[clave] = {"factor": round(f, 6), "estado": estado,
+                           "pago": fpago.isoformat()}
+
+    todos = _leer_estado("hist_ajustes")
+    todos[sim] = registro
+    db.set_estado("hist_ajustes", json.dumps(todos))
+
+    salida = []
+    for p, d in zip(pts, fechas):
+        # factor acumulado de todos los pagos cuya fecha ex es posterior
+        acum = 1.0
+        for ex, fac in factores:        # del mas nuevo al mas viejo
+            if d < ex:
+                acum = fac
+        q = dict(p)
+        q["ultimoPrecio"] = _precio_punto(p) / acum
+        salida.append(q)
+    return salida
+
+
+def ajustes():
+    return _leer_estado("hist_ajustes")
 
 
 def reconstruible(cfg, info):
@@ -376,8 +556,14 @@ def serie_en_tramos(iol, mercado, sim, desde, hasta):
     # datos se usan tal cual; IOL queda para cuando BYMA no tiene nada.
     try:
         import byma as BY
-        pts = BY.historia(sim, desde, hasta)
+        # Hasta hoy aunque se pida menos: la serie viene ajustada por
+        # todos los pagos hasta el dia de la descarga, y para desajustarla
+        # hacen falta los precios de alrededor de cada uno. `reconstruir`
+        # recorta despues de desajustar.
+        pts = BY.historia(sim, desde, max(hasta, date.today()))
         if pts:
+            for p in pts:
+                p["_fuente"] = "byma"
             return pts, [], None
     except Exception as e:
         log.info("histórico %s: BYMA sin datos (%s), sigo con IOL", sim,
@@ -498,6 +684,10 @@ def en_fondo(iol, simbolo=None, forzar=False):
                     cfg = bonos_cfg.get(info["cronograma"]) if info else None
                     if cfg and reconstruible(cfg, info):
                         tareas.append((s, inicio_de(cfg), None))
+                # AL30 y AL30D primero: de ellas sale el MEP de cada dia
+                # con el que se convierten los hard dollar en pesos.
+                tareas.sort(key=lambda t: (t[0] not in ("AL30", "AL30D"),
+                                           t[0]))
                 progreso["total"] = len(tareas)
                 total = 0
                 for s, d0, _ in tareas:

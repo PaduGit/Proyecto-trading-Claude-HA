@@ -1,5 +1,52 @@
 # Registro de cambios
 
+## 0.53.0
+
+**Campo nuevo de configuracion: `canje_min_dz`** (1,0 por defecto).
+Home Assistant no lo agrega solo: hay que cargarlo a mano. Sin cargar,
+el codigo usa 1,0.
+
+**Despues de actualizar: Explorar → Historico de bonos → Recalcular
+historico entero.** La historia guardada viene ajustada (ver abajo) y
+solo se corrige recalculando.
+
+**Historia de bonos sin ajustar.** La serie de BYMA viene ajustada hacia
+atras por cada pago: todo lo anterior a la fecha ex se multiplica por
+1 - pago / cierre, y los factores se acumulan. AL30D el 07/07/2026
+figuraba 56,13 contra 64,40 real. Con el flujo completo, la TIR antes de
+cada pago salia inflada y corria la curva de toda la familia: el desvio
+de AO28 salto de -800 a +128 pb el 10/07 y armo un canje de +7% que no
+existia. Ahora cada pago se desajusta con el cronograma y se verifica
+contra el cierre real de IOL de un solo dia; si difieren mas de 0,5%
+manda IOL, si IOL no responde queda marcado "sin verificar". La lista
+queda en Explorar → Historico de bonos.
+
+**TIR con liquidacion T+1.** Los precios son de 24 horas: desde la fecha
+ex el pago ya no es del comprador. Antes se liquidaba el mismo dia y el
+flujo seguia contando ese pago: AL30D el 08/07 daba 16,24%. Aplica en
+vivo y en el historico. Todas las TIR se mueven un dia de devengamiento.
+Los feriados salen de cer.py, que llega hasta 2026.
+
+**Rotacion hacia bonos mas baratos.** La alerta de canje ahora exige que
+el que entra este mas barato por z que el que sale, por al menos
+`canje_min_dz`. Antes decidia solo por puntos basicos y una historia
+ruidosa hacia ganar al bono menos barato. El aviso se titula "Rotar X →
+Y" y dice cuantos nominales quedan rotando toda la tenencia, al bid y al
+ask, con comisiones.
+
+**Nada fuera de horario.** Un refresco manual de noche no manda avisos,
+no registra alertas ni guarda puntas: las de esa hora son ordenes
+sueltas. Las pantallas se siguen actualizando, con la ultima punta de la
+rueda. Las marcas de "ya avisado" no se tocan: el primer ciclo en rueda
+avisa lo que siga vigente.
+
+**Borrar broker.** En Explorar → Fotos de tenencia, un broker sin
+tenencia se puede borrar con sus fotos y movimientos propuestos. Uno con
+tenencia no.
+
+**Titulos desplegables.** Todos con el mismo formato que "Canjes
+convenientes". El conteo va en texto plano.
+
 ## 0.52.0
 
 **Sin campos nuevos de configuracion.**

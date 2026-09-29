@@ -2610,6 +2610,41 @@ def fotos(limite=40):
     return {b: v[:limite] for b, v in por_broker.items()}
 
 
+def brokers_sin_tenencia():
+    """Brokers que tienen fotos o movimientos propuestos pero ninguna
+    cantidad distinta de cero en `tenencia`. Son los que se pueden borrar:
+    `ECO Valores` y `Eco Valores` quedaron de cargar ECO con otro nombre.
+    """
+    c = conn()
+    con_saldo = {r[0] for r in c.execute(
+        "SELECT DISTINCT broker FROM tenencia WHERE cantidad <> 0")}
+    todos = set()
+    for t in ("tenencia", "tenencia_hist", "mov_propuesto"):
+        try:
+            todos |= {r[0] for r in c.execute(
+                "SELECT DISTINCT broker FROM %s" % t)}
+        except Exception:
+            pass
+    return sorted(b for b in todos - con_saldo if b is not None)
+
+
+def borrar_broker(broker):
+    """Borra fotos, movimientos propuestos y filas en cero de un broker
+    sin tenencia. Con saldo no borra nada: esa decision no es de aca."""
+    if broker not in brokers_sin_tenencia():
+        raise ValueError("%s tiene tenencia o no existe" % broker)
+    c = conn()
+    borradas = {}
+    for t in ("tenencia_hist", "mov_propuesto", "tenencia"):
+        try:
+            borradas[t] = c.execute(
+                "DELETE FROM %s WHERE broker = ?" % t, (broker,)).rowcount
+        except Exception:
+            borradas[t] = 0
+    c.commit()
+    return borradas
+
+
 def foto_detalle(broker, ts):
     """Una foto y lo que cambio contra la anterior del mismo broker."""
     c = conn()

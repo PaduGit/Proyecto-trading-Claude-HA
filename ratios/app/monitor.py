@@ -523,10 +523,14 @@ class Monitor:
         guardadas = self._cargar_puntas()
         ahora = datetime.now().isoformat(timespec="seconds")
         cambios = {}
+        # Fuera de rueda las puntas que manda IOL son ordenes sueltas: el
+        # 28/09 a las 22:18 AL30D tenia 47,99 / 54,50 y el MEP salio 1.632.
+        # No se guardan ni se usan; se sigue con la ultima de la rueda.
+        en_rueda = self._en_horario()
 
         for sim, c in mapa.items():
             guardado = guardadas.get(sim) or {}
-            if c.get("compra") and c.get("venta"):
+            if en_rueda and c.get("compra") and c.get("venta"):
                 guardadas[sim] = {
                     "compra": c["compra"], "venta": c["venta"],
                     "vol_compra": c.get("vol_compra") or 0,
@@ -846,10 +850,32 @@ class Monitor:
         una = CO_COSTOS.pct(self.cfg.get("comisiones") or {}, "bonos",
                             self.cfg.get("derechos_mercado"),
                             self.cfg.get("iva_pct") or 0)
+        dz = self.cfg.get("canje_min_dz")
         return CU.canjes(
             t["filas"], an, tenidos, costo_pct=una * 2 * 100,
             min_ganancia=float(self.cfg.get("canje_min_pct") or 1.0),
-            min_monto=self._min_monto(), mep=mep)
+            min_monto=self._min_monto(), mep=mep,
+            # Campo nuevo en 0.53.0: sin cargar vale 1. Cero se respeta.
+            min_dz=1.0 if dz in (None, "") else float(dz))
+
+    def _orden_rotacion(self, sale, entra, cot):
+        """"1.000 AO29 → 1.068 AO28D": toda la tenencia, al bid y al ask,
+        con comisiones. Sale del mismo modulo que la tarjeta de canje;
+        si no se puede armar la orden, el aviso va sin esta linea."""
+        import rotacion as RO
+        try:
+            r = RO.calcular(sale, entra, None, cot or dict(self.cotizaciones),
+                            db.tenencias(), self.cfg.get("comisiones") or {},
+                            self.cfg.get("derechos_mercado") or {},
+                            self.cfg.get("iva_pct") or 0, mep=self._mep(cot))
+        except Exception as e:
+            log.debug("orden de rotacion: %s", e)
+            return ""
+        if r.get("error"):
+            return ""
+        f = lambda v: ("{:,.0f}".format(v)).replace(",", ".")
+        return "%s %s → %s %s" % (f(r["cantidad_sale"]), sale,
+                                  f(r["cantidad_entra"]), entra)
 
     def revisar_canjes(self, cot=None):
         """Avisa cuando aparece un canje que antes no estaba."""
@@ -862,6 +888,8 @@ class Monitor:
             return 0
         with self.lock:
             self.canjes = filas
+        if getattr(self, "_silencio", False):
+            return 0
         vigentes = {"%s>%s" % (f["desde"], f["hacia"]) for f in filas}
         nuevos = [f for f in filas
                   if "%s>%s" % (f["desde"], f["hacia"]) not in self._canjes_avisado]
@@ -872,22 +900,26 @@ class Monitor:
         lineas, planas = [], []
         for f in nuevos:
             self._canjes_avisado.add("%s>%s" % (f["desde"], f["hacia"]))
+            orden = self._orden_rotacion(f["desde"], f["hacia"], cot)
             lineas.append(
                 "<b>%s → %s</b>: +%.2f%% neto<br>"
                 "%s z %+.2f · MD %.2f · TIR %.2f%%<br>"
-                "%s z %+.2f · MD %.2f · TIR %.2f%%" % (
+                "%s z %+.2f · MD %.2f · TIR %.2f%%%s" % (
                     f["desde"], f["hacia"], f["ganancia_pct"],
                     f["desde"], f["z_desde"] or 0, f["md_desde"],
                     f["tir_desde"] or 0,
                     f["hacia"], f["z_hacia"], f["md_hacia"],
-                    f["tir_hacia"] or 0))
+                    f["tir_hacia"] or 0,
+                    ("<br>" + orden) if orden else ""))
             # En el celular la notificacion se lee de un vistazo: una
             # linea por canje con lo que hace falta para decidir mirar.
-            planas.append("%s → %s: +%.2f%% neto (z %+.2f → %+.2f)" % (
+            planas.append("%s → %s: +%.2f%% neto (z %+.2f → %+.2f)%s" % (
                 f["desde"], f["hacia"], f["ganancia_pct"],
-                f["z_desde"] or 0, f["z_hacia"]))
-        titulo = ("Canje %s → %s" % (nuevos[0]["desde"], nuevos[0]["hacia"])
-                  if len(nuevos) == 1 else "%d canjes convenientes" % len(nuevos))
+                f["z_desde"] or 0, f["z_hacia"],
+                (" · " + orden) if orden else ""))
+        titulo = ("Rotar %s → %s" % (nuevos[0]["desde"], nuevos[0]["hacia"])
+                  if len(nuevos) == 1 else "%d rotaciones convenientes"
+                  % len(nuevos))
         self.notif.enviar(titulo, "<br><br>".join(lineas), "\n".join(planas))
         texto = "<b>%s</b><br>%s" % (titulo, "<br><br>".join(lineas))
         for f in nuevos:
@@ -1096,6 +1128,10 @@ class Monitor:
             # actualiza pero no queda registro: las puntas de esa hora son
             # ordenes sueltas y la lectura pisaba el cierre del dia.
             en_rueda = self._en_horario()
+            # Tampoco se avisa ni se registra ninguna alerta: las
+            # pantallas se actualizan, las marcas de "ya avisado" no se
+            # tocan y el primer ciclo en rueda avisa lo que siga vigente.
+            self._silencio = not en_rueda
             for par in self.pares:
                 try:
                     estado = self.evaluar_par(par, mapa, registrar=en_rueda)
@@ -1110,11 +1146,13 @@ class Monitor:
                         prev["error"] = str(e)
                         self.snapshot[par["alias"]] = prev
             try:
-                self.revisar_curva(mapa)
+                if en_rueda:
+                    self.revisar_curva(mapa)
             except Exception as e:
                 log.debug("revisar curva: %s", e)
             try:
-                self.revisar_opciones(mapa)
+                if en_rueda:
+                    self.revisar_opciones(mapa)
             except Exception as e:
                 log.debug("revisar opciones: %s", e)
             try:
@@ -1130,15 +1168,18 @@ class Monitor:
             except Exception as e:
                 log.debug("revisar plazos: %s", e)
             try:
-                self.revisar_alertas_precio(mapa)
+                if en_rueda:
+                    self.revisar_alertas_precio(mapa)
             except Exception as e:
                 log.debug("revisar alertas de precio: %s", e)
             try:
-                self.revisar_cobros()
+                if en_rueda:
+                    self.revisar_cobros()
             except Exception as e:
                 log.debug("revisar cobros: %s", e)
             try:
-                self.revisar_alertas_fecha()
+                if en_rueda:
+                    self.revisar_alertas_fecha()
             except Exception as e:
                 log.debug("revisar alertas de fecha: %s", e)
             try:
@@ -1648,6 +1689,8 @@ class Monitor:
         filas = self.evaluar_arbitraje(cot)
         with self.lock:
             self.plazos = filas
+        if getattr(self, "_silencio", False):
+            return 0
 
         avisos = []
         for f in filas:
@@ -1728,6 +1771,8 @@ class Monitor:
                         mep=self._mep(cot))
         with self.lock:
             self.circuitos = r
+        if getattr(self, "_silencio", False):
+            return 0
 
         umbral = float(self.cfg.get("rulo_umbral_pct") or 0)
         if not umbral:

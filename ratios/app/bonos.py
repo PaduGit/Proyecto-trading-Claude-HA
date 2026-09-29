@@ -224,9 +224,25 @@ def factor_cer(cfg, cer_actual=0):
     return float(cer_actual) / base
 
 
+def liquidacion(d=None):
+    """Fecha de liquidacion de un precio de 24 horas: el habil siguiente.
+
+    Antes se liquidaba el mismo dia y el flujo seguia contando el pago
+    del dia ex. El 08/07/2026 AL30D ya cotizaba sin el pago del 09/07 y
+    la TIR daba 16,24% en vez de ~7,6%. Con T+1 el pago sale del flujo
+    justo desde la fecha ex (el flujo toma los pagos posteriores a la
+    liquidacion). Los feriados salen de `cer.FERIADOS`.
+    """
+    import cer as CER
+    d = (d or date.today()) + timedelta(days=1)
+    while not CER.es_habil(d):
+        d += timedelta(days=1)
+    return d
+
+
 def fila(simbolo, info, cot, mep, liq=None, cer_actual=0):
     """Una fila de la tabla, con TIR en cada punta."""
-    liq = liq or date.today()
+    liq = liq or liquidacion()
     bonos, _ = cargar()
     cfg = bonos.get(info["cronograma"])
     if not cfg:
@@ -402,7 +418,7 @@ def _dual_resumen(cfg, liq, precio):
 
 def tabla(cot, liq=None, par_mep=("AL30", "AL30D"), cer_actual=0):
     """Todas las especies conocidas que tengan precio, ordenadas por MD."""
-    liq = liq or date.today()
+    liq = liq or liquidacion()
     mep = calcular_mep(cot, *par_mep)
     filas = []
     for sim, info in especies().items():
@@ -458,7 +474,7 @@ def _brechas(filas):
 
 def detalle(simbolo, cot, liq=None, par_mep=("AL30", "AL30D"), cer_actual=0):
     """Lo que se muestra al tocar el ticker."""
-    liq = liq or date.today()
+    liq = liq or liquidacion()
     esps = especies()
     info = esps.get(simbolo)
     if not info:
