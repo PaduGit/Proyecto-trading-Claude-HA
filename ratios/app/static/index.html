@@ -15,6 +15,8 @@
   src:url("fonts/IBMPlexSans-Regular.woff2") format("woff2")}
 @font-face{font-family:"Plex Sans";font-display:swap;font-weight:600;
   src:url("fonts/IBMPlexSans-SemiBold.woff2") format("woff2")}
+@layer base, util;
+@layer base{
 :root{
   --ink:#0E141B; --panel:#161E28; --panel-2:#1C2632; --rule:#28323F;
   --bone:#E9E5DC; --muted:#7B8794;
@@ -130,7 +132,6 @@ svg.chart{width:100%;height:130px;display:block;overflow:visible}
 .form textarea{text-transform:none;font-family:var(--sans);min-height:56px}
 .form input:focus,.form select:focus,.form textarea:focus{
   outline:2px solid var(--amber);outline-offset:-1px;border-color:transparent}
-.ancho{grid-column:1/-1}
 button.primario{width:100%;background:var(--bone);color:var(--ink);border:none;
   border-radius:3px;padding:11px;font-family:var(--mono);font-size:12px;
   font-weight:600;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
@@ -226,8 +227,8 @@ table.tabla tr.dolar td:first-child{color:var(--amber)}
   gap:10px;font-family:var(--mono);font-size:13px}
 .pos-bar{height:3px;background:var(--panel-2);margin-top:5px;border-radius:2px}
 .pos-bar span{display:block;height:100%;background:var(--muted);border-radius:2px}
-.ten-fila,.estr-fila,.fam-fila{cursor:pointer}
-.ten-fila:active,.estr-fila:active,.fam-fila:active{background:var(--panel-2)}
+.ten-fila{cursor:pointer}
+.ten-fila:active{background:var(--panel-2)}
 .ten-edit{border-bottom:1px solid var(--rule);padding:10px 0 12px;background:var(--panel)}
 .ficha{display:grid;grid-template-columns:1fr 1fr;gap:2px 14px}
 .ficha .pos-pie{font-size:11px;margin-top:2px}
@@ -320,6 +321,151 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
 .leyenda i.iol{border-top:1px dashed var(--muted)}
 
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ---------- 0.51.0 ---------- */
+/* BONOS: la tabla se desplaza dentro de su caja y el ticker queda fijo. */
+.tabla-bonos{overflow-x:auto;-webkit-overflow-scrolling:touch;padding:8px 10px}
+table.bonos th:first-child,table.bonos td:first-child{position:sticky;left:0;
+  z-index:1;background:var(--panel);box-shadow:1px 0 0 var(--rule)}
+table.bonos.sin-puntas .bid,table.bonos.sin-puntas .tbid,
+table.bonos.sin-puntas .task,table.bonos.sin-puntas .ask,
+table.bonos.sin-puntas th.hbid,table.bonos.sin-puntas th.hask{display:none}
+.bonos-barra{display:flex;align-items:center;justify-content:space-between;
+  gap:8px;margin-bottom:8px}
+.bonos-barra .resumen{margin:0}
+details.filtros{margin-bottom:10px}
+details.filtros>summary{font-family:var(--mono);font-size:10px;color:var(--muted);
+  letter-spacing:.08em;text-transform:uppercase;cursor:pointer;padding:6px 0}
+details.filtros>summary b{color:var(--amber);font-weight:500}
+details.filtros[open]>summary{margin-bottom:6px}
+
+/* OPCIONES: un spread por fila. */
+.spr{padding:10px 0 10px 8px;border-bottom:1px solid var(--rule);
+  border-left:2px solid transparent}
+.spr.gana{border-left-color:var(--amber)}
+.spr-fila{display:grid;grid-template-columns:auto 1fr auto;gap:2px 12px;
+  align-items:center;font-variant-numeric:tabular-nums}
+.spr-r{font-family:var(--mono);font-size:20px;font-weight:500;min-width:62px}
+.spr-r.alc{color:var(--sage)} .spr-r.baj{color:var(--coral)}
+.spr-nom{font-size:12px;color:var(--bone)}
+.spr-sub{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:2px}
+.spr-der{text-align:right;font-family:var(--mono);font-size:12px}
+.spr-der .spr-sub b{color:var(--sage);font-weight:500}
+
+/* RATIOS: periodos en una fila deslizable y menu de la tarjeta. */
+.periodos.deslizable{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+.periodos.deslizable::-webkit-scrollbar{display:none}
+.par-top-der{display:flex;align-items:center;gap:6px}
+details.par-menu{position:relative}
+details.par-menu>summary{list-style:none;cursor:pointer;color:var(--muted);
+  font-size:16px;line-height:1;padding:2px 6px}
+details.par-menu>summary::-webkit-details-marker{display:none}
+details.par-menu .menu{top:24px}
+
+/* RATIOS: en que activo conviene estar. */
+.sugerencia{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;
+  font-family:var(--mono);font-size:11px;color:var(--muted);margin:8px 0 2px}
+.sugerencia b{font-size:13px;font-weight:600;color:var(--bone)}
+.sugerencia .sug-etq{letter-spacing:.08em;text-transform:uppercase;font-size:9px}
+.sugerencia .ok{color:var(--sage)}
+.sugerencia .rotar{color:var(--amber)}
+}
+
+/* Clases de utilidad: reemplazan los estilos escritos en cada etiqueta.
+   Viven en la capa util, que gana sobre base sin importar la especificidad,
+   igual que ganaba el atributo style. Lo que depende de un dato queda en linea. */
+@layer util{
+.ancho{grid-column:1/-1}
+.area-json{width:100%;min-height:110px;background:var(--panel);border:1px solid var(--rule);color:var(--bone);font-family:var(--mono);font-size:10px;padding:8px;border-radius:3px}
+.bloque-json{font-family:var(--mono);font-size:10px;white-space:pre-wrap;word-break:break-all;background:var(--panel);border:1px solid var(--rule);padding:8px;border-radius:4px;max-height:50vh;overflow:auto}
+.botonera{display:flex;gap:6px;flex-wrap:wrap}
+.centrado-x{left:50%;transform:translateX(-50%)}
+.corto{width:auto;padding:0 14px}
+.corto-16{width:auto;padding:0 16px}
+.reg-borde{padding:8px 4px 12px;border-bottom:1px solid var(--rule)}
+.u-amber{color:var(--amber)}
+.u-block{display:block}
+.u-centro{text-align:center}
+.u-centro-v{align-items:center}
+.u-contents{display:contents}
+.u-coral{color:var(--coral)}
+.u-flex{display:flex}
+.u-flex-0-1-110{flex:0 1 110px}
+.u-flex-1-1-120{flex:1 1 120px}
+.u-flex-1-1-130{flex:1 1 130px}
+.u-flex-1-1-150{flex:1 1 150px}
+.u-flex-1-1-160{flex:1 1 160px}
+.u-flex-1-1-80{flex:1 1 80px}
+.u-flex-1-1-90{flex:1 1 90px}
+.u-flex-2-1-140{flex:2 1 140px}
+.u-fs-10{font-size:10px}
+.u-fs-11{font-size:11px}
+.u-fs-12{font-size:12px}
+.u-fs-7{font-size:7px}
+.u-fs-8{font-size:8px}
+.u-fs-9{font-size:9px}
+.u-gap-6{gap:6px}
+.u-h-190{height:190px}
+.u-h-auto{height:auto}
+.u-inline-block{display:inline-block}
+.u-izq{text-align:left}
+.u-ls-10{letter-spacing:.1em}
+.u-m-0{margin:0}
+.u-m-0-0-8{margin:0 0 8px}
+.u-m-10-0{margin:10px 0}
+.u-m-10-0-4{margin:10px 0 4px}
+.u-m-14-0-10{margin:14px 0 10px}
+.u-m-14-0-6{margin:14px 0 6px}
+.u-m-16-0-6{margin:16px 0 6px}
+.u-m-18-0-6{margin:18px 0 6px}
+.u-m-20-0-6{margin:20px 0 6px}
+.u-m-22-0-6{margin:22px 0 6px}
+.u-m-3-0{margin:3px 0}
+.u-m-4-0-0{margin:4px 0 0}
+.u-m-6-0{margin:6px 0}
+.u-m-8-0{margin:8px 0}
+.u-m-8-0-12{margin:8px 0 12px}
+.u-m-n6-0-12{margin:-6px 0 12px}
+.u-m-n8-0-12{margin:-8px 0 12px}
+.u-mb-10{margin-bottom:10px}
+.u-mb-12{margin-bottom:12px}
+.u-mb-6{margin-bottom:6px}
+.u-mb-8{margin-bottom:8px}
+.u-mitad-x{transform:translateX(-50%)}
+.u-ml-8{margin-left:8px}
+.u-mono{font-family:var(--mono)}
+.u-mr-5{margin-right:5px}
+.u-mt-10{margin-top:10px}
+.u-mt-12{margin-top:12px}
+.u-mt-16{margin-top:16px}
+.u-mt-18{margin-top:18px}
+.u-mt-2{margin-top:2px}
+.u-mt-4{margin-top:4px}
+.u-mt-6{margin-top:6px}
+.u-mt-8{margin-top:8px}
+.u-muted{color:var(--muted)}
+.u-nowrap{white-space:nowrap}
+.u-op-35{opacity:.35}
+.u-op-45{opacity:.45}
+.u-op-60{opacity:.6}
+.u-op-70{opacity:.7}
+.u-op-80{opacity:.8}
+.u-p-10{padding:10px}
+.u-p-12{padding:12px}
+.u-p-14{padding:14px}
+.u-p-6-10{padding:6px 10px}
+.u-ptr{cursor:pointer}
+.u-quebrar{word-break:break-all}
+.u-sage{color:var(--sage)}
+.u-scroll-x{overflow-x:auto}
+.u-sin-borde{border:none}
+.u-sin-fondo{background:none}
+.u-sin-mayus{text-transform:none}
+.u-w-100{width:100%}
+.u-w-110{width:110px}
+.u-w-130{width:130px}
+.u-wrap{flex-wrap:wrap}
+}
 </style>
 </head>
 <body>
@@ -403,37 +549,34 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       </div>
       <div id="c-out"></div>
     </details>
-    <details style="margin-top:12px" id="par-admin">
+    <details class="u-mt-12" id="par-admin">
       <summary>Pares y estrategias</summary>
-      <div class="nota" style="margin-top:8px">Cada par se edita desde su
+      <div class="u-mt-8 nota">Cada par se edita desde su
         propia tarjeta, acá abajo. "Crear desde los grupos" arma una
         estrategia por cada par que tengas en cartera y le asigna sus
         especies; nunca pisa una asignación hecha a mano.</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">
-        <button class="secundario" id="pos-nuevo"
-          style="width:auto;padding:0 14px">+ Nuevo par</button>
-        <button class="secundario" data-estr-nueva-fam="par"
-          style="width:auto;padding:0 14px">Nueva estrategia</button>
-        <button class="secundario" id="estr-auto"
-          style="width:auto;padding:0 14px">Crear desde los grupos</button>
+      <div class="botonera u-m-8-0">
+        <button class="corto secundario" id="pos-nuevo">+ Nuevo par</button>
+        <button class="corto secundario" data-estr-nueva-fam="par">Nueva estrategia</button>
+        <button class="corto secundario" id="estr-auto">Crear desde los grupos</button>
       </div>
       <div id="par-arch"></div>
     </details>
-    <div id="panel-out" style="margin-top:18px"></div>
+    <div id="panel-out" class="u-mt-18"></div>
 </section>
 
   <section id="v-bonos" hidden>
     <div id="curva-estr"></div>
     <div id="reserva-estr"></div>
 
-    <details style="margin-top:12px" id="canje-caja">
+    <details class="u-mt-12" id="canje-caja">
       <summary id="canje-tit">Canjes convenientes</summary>
-      <div class="nota" style="margin-top:8px">Contra qué bono conviene
+      <div class="u-mt-8 nota">Contra qué bono conviene
         rotar cada uno de los que tenés, dentro de la misma familia y con
         duration parecida. La ganancia es lo que se espera que recorra
         cada punta hasta su residuo medio, neta de comisiones de ida y
         vuelta.</div>
-      <div id="canje-out" style="margin-top:8px"></div>
+      <div id="canje-out" class="u-mt-8"></div>
     </details>
 
     <div id="b-mep"></div>
@@ -447,9 +590,9 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
 
     <div id="cir-tengo" class="nota"></div>
 
-    <button class="primario" id="cir-btn" style="margin-top:12px">
+    <button class="u-mt-12 primario" id="cir-btn">
       Buscar circuitos</button>
-    <div id="cir-out" style="margin-top:12px"></div>
+    <div id="cir-out" class="u-mt-12"></div>
   </section>
 
   <section id="v-opc" hidden>
@@ -458,58 +601,57 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       puntas. El <b>riesgo</b> se mide sobre el ancho de bases: 33% es el
       ratio 1 a 3.</p>
     <div id="op-cab"></div>
-    <button class="primario" id="op-btn" style="margin-top:12px">
+    <button class="u-mt-12 primario" id="op-btn">
       Buscar spreads</button>
-    <div id="op-mapa" style="margin-top:12px"></div>
-    <div id="op-out" style="margin-top:12px"></div>
-    <h3 style="margin:20px 0 6px">Posiciones armadas</h3>
+    <div id="op-mapa" class="u-mt-12"></div>
+    <div id="op-out" class="u-mt-12"></div>
+    <h3 class="u-m-20-0-6">Posiciones armadas</h3>
     <div id="op-pos"></div>
   </section>
 
   <section id="v-pos" hidden>
     <div id="cart-out"></div>
-    <div id="filtro-resumen" class="filtro-fila"
-      style="margin-bottom:10px;cursor:pointer">
+    <div id="filtro-resumen" class="u-mb-10 u-ptr filtro-fila">
       <span class="filtro-etq">Filtros</span>
-      <div class="periodos" style="margin:0">
+      <div class="u-m-0 periodos">
         <button id="filtro-abrir" aria-pressed="false">Todas</button>
       </div></div>
     <div id="filtro-caja" hidden>
     <div class="filtro-fila"><span class="filtro-etq">Broker</span>
-      <div class="periodos" id="ten-broker" style="margin:0"></div></div>
-    <div class="filtro-fila" style="margin-bottom:10px">
+      <div class="u-m-0 periodos" id="ten-broker"></div></div>
+    <div class="u-mb-10 filtro-fila">
       <span class="filtro-etq">Tipo</span>
-      <div class="periodos" id="ten-tipo" style="margin:0"></div></div>
-    <div class="filtro-fila" style="margin-bottom:10px">
+      <div class="u-m-0 periodos" id="ten-tipo"></div></div>
+    <div class="u-mb-10 filtro-fila">
       <span class="filtro-etq">Exposición</span>
-      <div class="periodos" id="ten-expo" style="margin:0"></div></div>
-    <div class="filtro-fila" style="margin-bottom:10px">
+      <div class="u-m-0 periodos" id="ten-expo"></div></div>
+    <div class="u-mb-10 filtro-fila">
       <span class="filtro-etq">Estrategia</span>
-      <div class="periodos" id="ten-fam" style="margin:0"></div></div>
+      <div class="u-m-0 periodos" id="ten-fam"></div></div>
     </div>
-    <div class="filtro-fila" style="margin:14px 0 10px">
+    <div class="u-m-14-0-10 filtro-fila">
       <span class="filtro-etq">Orden</span>
-      <div class="periodos" id="ten-orden" style="margin:0"></div></div>
-    <div class="filtro-fila" style="margin-bottom:10px">
+      <div class="u-m-0 periodos" id="ten-orden"></div></div>
+    <div class="u-mb-10 filtro-fila">
       <span class="filtro-etq">Ver</span>
-      <div class="periodos" id="ten-modo" style="margin:0">
+      <div class="u-m-0 periodos" id="ten-modo">
         <button data-modo="broker" aria-pressed="true">Por broker</button>
         <button data-modo="especie" aria-pressed="false">Agrupadas</button>
       </div></div>
     <div id="ten-out"></div>
-    <details style="margin-top:12px" id="prop-caja">
+    <details class="u-mt-12" id="prop-caja">
       <summary>Movimientos detectados</summary>
-      <div class="nota" style="margin-top:8px">Lo que cambió entre las dos
+      <div class="u-mt-8 nota">Lo que cambió entre las dos
         últimas fotos de cada broker. Una rotación solo se propone si las
         dos especies están en el mismo grupo y se movieron en sentido
         contrario; el ratio sale de la relación de nominales. Confirmar
         una rotación mueve la estrategia de la especie que sale a la que
         entra.</div>
-      <div id="prop-out" style="margin-top:8px"></div>
+      <div id="prop-out" class="u-mt-8"></div>
     </details>
-    <details style="margin-top:12px">
+    <details class="u-mt-12">
       <summary>Próximos cobros</summary>
-    <div class="periodos" id="cob-rango" style="margin-bottom:8px">
+    <div class="u-mb-8 periodos" id="cob-rango">
       <button aria-pressed="true" data-dias="90">90 días</button>
       <button aria-pressed="false" data-dias="180">6 meses</button>
       <button aria-pressed="false" data-dias="365">1 año</button>
@@ -521,36 +663,33 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       exterior se guardan pero no participan, porque no liquidan contra el
       mercado local.</p>
     </details>
-    <details style="margin-top:12px" class="avanzado">
+    <details class="u-mt-12 avanzado">
       <summary>Respaldo</summary>
-      <p class="nota" style="margin-top:10px">Copiá este texto y guardalo
+      <p class="u-mt-10 nota">Copiá este texto y guardalo
         afuera. Trae los pares con sus niveles y las estrategias con sus
         especies y su ledger. <b>No trae la tenencia ni el PPC:</b> para
         eso está la copia de seguridad parcial de Home Assistant, o
         <code>ratios.db</code>, que la app deja en su carpeta de
         configuración cada vez que arranca.</p>
       <button class="secundario" id="pos-exportar">Exportar</button>
-      <textarea id="pos-texto" style="width:100%;min-height:110px;
-        background:var(--panel);border:1px solid var(--rule);color:var(--bone);
-        font-family:var(--mono);font-size:10px;padding:8px;border-radius:3px;
-        margin-top:8px" placeholder="Pegá acá un respaldo para importarlo"></textarea>
+      <textarea id="pos-texto" class="area-json u-mt-8" placeholder="Pegá acá un respaldo para importarlo"></textarea>
       <button class="secundario" id="pos-importar">Importar lo pegado</button>
       <div id="pos-msg"></div>
     </details>
-    <details style="margin-top:12px">
+    <details class="u-mt-12">
       <summary>Administrar</summary>
-      <div class="nota" style="margin-top:8px">Traer de IOL, pegar
+      <div class="u-mt-8 nota">Traer de IOL, pegar
         una carga, ver el historial y registrar splits.</div>
-    <button class="primario" id="ten-traer" style="margin-bottom:12px">
+    <button class="u-mb-12 primario" id="ten-traer">
       Traer tenencia de IOL</button>
-    <div class="nota" style="margin:-6px 0 12px">Baja las cuentas de IOL
+    <div class="u-m-n6-0-12 nota">Baja las cuentas de IOL
       configuradas. Cada una reemplaza solo su propio broker; el PPC y la
       fecha de alta se conservan.</div>
-    <details style="margin-top:12px">
+    <details class="u-mt-12">
       <summary>Cargar pegando JSON</summary>
-      <textarea id="ten-json" rows="8" style="width:100%;margin-top:8px"
+      <textarea id="ten-json" rows="8" class="u-w-100 u-mt-8"
         placeholder='{"reemplazar":"IOL","tenencias":[{"broker":"IOL","simbolo":"AL30","cantidad":1200,"tipo":"bonos"}]}'></textarea>
-      <button class="primario" id="ten-cargar" style="margin-top:8px">
+      <button class="u-mt-8 primario" id="ten-cargar">
         Cargar</button>
       <div class="nota">Con <b>reemplazar</b> en "todo" se pisa la lista
         entera; con el nombre de un broker, solo la de ese broker. El
@@ -560,29 +699,29 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
         conserva lo que ya estaba: el botón que baja de IOL trae solo
         cantidades y no pisa el costo cargado a mano.</div>
     </details>
-    <details style="margin-top:12px">
+    <details class="u-mt-12">
       <summary>Historial de cantidades</summary>
-      <div class="nota" style="margin-top:8px">Cada actualización guarda
+      <div class="u-mt-8 nota">Cada actualización guarda
         una foto por broker, y solo si algo cambió.</div>
-      <div class="periodos" id="hist-esp" style="margin:8px 0"></div>
+      <div class="u-m-8-0 periodos" id="hist-esp"></div>
       <div id="hist-out"></div>
     </details>
-    <details style="margin-top:12px">
+    <details class="u-mt-12">
       <summary>Splits y canjes</summary>
-      <div class="nota" style="margin-top:8px">El factor es cuántas
+      <div class="u-mt-8 nota">El factor es cuántas
         unidades nuevas salen de cada vieja: un split de 1 a 10 va con
         factor 10. El broker ajusta la cantidad pero no siempre el PPC,
         así que el costo se corrige acá para las compras anteriores al
         evento.</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
-        <input id="ev-simbolo" placeholder="Especie" style="flex:1 1 90px">
-        <input id="ev-fecha" type="date" style="flex:1 1 130px">
+      <div class="botonera u-mt-8">
+        <input id="ev-simbolo" placeholder="Especie" class="u-flex-1-1-90">
+        <input id="ev-fecha" type="date" class="u-flex-1-1-130">
         <input id="ev-factor" type="number" step="any" placeholder="Factor"
-          style="flex:1 1 80px">
-        <input id="ev-nota" placeholder="Nota" style="flex:2 1 140px">
+          class="u-flex-1-1-80">
+        <input id="ev-nota" placeholder="Nota" class="u-flex-2-1-140">
         <button class="primario" id="ev-agregar">Agregar</button>
       </div>
-      <div id="ev-out" style="margin-top:10px"></div>
+      <div id="ev-out" class="u-mt-10"></div>
     </details>
     </details>
   </section>
@@ -593,13 +732,13 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       esa TNA, neta de comisiones, le gana a la caución colocadora. Se anualiza
       por días corridos entre liquidaciones, así que un viernes cuenta tres.</p>
     <button class="primario" id="p-btn">Calcular ahora</button>
-    <div id="p-out" style="margin-top:12px"></div>
+    <div id="p-out" class="u-mt-12"></div>
   </section>
 
   <section id="v-alertas" hidden>
     <div id="tecnica-estr"></div>
 
-    <h3 style="margin:22px 0 6px">Alertas de búsqueda</h3>
+    <h3 class="u-m-22-0-6">Alertas de búsqueda</h3>
     <p class="nota">Las de las posiciones que ya tenés viven dentro de su
       estrategia, acá arriba. Estas son de lo que todavía no tenés.</p>
     <p class="nota">Se avisa cuando la alerta pasa a cumplirse, no mientras
@@ -607,21 +746,21 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       compradora: es contra la que se ejecuta. No dispara con puntas de antes
       del cierre.</p>
     <button class="primario" id="al-nueva">Nueva alerta</button>
-    <div id="al-out" style="margin-top:12px"></div>
+    <div id="al-out" class="u-mt-12"></div>
 
-    <details style="margin-top:16px" id="al-vig-caja">
+    <details class="u-mt-16" id="al-vig-caja">
       <summary>Vigilancia</summary>
-      <p class="nota" style="margin-top:8px">Las de lo que ya tenés. Se leen
+      <p class="u-mt-8 nota">Las de lo que ya tenés. Se leen
         en la tarjeta de su estrategia, con el saldo al lado; se editan
         acá.</p>
       <div id="al-vig"></div>
     </details>
 
-    <h3 style="margin:22px 0 6px">Por fecha</h3>
+    <h3 class="u-m-22-0-6">Por fecha</h3>
     <p class="nota">Recordatorios sueltos: revisar una posición, una fecha
       límite. Se avisan una vez; cambiar la fecha los rehabilita.</p>
     <button class="secundario" id="fe-nueva">Nuevo recordatorio</button>
-    <div id="fe-out" style="margin-top:12px"></div>
+    <div id="fe-out" class="u-mt-12"></div>
   </section>
 
   <section id="v-reg" hidden>
@@ -630,82 +769,81 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
 
   <section id="v-expl" hidden>
     <div id="e-consumo"></div>
-    <details id="hx-det" style="margin-top:16px">
+    <details id="hx-det" class="u-mt-16">
       <summary>Histórico de bonos</summary>
-      <div class="nota" style="margin-top:8px">La serie diaria de TIR que
+      <div class="u-mt-8 nota">La serie diaria de TIR que
         alimenta el gráfico de cada bono, y de la que salen los desvíos y
         el z-score. Una especie agregada después del primer backfill queda
         con historia faltante hasta que se completa. La serie se pide a IOL
         de una vez y, si IOL la rechaza, de a un mes; un tramo que igual
         falla queda como hueco.</div>
-      <div style="display:flex;gap:6px;margin:8px 0;flex-wrap:wrap">
-        <button class="secundario" id="hx-completar" style="width:auto;padding:0 14px">
+      <div class="botonera u-m-8-0">
+        <button class="corto secundario" id="hx-completar">
           Completar lo que falta</button>
-        <button class="secundario" id="hx-refrescar" style="width:auto;padding:0 14px">
+        <button class="corto secundario" id="hx-refrescar">
           Actualizar</button>
       </div>
       <div id="hx-out"></div>
     </details>
-    <details id="fot-det" style="margin-top:12px">
+    <details id="fot-det" class="u-mt-12">
       <summary>Fotos de tenencia</summary>
-      <div class="nota" style="margin-top:8px">Cada carga de tenencia deja
+      <div class="u-mt-8 nota">Cada carga de tenencia deja
         una foto si cambió alguna cantidad. El diff compara las dos últimas
         de un mismo broker: si no propone nada, acá se ve si falta una
         foto, si el broker figura con otro nombre o si las cantidades no
         cambiaron. Tocá una foto para ver qué cambió contra la anterior.</div>
       <div id="fot-out"></div>
     </details>
-    <details style="margin-top:16px">
+    <details class="u-mt-16">
       <summary>Mantenimiento de estrategias</summary>
-      <div class="nota" style="margin-top:8px">Una estrategia sin ninguna
+      <div class="u-mt-8 nota">Una estrategia sin ninguna
         especie asignada no mide nada. Las cerradas por venta no se
         tocan: viven en el archivo de su pestaña.</div>
-      <button class="secundario" id="estr-limpiar"
-        style="width:auto;padding:0 14px;margin-top:8px">
+      <button class="corto u-mt-8 secundario" id="estr-limpiar">
         Borrar sin especies</button>
     </details>
-    <h3 style="margin:18px 0 6px">Registro de llamadas</h3>
+    <h3 class="u-m-18-0-6">Registro de llamadas</h3>
     <p class="nota">Todas las fuentes, con su tipo. Solo las de IOL
       consumen su cupo.</p>
-    <div style="display:flex;gap:6px;margin:10px 0">
-      <button class="secundario" id="log-ver" style="width:auto;padding:0 14px">
+    <div class="u-flex u-gap-6 u-m-10-0">
+      <button class="corto secundario" id="log-ver">
         Ver llamadas</button>
-      <button class="secundario" id="log-todo" style="width:auto;padding:0 14px">
+      <button class="corto secundario" id="log-todo">
         Ver resumen</button>
-      <button class="secundario" id="log-copiar" style="width:auto;padding:0 14px">
+      <button class="corto secundario" id="log-copiar">
         Copiar</button>
-      <button class="secundario" id="log-borrar" style="width:auto;padding:0 14px">
+      <button class="corto secundario" id="log-borrar">
         Borrar</button>
     </div>
     <div id="log-out"></div>
-    <details style="margin-top:16px">
+    <details class="u-mt-16">
       <summary>Probar las fuentes</summary>
-      <div class="nota" style="margin-top:8px">Cada botón fuerza una
+      <div class="u-mt-8 nota">Cada botón fuerza una
         consulta y muestra la respuesta cruda, para ver de qué campo
         sale cada número cuando algo no cierra.</div>
-    <div class="filtro-etq" style="margin:14px 0 6px">API del BCRA</div>
-    <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
-      <button class="secundario" id="probar-cer" style="width:auto;padding:0 14px">
+    <div class="u-m-14-0-6 filtro-etq">API del BCRA</div>
+    <div class="botonera u-mb-6">
+      <button class="corto secundario" id="probar-cer">
         Probar CER</button>
-      <button class="secundario" id="probar-a3500" style="width:auto;padding:0 14px">
+      <button class="corto secundario" id="probar-a3500">
         Probar A3500</button>
-      <button class="secundario" id="probar-badlar" style="width:auto;padding:0 14px">
+      <button class="corto secundario" id="probar-badlar">
         Probar BADLAR</button>
-      <button class="secundario" id="probar-tamar" style="width:auto;padding:0 14px">
+      <button class="corto secundario" id="probar-tamar">
         Probar TAMAR</button>
     </div>
-    <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+    <div class="botonera u-mb-6">
       <input id="bcv-filtro" placeholder="Filtrar variables (ej. tamar)"
-        style="flex:1 1 160px">
-      <button class="secundario" id="bcv-ver" style="width:auto;padding:0 14px">
+        class="u-flex-1-1-160">
+      <button class="corto secundario" id="bcv-ver">
         Variables del BCRA</button>
     </div>
     <div id="bcv-out"></div>
     <p class="nota">Cada botón fuerza una descarga, saltea la espera de cinco
       minutos que sigue a un fallo y muestra el error crudo del BCRA.</p>
-    <div class="filtro-etq" style="margin:14px 0 6px">API de BYMA</div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
-      <select id="by-panel" style="flex:1 1 150px">
+    <div class="u-m-14-0-6 filtro-etq">API de BYMA</div>
+    <div class="botonera u-mb-6">
+      <select id="by-panel" class="u-flex-1-1-150">
         <option value="titulosPublicos">Títulos públicos</option>
         <option value="letras">Letras</option>
         <option value="obligacionesNegociables">ON</option>
@@ -713,15 +851,14 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
         <option value="panelGeneral">Panel general</option>
         <option value="cedears">CEDEARs</option>
       </select>
-      <select id="by-plazo" style="flex:0 1 110px">
+      <select id="by-plazo" class="u-flex-0-1-110">
         <option value="">Los dos plazos</option>
         <option value="t1">Solo t1</option>
         <option value="t0">Solo t0</option>
       </select>
       <input id="by-simbolo" placeholder="Especie (opcional)"
-        style="flex:1 1 120px">
-      <button class="secundario" id="probar-byma"
-        style="width:auto;padding:0 14px">Consultar</button>
+        class="u-flex-1-1-120">
+      <button class="corto secundario" id="probar-byma">Consultar</button>
     </div>
     <p class="nota">Respuesta cruda de Open BYMA Data, con la lista de
       campos y las primeras filas. Los precios llegan con veinte minutos
@@ -729,26 +866,25 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       contado inmediato y 2 es 24 horas.</p>
     <div id="by-out"></div>
     </details>
-    <details style="margin-top:12px">
+    <details class="u-mt-12">
       <summary>Consultar la API de IOL</summary>
     <p class="nota">Todo con la sesión que ya tiene la app. Solo lectura.</p>
 
-    <div class="filtro-etq" style="margin:14px 0 6px">Cuenta</div>
-    <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
-      <button class="secundario" id="probar-ec" style="width:auto;padding:0 14px">
+    <div class="u-m-14-0-6 filtro-etq">Cuenta</div>
+    <div class="botonera u-mb-6">
+      <button class="corto secundario" id="probar-ec">
         Estado de cuenta</button>
-      <button class="secundario" id="probar-ops" style="width:auto;padding:0 14px">
+      <button class="corto secundario" id="probar-ops">
         Operaciones</button>
-      <button class="secundario" id="probar-altas" style="width:auto;padding:0 14px">
+      <button class="corto secundario" id="probar-altas">
         Fechas de alta</button>
-      <button class="secundario" id="probar-mep" style="width:auto;padding:0 14px">
+      <button class="corto secundario" id="probar-mep">
         Serie del MEP</button>
     </div>
-    <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;
-                align-items:center">
-      <label style="flex:1 1 130px;margin:0">Desde
+    <div class="botonera u-mb-6 u-centro-v">
+      <label class="u-flex-1-1-130 u-m-0">Desde
         <input type="date" id="ops-desde"></label>
-      <label style="flex:1 1 130px;margin:0">Hasta
+      <label class="u-flex-1-1-130 u-m-0">Hasta
         <input type="date" id="ops-hasta"></label>
     </div>
     <p class="nota">La respuesta cruda de cada cuenta configurada, sin
@@ -765,7 +901,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       muestra qué cierra y qué no; no escribe hasta que lo confirmes.</p>
     <div id="ec-out"></div>
 
-    <div class="filtro-etq" style="margin:14px 0 6px">Instrumentos</div>
+    <div class="u-m-14-0-6 filtro-etq">Instrumentos</div>
     <div class="form">
       <div>
         <label for="e-inst">Instrumento</label>
@@ -787,10 +923,10 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
     <div id="e-out"></div>
     <details class="avanzado">
       <summary>Ruta manual</summary>
-      <div class="form" style="margin-top:10px">
+      <div class="u-mt-10 form">
         <div class="ancho">
           <label for="e-path">Ruta</label>
-          <input id="e-path" style="text-transform:none" autocomplete="off"
+          <input id="e-path" class="u-sin-mayus" autocomplete="off"
                  placeholder="api/v2/argentina/Titulos/Cotizacion/Instrumentos">
         </div>
         <div class="ancho"><button class="primario" id="e-path-btn">Consultar</button></div>
@@ -812,7 +948,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
   <div class="form">
     <div class="ancho">
       <label for="g-nombre">Nombre</label>
-      <input id="g-nombre" style="text-transform:none" placeholder="Aluar / Ternium">
+      <input id="g-nombre" class="u-sin-mayus" placeholder="Aluar / Ternium">
     </div>
     <div>
       <label for="g-num">Numerador</label>
@@ -841,7 +977,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
         <option value="0">Sin alertas</option>
       </select>
     </div>
-    <div class="ancho" style="font-size:11px;color:var(--muted)">
+    <div class="u-fs-11 u-muted ancho">
       El ratio es numerador sobre denominador. El resultado de la rotación
       se mide en nominales de la unidad elegida, estés parado donde estés.
     </div>
@@ -868,7 +1004,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       </select>
     </div>
     <div id="m-rot">
-      <div class="form" style="margin:0">
+      <div class="u-m-0 form">
         <div>
           <label for="m-de">Vendo</label>
           <select id="m-de"></select>
@@ -888,7 +1024,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       </div>
     </div>
     <div id="m-flujo" hidden>
-      <div class="form" style="margin:0">
+      <div class="u-m-0 form">
         <div>
           <label for="m-tk">Ticker</label>
           <select id="m-tk"></select>
@@ -903,8 +1039,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
         </div>
       </div>
     </div>
-    <div class="ancho" id="m-info" style="font-family:var(--mono);
-         font-size:11px;color:var(--muted)"></div>
+    <div class="u-mono u-fs-11 u-muted ancho" id="m-info"></div>
     <div class="ancho">
       <label for="m-nota">Nota (opcional)</label>
       <textarea id="m-nota"></textarea>
@@ -941,8 +1076,7 @@ table.bonos .tir.viejo,table.bonos td.viejo{color:var(--muted);font-style:italic
       <label for="o-nota">Nota (opcional)</label>
       <textarea id="o-nota"></textarea>
     </div>
-    <div class="ancho" id="o-ratio" style="font-family:var(--mono);
-         font-size:12px;color:var(--muted)"></div>
+    <div class="u-mono u-fs-12 u-muted ancho" id="o-ratio"></div>
     <div class="ancho"><button class="primario" id="o-guardar">Guardar</button></div>
     <div class="ancho"><button class="secundario" id="o-cerrar">Cancelar</button></div>
   </div>
@@ -979,6 +1113,11 @@ const precio = v => (v==null?0:v).toLocaleString("es-AR",
   {minimumFractionDigits:2, maximumFractionDigits:2});
 const ent = v => (v==null?0:v).toLocaleString("es-AR",{maximumFractionDigits:0});
 const pct = v => (v==null?"—":(v>=0?"+":"")+v.toFixed(3)+"%");
+/* Formato argentino con decimales fijos, y signo con el menos
+   tipografico: "-11" pegado a un "~" o a un "≈" se leia como doble guion. */
+const dec = (v, n) => v.toLocaleString("es-AR",
+  {minimumFractionDigits:n, maximumFractionDigits:n});
+const conSigno = (v, n) => (v >= 0 ? "+" : "−") + dec(Math.abs(v), n);
 const css = s => s.replace(/[^a-zA-Z0-9]/g,"_");
 const esc = s => String(s??"").replace(/[<>&]/g, c =>
   ({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]));
@@ -1139,30 +1278,79 @@ async function cargarPanel(){
   });
 }
 
+/* En que activo conviene estar. La regla la decide el backend
+   (monitor.sugerencia_par); aca solo se muestra y se cruza con la tenencia. */
+function sugerenciaHtml(p){
+  const s = p.sugerencia;
+  if(!s || !s.lectura) return "";
+  const ten = s.tenencia || {};
+  const tiene = sim => (ten[sim] || 0) > 0;
+  const cant = sim => ent(ten[sim]) + " " + esc(sim);
+  let estado = "";
+  if(s.moneda){
+    /* AL30 y AL30D son el mismo bono y la tenencia los suma: no dice en
+       que moneda esta, asi que no se cruza. */
+    estado = "";
+  } else if(s.estar_en){
+    const otra = s.estar_en === p.num ? p.den : p.num;
+    estado = tiene(otra)
+      ? '<span class="rotar">tenés ' + cant(otra) + ' → rotar</span>'
+      : tiene(s.estar_en)
+        ? '<span class="ok">posicionado · ' + cant(s.estar_en) + '</span>'
+        : '<span>sin tenencia</span>';
+  } else {
+    const hay = [p.num, p.den].filter(tiene);
+    estado = hay.length ? '<span>tenés ' + hay.map(cant).join(" y ") +
+      '</span>' : "";
+  }
+  return '<div class="sugerencia"><span class="sug-etq">' +
+    (s.estar_en ? "Estar en" : "Sin ventaja") + '</span>' +
+    '<b>' + esc(s.estar_en || "mantener") + '</b>' +
+    '<span>' + esc(s.lectura) + '</span>' + estado + '</div>';
+}
+
 function tarjeta(p){
   if(p.error && p.ratio == null){
     return '<div class="par"><div class="par-top"><span class="alias">' +
-      esc(p.alias) + '</span></div><div class="msg error" style="margin-top:10px">' +
+      esc(p.alias) + '</span></div><div class="u-mt-10 msg error">' +
       esc(p.error) + '</div></div>';
   }
   const est = p.est || {};
   const zona = p.zona === "alta" ? "alta" : p.zona === "baja" ? "baja" : "";
   const cerca = (!zona && p.cerca) ? " cerca" : "";
   const q = c => (c && (c.vol_compra || c.vol_venta))
-    ? " <span style='opacity:.6'>[" + ent(c.vol_compra) + "/" + ent(c.vol_venta) + "]</span>"
+    ? " <span class='u-op-60'>[" + ent(c.vol_compra) + "/" + ent(c.vol_venta) + "]</span>"
     : "";
+
+  const sug = p.sugerencia || {};
+  /* El boton de la rotacion que lleva a donde conviene estar va
+     resaltado, tenga o no tenga la otra punta. */
+  const hacia = sug.estar_en;
+  const resaltar = sale => hacia && sale !== hacia ? "op" : "";
 
   return '<div class="par ' + zona + cerca + '">' +
     '<div class="par-top"><span class="alias">' + esc(p.alias) + '</span>' +
-    (p.alertas ? "" : '<span class="silencio">sin alertas</span>') + '</div>' +
+    '<span class="par-top-der">' +
+    (p.alertas ? "" : '<span class="silencio">sin alertas</span>') +
+    /* Editar y Borrar se usan poco: van al menu y los botones de la
+       tarjeta quedan para lo que se hace seguido. */
+    '<details class="par-menu"><summary aria-label="Más opciones">⋮' +
+      '</summary><div class="menu" role="menu">' +
+      '<a role="menuitem" onclick="this.closest(\'details\').open=false;' +
+        'editarPar(' + (p.id || 0) + ')">Editar</a>' +
+      (p.id ? '<a role="menuitem" onclick="this.closest(\'details\')' +
+        '.open=false;borrarGrupo(' + p.id + ')">Borrar</a>' : "") +
+      '</div></details>' +
+    '</span></div>' +
     '<div class="ratio">' + num(p.ratio) + '</div>' +
+    sugerenciaHtml(p) +
     banda(p) +
     (est.aviso ? '<div class="aviso">' + esc(est.aviso) + '</div>' : "") +
     '<div class="datos">' +
       '<span>' + esc(p.num) + ' <b>' + precio(p.p_num && p.p_num.ref) + '</b>' + q(p.p_num) + '</span>' +
       '<span>' + esc(p.den) + ' <b>' + precio(p.p_den && p.p_den.ref) + '</b>' + q(p.p_den) + '</span>' +
       (est.media ? '<span>media <b>' + num(est.media) + '</b></span>' : "<span></span>") +
-      (p.z != null ? '<span>z <b>' + (p.z>=0?"+":"") + p.z.toFixed(2) + '</b></span>'
+      (p.z != null ? '<span>z <b>' + conSigno(p.z, 2) + '</b></span>'
                    : '<span>n <b>' + (est.n||0) + '</b></span>') +
     '</div>' +
     /* La posicion, si el par tiene estrategia. El ratio dice si conviene
@@ -1174,15 +1362,14 @@ function tarjeta(p){
       /* Las dos direcciones: cual conviene lo dice el ratio, y de cual
          se puede salir lo dice la tenencia. Si no se tiene, el calculo
          lo avisa en vez de esconder el boton. */
-      '<button data-rotar="' + esc(p.num) + '" data-entra="' + esc(p.den) +
+      '<button class="' + resaltar(p.num) + '" data-rotar="' +
+        esc(p.num) + '" data-entra="' + esc(p.den) +
         '" data-destino="rot-' + css(p.alias) + '">' + esc(p.num) + ' → ' +
         esc(p.den) + '</button>' +
-      '<button data-rotar="' + esc(p.den) + '" data-entra="' + esc(p.num) +
+      '<button class="' + resaltar(p.den) + '" data-rotar="' +
+        esc(p.den) + '" data-entra="' + esc(p.num) +
         '" data-destino="rot-' + css(p.alias) + '">' + esc(p.den) + ' → ' +
         esc(p.num) + '</button>' +
-      '<button onclick="editarPar(' + (p.id || 0) + ')">Editar</button>' +
-      (p.id ? '<button onclick="borrarGrupo(' + p.id + ')">Borrar</button>'
-            : "") +
     '</div>' +
     '<div id="rot-' + css(p.alias) + '" hidden></div>' +
     '<div class="graf" id="g-' + css(p.alias) + '" hidden></div></div>';
@@ -1207,12 +1394,12 @@ function medicion(e, r){
         ((r.sin_ppc || []).length ? ' en ' + r.sin_ppc.map(esc).join(", ") : "") +
         ': no hay contra qué medir la entrada.</div>';
     const t = r.resultado_pct >= 0 ? "var(--sage)" : "var(--coral)";
-    return '<div style="font-family:var(--mono);font-size:12px;color:' + t +
+    return '<div class="u-mono u-fs-12" style="color:' + t +
       '">' + (r.resultado_pct >= 0 ? "+" : "") + num(r.resultado_pct, 2) +
-      '% <span style="opacity:.6">sobre lo que costó · $' + ent(r.valor) +
+      '% <span class="u-op-60">sobre lo que costó · $' + ent(r.valor) +
       '</span></div>' +
       ((e.stop || e.objetivo)
-        ? '<div class="pos-pie" style="display:block">' +
+        ? '<div class="u-block pos-pie">' +
           (e.stop ? 'stop ' + num(e.stop, 2) + " " : "") +
           (e.objetivo ? '· objetivo ' + num(e.objetivo, 2) : "") + '</div>'
         : "");
@@ -1231,11 +1418,11 @@ function medicion(e, r){
         '.</div>';
     } else {
       const t = r.contra_patron_pct >= 0 ? "var(--sage)" : "var(--coral)";
-      h += '<div style="font-family:var(--mono);font-size:12px;color:' + t +
+      h += '<div class="u-mono u-fs-12" style="color:' + t +
         '">' + (r.contra_patron_pct >= 0 ? "+" : "") +
         num(r.contra_patron_pct, 2) + '% contra ' +
         esc(NOM_PATRON[r.patron] || r.patron) + '</div>' +
-        '<div class="pos-pie" style="display:block">rindió ' +
+        '<div class="u-block pos-pie">rindió ' +
         num(r.rendimiento_pct, 2) + '% y ' +
         esc(NOM_PATRON[r.patron] || r.patron) + ' hizo ' +
         num(r.patron_pct, 2) + '% · $' + ent(r.valor) +
@@ -1244,7 +1431,7 @@ function medicion(e, r){
         '</div>';
     }
     if(filas.length)
-      h += '<div style="overflow-x:auto;margin-top:8px">' +
+      h += '<div class="u-scroll-x u-mt-8">' +
         '<table class="tabla"><thead><tr><th>Especie</th><th>Alta</th>' +
         '<th>Rindió</th><th>' + esc(NOM_PATRON[r.patron] || r.patron || "—") +
         '</th><th>Contra</th></tr></thead><tbody>' +
@@ -1253,7 +1440,7 @@ function medicion(e, r){
           '%</td><td>' + (f.patron_pct == null ? "—"
             : num(f.patron_pct, 1) + "%") + '</td><td>' +
           (f.contra_patron_pct == null
-            ? '<span style="opacity:.6">' + esc(f.nota || "—") + '</span>'
+            ? '<span class="u-op-60">' + esc(f.nota || "—") + '</span>'
             : '<span style="color:' + (f.contra_patron_pct >= 0
                 ? "var(--sage)" : "var(--coral)") + '">' +
               (f.contra_patron_pct >= 0 ? "+" : "") +
@@ -1274,10 +1461,10 @@ function medicion(e, r){
       'Editala y elegí uno.</div>';
   if(r.valor_cuota == null) return "";
   const t = r.rendimiento_pct >= 0 ? "var(--sage)" : "var(--coral)";
-  return '<div style="font-family:var(--mono);font-size:12px;color:' + t +
+  return '<div class="u-mono u-fs-12" style="color:' + t +
     '">' + (r.rendimiento_pct >= 0 ? "+" : "") + num(r.rendimiento_pct, 2) +
     '% · ' + ent(r.equivalente) + ' ' + esc(base_) +
-    ' <span style="opacity:.6">sobre ' + ent(r.aportado) +
+    ' <span class="u-op-60">sobre ' + ent(r.aportado) +
     ' aportados</span></div>';
 }
 
@@ -1287,7 +1474,7 @@ function bloquePosicion(e){
   const base_ = r.ticker_base || e.ticker_base || "";
   const esp = Object.keys(r.tenencia || {}).sort();
   let h = '<div class="pos-bloque">' +
-    '<div class="pos-pie" style="display:block;margin-top:12px">' +
+    '<div class="u-block u-mt-12 pos-pie">' +
     esc(e.nombre) + (base_ ? ' <span class="tocar">medida en ' + esc(base_) +
     '</span>' : "") + '</div>';
 
@@ -1299,14 +1486,14 @@ function bloquePosicion(e){
     h += medicion(e, r);
   }
 
-  h += '<div class="datos" style="margin-top:8px">' + esp.map(k => {
+  h += '<div class="u-mt-8 datos">' + esp.map(k => {
     const t = r.tenencia[k];
     const br = Object.keys(t.brokers || {});
     return '<span>' + esc(k) + ' <b>' + ent(t.cantidad) + '</b>' +
-      (br.length > 1 ? ' <span style="opacity:.6">' + br.map(b =>
+      (br.length > 1 ? ' <span class="u-op-60">' + br.map(b =>
         esc(b) + " " + ent(t.brokers[b])).join(" · ") + '</span>' : "") +
       (base_ && k !== base_ && t.equivalente != null
-        ? ' <span style="opacity:.6">≈ ' + ent(t.equivalente) + '</span>' : "") +
+        ? ' <span class="u-op-60">≈ ' + ent(t.equivalente) + '</span>' : "") +
       '</span>';
   }).join("") + '</div>';
 
@@ -1334,9 +1521,9 @@ function bloquePosicion(e){
       : (a.condiciones || []).map(c =>
           esc(c.simbolo) + " " + (c.operacion === "comprar" ? "≤" : "≥") + " " +
           num(c.precio, 2)).join(a.modo === "alguna" ? " o " : " y ");
-    h += '<div class="pos-pie" style="display:block">' +
+    h += '<div class="u-block pos-pie">' +
       (a.activa ? "◔ " : "○ ") + esc(a.titulo) +
-      ' <span style="opacity:.6">' + que + '</span></div>';
+      ' <span class="u-op-60">' + que + '</span></div>';
   });
 
   /* La tarjeta es el unico lugar donde vive la estrategia: si no edita,
@@ -1345,7 +1532,7 @@ function bloquePosicion(e){
      fecha. Dejar los botones que lo escriben seria dejar media funcion
      hecha, que es el error que el proyecto ya conoce. */
   const conLedger = (r.vara || "nominales") !== "indice";
-  return h + '<div data-evol="' + e.id + '" style="margin-top:10px"></div>' +
+  return h + '<div data-evol="' + e.id + '" class="u-mt-10"></div>' +
     '<div class="acciones">' +
     (conLedger
       ? '<button onclick="verMovimientos(' + e.id + ')">Movimientos</button>' +
@@ -1366,7 +1553,7 @@ async function sembrar(eid){
   const cont = document.getElementById("mv-" + eid);
   if(!cont) return;
   cont.hidden = false;
-  cont.innerHTML = '<div class="vacio" style="padding:12px">Calculando…</div>';
+  cont.innerHTML = '<div class="u-p-12 vacio">Calculando…</div>';
   let d;
   try{
     d = await (await fetch(base + "api/estrategias/" + eid + "/sembrar", {
@@ -1378,19 +1565,19 @@ async function sembrar(eid){
   if(d.error){
     cont.innerHTML = '<div class="msg error">' + esc(d.error) + '</div>'; return;
   }
-  cont.innerHTML = '<div class="nota" style="margin:8px 0">A cuántos ' +
+  cont.innerHTML = '<div class="u-m-8-0 nota">A cuántos ' +
     esc(d.ticker_base) + ' equivale cada especie. Corregilo si la compra ' +
     'fue a otro precio: de acá sale el punto de partida.</div>' +
     d.propuesta.map(a =>
       '<div class="fila"><span>' + esc(a.simbolo) + ' ' + ent(a.cantidad) +
       '</span><input type="number" step="any" data-siembra="' +
       esc(a.simbolo) + '" value="' + Math.round(a.equivalente) +
-      '" style="width:110px"></div>').join("") +
+      '" class="u-w-110"></div>').join("") +
     ((d.faltan_precio || []).length
       ? '<div class="aviso">Sin precio de ' +
         d.faltan_precio.map(esc).join(", ") + ': quedan afuera.</div>' : "") +
-    '<button class="primario" onclick="sembrarConfirmar(' + eid + ')" ' +
-    'style="margin-top:8px">Confirmar el punto de partida</button>';
+    '<button class="u-mt-8 primario" onclick="sembrarConfirmar(' + eid + ')" ' +
+    '>Confirmar el punto de partida</button>';
 }
 
 /* La misma tarjeta vive en RATIOS, BONOS o ANÁLISIS TÉCNICO segun la
@@ -1455,22 +1642,22 @@ function tarjetaCurva(e, bonos, canjes){
     const caro = b.z > 0;
     return '<span>' + esc(k) + ' <b style="color:' +
       (caro ? "var(--coral)" : "var(--sage)") + '">z ' + num(b.z, 2) +
-      '</b> <span style="opacity:.6">' + (caro ? "caro" : "barato") +
+      '</b> <span class="u-op-60">' + (caro ? "caro" : "barato") +
       ' contra su historia</span></span>';
   }).filter(Boolean).join("");
 
   const mios = (canjes || []).filter(c => esp.indexOf(c.desde) >= 0);
   const rot = mios.length
-    ? mios.map(c => '<div class="pos-pie" style="display:block">⇄ ' +
-        esc(c.desde) + ' → ' + esc(c.hacia) + ' <b style="color:var(--sage)">+' +
+    ? mios.map(c => '<div class="u-block pos-pie">⇄ ' +
+        esc(c.desde) + ' → ' + esc(c.hacia) + ' <b class="u-sage">+' +
         num(c.ganancia_pct, 2) + '%</b> neto</div>').join("")
-    : '<div class="pos-pie" style="display:block">Ningún canje supera el ' +
+    : '<div class="u-block pos-pie">Ningún canje supera el ' +
       'umbral. Es lo normal la mayoría de los días.</div>';
 
   return '<div class="par">' +
     '<div class="par-top"><span class="alias">' + esc(e.nombre) + '</span>' +
     '<span class="t">curva</span></div>' +
-    (desvios ? '<div class="datos" style="margin-top:8px">' + desvios +
+    (desvios ? '<div class="u-mt-8 datos">' + desvios +
       '</div>' : "") + rot +
     bloquePosicion(e) + '</div>';
 }
@@ -1479,7 +1666,7 @@ function tarjetaSimple(e, etiqueta){
   return '<div class="par">' +
     '<div class="par-top"><span class="alias">' + esc(e.nombre) + '</span>' +
     '<span class="t">' + esc(etiqueta) + '</span></div>' +
-    (e.tesis ? '<div class="pos-pie" style="display:block">' + esc(e.tesis) +
+    (e.tesis ? '<div class="u-block pos-pie">' + esc(e.tesis) +
       '</div>' : "") +
     bloquePosicion(e) + '</div>';
 }
@@ -1492,10 +1679,10 @@ function pintarEstrFamilia(destino, familia, etiqueta, dibujo){
   if(!cont) return;
   const lista = estrOtras.filter(e => e.familia === familia && !e.cierre);
   const cerradas = estrOtras.filter(e => e.familia === familia && e.cierre);
-  cont.innerHTML = '<div class="filtro-fila" style="margin:16px 0 6px">' +
-    '<h3 style="margin:0">' + esc(etiqueta) + '</h3>' +
-    '<button class="secundario" data-estr-nueva-fam="' + esc(familia) + '" ' +
-      'style="width:auto;padding:0 14px">Nueva</button></div>' +
+  cont.innerHTML = '<div class="u-m-16-0-6 filtro-fila">' +
+    '<h3 class="u-m-0">' + esc(etiqueta) + '</h3>' +
+    '<button class="corto secundario" data-estr-nueva-fam="' + esc(familia) + '" ' +
+      '>Nueva</button></div>' +
     (lista.length ? lista.map(dibujo).join("")
       : '<div class="vacio">Ninguna abierta.</div>') +
     archivoFamilia(cerradas, dibujo);
@@ -1506,10 +1693,10 @@ function pintarEstrFamilia(destino, familia, etiqueta, dibujo){
    operar. */
 function archivoFamilia(cerradas, dibujo){
   if(!cerradas.length) return "";
-  return '<details style="margin-top:12px" class="avanzado">' +
+  return '<details class="u-mt-12 avanzado">' +
     '<summary>Archivo · ' + cerradas.length +
     (cerradas.length === 1 ? " cerrada" : " cerradas") + '</summary>' +
-    '<div class="nota" style="margin-top:8px">' + resumenArchivo(cerradas) +
+    '<div class="u-mt-8 nota">' + resumenArchivo(cerradas) +
     '</div>' + cerradas.map(dibujo).join("") + '</details>';
 }
 
@@ -1542,12 +1729,12 @@ function riel(lo, hi, valor, sop, res, etiqueta){
   return '<div class="banda"><div class="riel"></div>' +
     '<div class="zona-ok" style="left:' + izq + '%;width:' + (der-izq) + '%"></div>' +
     (sop ? '<div class="marca sop" style="left:' + izq + '%"></div>' +
-      '<div class="marca-txt" style="left:' + izq + '%;transform:translateX(-50%)">' +
+      '<div class="u-mitad-x marca-txt" style="left:' + izq + '%">' +
       num(sop,2) + '</div>' : "") +
     (res ? '<div class="marca res" style="left:' + der + '%"></div>' +
-      '<div class="marca-txt" style="left:' + der + '%;transform:translateX(-50%)">' +
+      '<div class="u-mitad-x marca-txt" style="left:' + der + '%">' +
       num(res,2) + '</div>' : "") +
-    (etiqueta ? '<div class="marca-txt" style="left:50%;transform:translateX(-50%)">' +
+    (etiqueta ? '<div class="centrado-x marca-txt">' +
       etiqueta + '</div>' : "") +
     '<div class="aguja" style="left:' + pos(valor) + '%"></div></div>';
 }
@@ -1575,10 +1762,10 @@ async function dibujar(alias, modo){
   const cont = document.getElementById("g-" + css(alias));
   if(!cont) return;
   cont.hidden = false;
-  const barra = '<div class="periodos">' + PERIODOS.map(([k,t]) =>
+  const barra = '<div class="periodos deslizable">' + PERIODOS.map(([k,t]) =>
     '<button aria-pressed="' + (k===modo) + '" onclick="verPeriodo(\'' +
     esc(alias) + '\',\'' + k + '\')">' + t + '</button>').join("") + '</div>';
-  cont.innerHTML = barra + '<div class="vacio" style="padding:12px">Cargando…</div>';
+  cont.innerHTML = barra + '<div class="u-p-12 vacio">Cargando…</div>';
   try{
     const d = await (await fetch(base + "api/serie?alias=" +
       encodeURIComponent(alias) + "&periodo=" + modo)).json();
@@ -1595,7 +1782,7 @@ async function dibujar(alias, modo){
 
 function grafico(puntos, res, sop, modo){
   if(!puntos || puntos.length < 2)
-    return '<div class="vacio" style="padding:14px">' +
+    return '<div class="u-p-14 vacio">' +
       (modo === "intra" ? "Todavía no hay lecturas de hoy."
                         : "No hay suficiente histórico.") + '</div>';
   const W=320,H=130,ml=6,mr=42,mt=8,mb=16;
@@ -1639,10 +1826,10 @@ function grafico(puntos, res, sop, modo){
     return '<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="2.5" '+
       'fill="'+(arriba?"var(--coral)":"var(--sage)")+'"/>'+
       '<text x="'+(x+dx).toFixed(1)+'" y="'+(arriba?y-6:y+11).toFixed(1)+'" '+
-      'text-anchor="'+anchor+'" style="font-size:8px;fill:'+
+      'text-anchor="'+anchor+'" class="u-fs-8" style="fill:'+
       (arriba?"var(--coral)":"var(--sage)")+'">'+num(ys[i],4)+'</text>'+
       '<text x="'+(x+dx).toFixed(1)+'" y="'+(arriba?y-14:y+19).toFixed(1)+'" '+
-      'text-anchor="'+anchor+'" style="font-size:7px;opacity:.6">'+
+      'text-anchor="'+anchor+'" class="u-fs-7 u-op-60">'+
       corto(puntos[i].x)+'</text>';
   };
 
@@ -1657,7 +1844,7 @@ function grafico(puntos, res, sop, modo){
       return '<line x1="'+px(i)+'" y1="'+mt+'" x2="'+px(i)+'" y2="'+(H-mb)+
         '" stroke="var(--rule)" stroke-width=".5" opacity=".5"/>'+
         '<text x="'+px(i)+'" y="'+(H-4)+'" text-anchor="middle" '+
-        'style="opacity:.7">'+corto(puntos[i].x)+'</text>';
+        'class="u-op-70">'+corto(puntos[i].x)+'</text>';
     }).join("");
   }
 
@@ -1814,8 +2001,7 @@ async function calcularPlazos(){
       d.filas.slice().sort((a,b) =>
         (b.conviene?1:0) - (a.conviene?1:0) ||
         (b.neto_pct ?? -999) - (a.neto_pct ?? -999)).map(f => f.error
-        ? '<tr><td>' + esc(f.ticker) + '</td><td colspan="5" style="text-align:left;' +
-          'color:var(--muted)">' + esc(f.error) + '</td></tr>'
+        ? '<tr><td>' + esc(f.ticker) + '</td><td colspan="5" class="u-izq u-muted">' + esc(f.error) + '</td></tr>'
         : '<tr class="' + (f.conviene ? "si" : "flojo") + '"><td>' + esc(f.ticker) +
           (f.punta_vieja ? ' <span class="tocar">t1 viejo</span>' : "") + '</td>' +
           '<td>' + precio(f.compra_t0) + '</td><td>' + precio(f.venta_t1) + '</td>' +
@@ -1854,10 +2040,10 @@ const DESTINO_ALERTA = {alta:["panel","Ver en RATIOS"], baja:["panel","Ver en RA
 let regDatos = {al: [], op: []};
 function detalleAlerta(a){
   const dest = a.tipo && a.tipo.startsWith("curva_")
-    ? '<button class="secundario" onclick="verBono(\'' + esc(a.alias) +
-      '\')" style="width:auto;padding:0 14px">Ver bono</button>'
-    : (DESTINO_ALERTA[a.tipo] ? '<button class="secundario" onclick="irA(\'' +
-        DESTINO_ALERTA[a.tipo][0] + '\')" style="width:auto;padding:0 14px">' +
+    ? '<button class="corto secundario" onclick="verBono(\'' + esc(a.alias) +
+      '\')">Ver bono</button>'
+    : (DESTINO_ALERTA[a.tipo] ? '<button class="corto secundario" onclick="irA(\'' +
+        DESTINO_ALERTA[a.tipo][0] + '\')">' +
         DESTINO_ALERTA[a.tipo][1] + '</button>' : "");
   const puntas = (a.p_num != null || a.p_den != null)
     ? '<dt>Precios</dt><dd>' + (a.p_num != null ? num(a.p_num, 2) : "—") +
@@ -1868,20 +2054,18 @@ function detalleAlerta(a){
           ent(a.qc_den || 0) + ' · venta ' + ent(a.qv_num || 0) + ' / ' +
           ent(a.qv_den || 0) + '</dd>' : "")
     : "";
-  return '<div class="reg-det" style="padding:8px 4px 12px;border-bottom:' +
-      '1px solid var(--linea, #333)">' +
-    (a.mensaje ? '<div class="nota" style="margin-bottom:8px">' +
+  return '<div class="reg-borde reg-det">' +
+    (a.mensaje ? '<div class="u-mb-8 nota">' +
       textoNotif(a.mensaje) + '</div>' : "") +
     '<dl class="kv"><dt>Fecha</dt><dd>' + esc((a.ts || "").replace("T", " ")) +
       '</dd><dt>Tipo</dt><dd>' + esc(a.tipo || "") + '</dd>' +
       (a.ratio != null ? '<dt>Valor</dt><dd>' + num(a.ratio, 4) + '</dd>' : "") +
       (a.nivel != null ? '<dt>Nivel</dt><dd>' + num(a.nivel, 4) + '</dd>' : "") +
       puntas + '</dl>' +
-    (dest ? '<div style="margin-top:8px">' + dest + '</div>' : "") + '</div>';
+    (dest ? '<div class="u-mt-8">' + dest + '</div>' : "") + '</div>';
 }
 function detalleOperacion(o){
-  return '<div class="reg-det" style="padding:8px 4px 12px;border-bottom:' +
-      '1px solid var(--linea, #333)"><dl class="kv">' +
+  return '<div class="reg-borde reg-det"><dl class="kv">' +
     '<dt>Fecha</dt><dd>' + esc((o.ts || "").replace("T", " ")) + '</dd>' +
     '<dt>Par</dt><dd>' + esc(o.alias) + '</dd>' +
     '<dt>Lado</dt><dd>' + esc(o.lado || "") + '</dd>' +
@@ -1892,8 +2076,8 @@ function detalleOperacion(o){
         : "—") + ' / ' + (o.precio_den != null ? num(o.precio_den, 2) : "—") +
         '</dd>' : "") +
     (o.nota ? '<dt>Nota</dt><dd>' + esc(o.nota) + '</dd>' : "") +
-    '</dl><div style="margin-top:8px"><button class="secundario" ' +
-    'onclick="irA(\'panel\')" style="width:auto;padding:0 14px">Ver en ' +
+    '</dl><div class="u-mt-8"><button class="corto secundario" ' +
+    'onclick="irA(\'panel\')">Ver en ' +
     'RATIOS</button></div></div>';
 }
 function abrirRegistro(tipo, i){
@@ -1924,25 +2108,24 @@ async function cargarRegistro(){
     regDatos = {al, op};
     let h = '<div class="hallazgo"><h3>Operaciones</h3>';
     h += op.length ? op.map((o, i) =>
-      '<div class="fila" id="reg-op-' + i + '" style="cursor:pointer" ' +
+      '<div class="u-ptr fila" id="reg-op-' + i + '" ' +
       'onclick="abrirRegistro(\'op\',' + i + ')"><span>' + esc(o.alias) +
       ' <span class="t">' + esc(o.lado) + '</span></span><span>' +
       num(o.ratio) + ' <span class="t">' + ent(o.cantidad) + ' · ' +
       o.ts.slice(5,10) + ' ' + o.ts.slice(11,16) + '</span> ' +
       '<button onclick="event.stopPropagation();borrarOperacion(' + o.id +
-      ')" style="background:none;' +
-      'border:none;color:var(--muted);cursor:pointer">×</button></span></div>').join("")
-      : '<div class="vacio" style="padding:12px">Nada registrado todavía. ' +
+      ')" class="u-sin-fondo u-sin-borde u-muted u-ptr">×</button></span></div>').join("")
+      : '<div class="u-p-12 vacio">Nada registrado todavía. ' +
         'Se registran desde la estrategia.</div>';
     h += '</div><div class="hallazgo"><h3>Alertas</h3>';
     h += al.length ? al.map((a, i) =>
-      '<div class="fila ' + esc(iconoAlerta(a.tipo).clase) + '" id="reg-al-' +
-      i + '" style="cursor:pointer" onclick="abrirRegistro(\'al\',' + i + ')">' +
+      '<div class="u-ptr fila ' + esc(iconoAlerta(a.tipo).clase) + '" id="reg-al-' +
+      i + '" onclick="abrirRegistro(\'al\',' + i + ')">' +
       '<span><span class="a">' + iconoAlerta(a.tipo).icono + '</span> ' +
       esc(a.alias) + '</span><span>' + (a.ratio == null ? "" : num(a.ratio)) +
       ' <span class="t">' + a.ts.slice(5,10) + ' ' + a.ts.slice(11,16) +
       '</span></span></div>').join("")
-      : '<div class="vacio" style="padding:12px">Sin alertas todavía.</div>';
+      : '<div class="u-p-12 vacio">Sin alertas todavía.</div>';
     cont.innerHTML = h + '</div>';
   }catch(e){
     cont.innerHTML = '<div class="msg error">No se pudo cargar.</div>';
@@ -2064,7 +2247,7 @@ function resumenPanel(d){
       (t.venta ? precio(t.venta) : "—") + '</td></tr>').join("") +
     '</tbody></table></div></div>' +
     '<details class="avanzado"><summary>Respuesta cruda</summary>' +
-    '<button class="secundario" style="width:auto;padding:0 14px;margin:6px 0" ' +
+    '<button class="corto u-m-6-0 secundario" ' +
       'onclick="copiarCrudo(this)">Copiar</button>' +
     '<pre class="crudo">' + esc(JSON.stringify(d.muestra_cruda, null, 2)) +
     '</pre></details>';
@@ -2078,11 +2261,11 @@ $("#e-path-btn").addEventListener("click", async () => {
     const r = await fetch(base + "api/explorar/raw?path=" + encodeURIComponent(path));
     const d = await r.json();
     out.innerHTML = r.ok
-      ? '<div style="display:flex;gap:6px;margin-bottom:6px">' +
-        '<button class="secundario" style="width:auto;padding:0 14px" ' +
+      ? '<div class="u-flex u-gap-6 u-mb-6">' +
+        '<button class="corto secundario" ' +
           'onclick="this.closest(\'div\').nextElementSibling.classList.toggle(\'completo\')">' +
           'Ver completa / plegar</button>' +
-        '<button class="secundario" style="width:auto;padding:0 14px" ' +
+        '<button class="corto secundario" ' +
           'onclick="copiarCrudo(this)">Copiar</button></div>' +
         '<pre class="crudo">' + esc(JSON.stringify(d.respuesta, null, 2)) +
         '</pre>'
@@ -2154,7 +2337,7 @@ async function verMovimientos(eid, forzar){
   }
   movsAbiertos[eid] = true;
   cont.hidden = false;
-  cont.innerHTML = '<div class="vacio" style="padding:12px">Cargando…</div>';
+  cont.innerHTML = '<div class="u-p-12 vacio">Cargando…</div>';
   try{
     const d = await (await fetch(base + "api/estrategias/" + eid +
       "/movimientos")).json();
@@ -2163,13 +2346,12 @@ async function verMovimientos(eid, forzar){
        equivalente sube cuando entra plata y eso no es rendimiento. */
     if(d.curva && d.curva.length > 1){
       h += grafico(d.curva.map(x => ({x:x.x, y:x.y})), 0, 0, "diario");
-      h += '<div style="font-family:var(--mono);font-size:9px;' +
-           'color:var(--muted);text-align:center;margin-bottom:8px">' +
+      h += '<div class="u-mono u-fs-9 u-muted u-centro u-mb-8">' +
            'valor de la cuota</div>';
     }
     h += d.movimientos.length
       ? d.movimientos.map(m => filaMov(m, eid)).join("")
-      : '<div class="vacio" style="padding:12px">Sin movimientos.</div>';
+      : '<div class="u-p-12 vacio">Sin movimientos.</div>';
     cont.innerHTML = h;
   }catch(e){
     cont.innerHTML = '<div class="msg error">No se pudo cargar.</div>';
@@ -2188,7 +2370,7 @@ function filaMov(m, eid){
     (m.nota ? ' <span class="t">' + esc(m.nota) + '</span>' : "") + '</span>' +
     '<span><span class="t">' + m.ts.slice(5,10) + " " + m.ts.slice(11,16) +
     '</span> <button onclick="borrarMov(' + m.id + ',' + eid + ')" ' +
-    'style="background:none;border:none;color:var(--muted);cursor:pointer">' +
+    'class="u-sin-fondo u-sin-borde u-muted u-ptr">' +
     '×</button></span></div>';
 }
 
@@ -2612,19 +2794,16 @@ $("#probar-byma").addEventListener("click", async e => {
         filas: 3})})).json();
     if(d.error){
       out.innerHTML = '<div class="msg error">' + esc(d.error) + '</div>' +
-        (d.url ? '<div class="nota" style="margin-top:6px">' +
+        (d.url ? '<div class="u-mt-6 nota">' +
           esc(d.metodo || "POST") + ' ' + esc(d.url) +
           '. Pegada en el navegador da 405: el endpoint es POST.</div>' : "");
       return;
     }
     out.innerHTML = '<div class="nota">' + d.total + ' filas · plazos ' +
       (d.plazos || []).join(", ") + '</div>' +
-      '<div class="nota" style="margin-top:4px"><b>Campos:</b> ' +
+      '<div class="u-mt-4 nota"><b>Campos:</b> ' +
       (d.campos || []).map(esc).join(", ") + '</div>' +
-      '<pre style="font-family:var(--mono);font-size:10px;white-space:pre-wrap;' +
-      'word-break:break-all;background:var(--panel);border:1px solid ' +
-      'var(--rule);padding:8px;border-radius:4px;max-height:50vh;' +
-      'overflow:auto;margin-top:8px">' +
+      '<pre class="bloque-json u-mt-8">' +
       esc(JSON.stringify(d.filas, null, 1)) + '</pre>';
   }catch(err){
     out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
@@ -2641,12 +2820,9 @@ $("#probar-ec").addEventListener("click", async e => {
     const d = await (await fetch(base + "api/iol/estadocuenta",
       {method:"POST"})).json();
     out.innerHTML = (d.cuentas || []).map(c =>
-      '<div style="margin-top:10px"><b>' + esc(c.broker) + '</b>' +
+      '<div class="u-mt-10"><b>' + esc(c.broker) + '</b>' +
       (c.error ? '<div class="msg error">' + esc(c.error) + '</div>'
-               : '<pre style="font-family:var(--mono);font-size:10px;' +
-                 'white-space:pre-wrap;word-break:break-all;' +
-                 'background:var(--panel);border:1px solid var(--rule);' +
-                 'padding:8px;border-radius:4px;max-height:50vh;overflow:auto">' +
+               : '<pre class="bloque-json">' +
                  esc(JSON.stringify(c.respuesta, null, 1)) + '</pre>') +
       '</div>').join("") || '<div class="vacio">Sin cuentas.</div>';
   }catch(err){
@@ -2726,7 +2902,7 @@ function tablaOperaciones(filas){
     return '<div class="vacio">Sin operaciones.</div>';
   const orden = filas.slice().sort((a, b) =>
     String(b.fechaOperada || "").localeCompare(String(a.fechaOperada || "")));
-  return '<div style="overflow-x:auto"><table class="tabla">' +
+  return '<div class="u-scroll-x"><table class="tabla">' +
     '<thead><tr><th>Fecha</th><th>Símbolo</th><th>Tipo</th>' +
     '<th>Cantidad</th><th>Precio</th>' +
     '<th>Importe</th></tr></thead><tbody>' +
@@ -2757,7 +2933,7 @@ async function pedirAltas(aplicar, pisar, btn){
       body: JSON.stringify({desde, hasta, aplicar, pisar})})).json();
     altasUlt = d;
     out.innerHTML = (d.cuentas || []).map(c => {
-      if(c.error) return '<div style="margin-top:10px"><b>' + esc(c.broker) +
+      if(c.error) return '<div class="u-mt-10"><b>' + esc(c.broker) +
         '</b><div class="msg error">' + esc(c.error) + '</div></div>';
       const fila = f => '<div class="fila"><span>' + esc(f.simbolo) +
         ((f.filas || []).length > 1
@@ -2785,28 +2961,28 @@ async function pedirAltas(aplicar, pisar, btn){
         (f.motivo ? " · " + esc(f.motivo) + " (" + ent(f.cantidad) +
           " contra " + ent(f.reconstruida) + ")" : "") +
         '</span></div>';
-      return '<div style="margin-top:10px"><b>' + esc(c.broker) + '</b>' +
+      return '<div class="u-mt-10"><b>' + esc(c.broker) + '</b>' +
         ' <span class="t">' + c.operaciones + ' operaciones' +
         (c.desde_real ? ", la más vieja del " + esc(c.desde_real) : "") +
         '</span>' +
         (c.escritas !== undefined
           ? '<div class="msg">' + c.escritas + ' escritas.</div>' : "") +
-        '<div class="pos-pie" style="display:block;margin-top:6px">Cierran (' +
+        '<div class="u-block u-mt-6 pos-pie">Cierran (' +
           c.cierran.length + ')</div>' +
         (c.cierran.map(fila).join("") ||
           '<div class="vacio">Ninguna.</div>') +
         (c.difieren.length
-          ? '<div class="pos-pie" style="display:block;margin-top:6px">' +
+          ? '<div class="u-block u-mt-6 pos-pie">' +
             'No cierran (' + c.difieren.length + ')</div>' +
             c.difieren.map(fila).join("") : "") +
         (c.sin_operaciones.length
-          ? '<div class="nota" style="margin-top:6px">Sin operaciones en el ' +
+          ? '<div class="u-mt-6 nota">Sin operaciones en el ' +
             'rango: ' + c.sin_operaciones.map(x => esc(x.simbolo)).join(", ") +
             '</div>' : "") +
         '</div>';
     }).join("") || '<div class="vacio">Sin cuentas.</div>';
     if(!aplicar && (d.cuentas || []).some(c => (c.cierran || []).length))
-      out.innerHTML += '<div class="acciones" style="margin-top:8px">' +
+      out.innerHTML += '<div class="u-mt-8 acciones">' +
         '<button class="primario" id="altas-aplicar">Guardar las que ' +
         'cierran</button>' +
         '<button id="altas-pisar">Guardar y pisar el PPC cargado</button>' +
@@ -2872,28 +3048,25 @@ $("#probar-ops").addEventListener("click", async e => {
       body: JSON.stringify({desde: desde, hasta: hasta})})).json();
     opsUlt = d;
     out.innerHTML = (d.cuentas || []).map((c, i) =>
-      '<div style="margin-top:10px"><b>' + esc(c.broker) + '</b>' +
+      '<div class="u-mt-10"><b>' + esc(c.broker) + '</b>' +
       (Array.isArray(c.respuesta)
         ? ' <span class="t">' + c.respuesta.length + ' operaciones</span>' : "") +
       (c.error ? '<div class="msg error">' + esc(c.error) + '</div>'
-               : '<div class="acciones" style="margin:6px 0">' +
+               : '<div class="u-m-6-0 acciones">' +
                  '<button data-ver-tabla="' + i + '">Ver como tabla</button>' +
                  '<button data-copiar-cuenta="' + esc(c.broker) + '">' +
                  'Copiar ' + esc(c.broker) + '</button></div>' +
                  '<div id="opstab-' + i + '" hidden>' +
                  tablaOperaciones(c.respuesta) + '</div>' +
                  '<pre id="opsjson-' + i + '" ' +
-                 'style="font-family:var(--mono);font-size:10px;' +
-                 'white-space:pre-wrap;word-break:break-all;' +
-                 'background:var(--panel);border:1px solid var(--rule);' +
-                 'padding:8px;border-radius:4px;max-height:50vh;overflow:auto">' +
+                 'class="bloque-json">' +
                  esc(JSON.stringify(c.respuesta, null, 1)) + '</pre>') +
       '</div>').join("") || '<div class="vacio">Sin cuentas.</div>';
     /* Pegar a mano un año de operaciones desde el teléfono no es
        viable: el resumen alcanza para saber qué tipos hay y el JSON
        entero para el detalle. */
     if(d.cuentas && d.cuentas.length)
-      out.innerHTML += '<div class="acciones" style="margin-top:8px">' +
+      out.innerHTML += '<div class="u-mt-8 acciones">' +
         '<button id="ops-copiar">Copiar todo</button>' +
         '<button id="ops-resumen">Copiar resumen</button></div>';
   }catch(err){
@@ -2941,23 +3114,23 @@ async function cargarHistExpl(){
           ' · ' + ent(pr.puntos || 0) + ' puntos</dd>'
         : (pr.fin ? '<dt>Última corrida</dt><dd>terminó ' + esc(pr.fin) +
           ' · ' + ent(pr.puntos || 0) + ' puntos' +
-          (pr.error ? ' · <span style="color:var(--coral)">' +
+          (pr.error ? ' · <span class="u-coral">' +
             esc(pr.error) + '</span>' : "") + '</dd>' : "")) +
       '</dl>' +
       (faltan.length
-        ? '<div class="filtro-etq" style="margin:10px 0 4px">Con historia ' +
+        ? '<div class="u-m-10-0-4 filtro-etq">Con historia ' +
           'faltante (' + faltan.length + ')</div><div class="nota">' +
-          faltan.map(x => esc(x.simbolo) + ' <span style="color:var(--muted)">' +
+          faltan.map(x => esc(x.simbolo) + ' <span class="u-muted">' +
             (x.hasta ? esc(x.desde) + ' a ' + esc(x.hasta) : 'sin serie') +
             '</span>').join(" · ") + '</div>'
         : '<div class="nota">No falta historia en ninguna especie.</div>') +
       (huecos.length
-        ? '<div class="filtro-etq" style="margin:10px 0 4px">Huecos y ' +
+        ? '<div class="u-m-10-0-4 filtro-etq">Huecos y ' +
           'errores de IOL</div>' + huecos.map(([sim, h]) =>
             '<div class="nota"><b>' + esc(sim) + '</b> ' +
             (h.huecos || []).map(x => esc(x[0]) + '–' + esc(x[1])).join(", ") +
-            (h.error ? ' <span style="color:var(--coral)">' + esc(h.error) +
-              '</span>' : "") + ' <span style="color:var(--muted)">(' +
+            (h.error ? ' <span class="u-coral">' + esc(h.error) +
+              '</span>' : "") + ' <span class="u-muted">(' +
             esc(h.fecha || "") + ')</span></div>').join("")
         : "");
     clearTimeout(hxTimer);
@@ -2991,11 +3164,11 @@ async function cargarFotos(){
       return;
     }
     out.innerHTML = brokers.map(b =>
-      '<div class="filtro-etq" style="margin:10px 0 4px">' + esc(b) + ' · ' +
+      '<div class="u-m-10-0-4 filtro-etq">' + esc(b) + ' · ' +
         d.fotos[b].length + ' foto(s)</div>' +
-      '<div class="hallazgo" style="padding:6px 10px">' +
-      d.fotos[b].map(f => '<div class="fot-fila tocar" data-br="' + esc(b) +
-        '" data-ts="' + esc(f.ts) + '" style="display:block;margin:3px 0">' +
+      '<div class="u-p-6-10 hallazgo">' +
+      d.fotos[b].map(f => '<div class="u-block u-m-3-0 fot-fila tocar" data-br="' + esc(b) +
+        '" data-ts="' + esc(f.ts) + '">' +
         esc(f.ts.replace("T", " ")) + ' · ' + ent(f.especies) +
         ' especies (' + ent(f.con_saldo) + ' con saldo)</div>').join("") +
       '</div>').join("") + '<div id="fot-det-out"></div>';
@@ -3024,7 +3197,7 @@ $("#fot-out").addEventListener("click", async e => {
       '</p><table class="bonos"><thead><tr><th>Especie</th><th>Antes</th>' +
       '<th>Ahora</th><th>Cambio</th></tr></thead><tbody>' +
       d.filas.map(x => '<tr' + (Math.abs(x.cambio) > 1e-9 ? '' :
-          ' style="color:var(--muted)"') + '><td>' + esc(x.simbolo) +
+          ' class="u-muted"') + '><td>' + esc(x.simbolo) +
         '</td><td>' + (x.anterior == null ? "—" : num(x.anterior, 2)) +
         '</td><td>' + (x.cantidad == null ? "—" : num(x.cantidad, 2)) +
         '</td><td>' + (Math.abs(x.cambio) > 1e-9
@@ -3039,12 +3212,11 @@ function pintarVariables(){
   const f = ($("#bcv-filtro").value || "").trim().toLowerCase();
   const lista = (bcvLista || []).filter(v => !f ||
     (String(v.id) + " " + (v.descripcion || "")).toLowerCase().includes(f));
-  $("#bcv-out").innerHTML = '<div class="hallazgo" style="padding:6px 10px;' +
-    'overflow-x:auto"><table class="bonos"><thead><tr><th>ID</th>' +
+  $("#bcv-out").innerHTML = '<div class="u-p-6-10 u-scroll-x hallazgo"><table class="bonos"><thead><tr><th>ID</th>' +
     '<th>Descripción</th><th>Unidad</th><th>Fecha</th><th>Valor</th></tr>' +
     '</thead><tbody>' + lista.map(v => '<tr><td>' + esc(String(v.id)) +
-      '</td><td style="text-align:left">' + esc(v.descripcion || "") +
-      '</td><td style="text-align:left">' + esc(v.unidad || "") +
+      '</td><td class="u-izq">' + esc(v.descripcion || "") +
+      '</td><td class="u-izq">' + esc(v.unidad || "") +
       '</td><td>' + esc(v.fecha || "") + '</td><td>' +
       (v.valor == null ? "—" : esc(String(v.valor))) + '</td></tr>').join("") +
     '</tbody></table></div><div class="nota">' + lista.length + ' de ' +
@@ -3159,7 +3331,7 @@ async function cargarBonos(){
     cab.innerHTML = '<div class="mep">MEP ' + esc(m.par) + ' · ' +
       'comprar USD <b>' + precio(m.comprar_usd) + '</b> · ' +
       'vender USD <b>' + precio(m.vender_usd) + '</b>' +
-      (m.completo ? "" : ' <span style="color:var(--amber)">(sin puntas ' +
+      (m.completo ? "" : ' <span class="u-amber">(sin puntas ' +
         'completas, uso el punto medio)</span>') +
       '<br>Los precios en pesos se pasan a dólares con el MEP que ' +
       'corresponde a cada punta.</div>';
@@ -3190,11 +3362,19 @@ async function cargarBonos(){
           'si el BCRA no responde, podés cargar <b>cer_actual</b> en la ' +
           'configuración como respaldo.</div>'
         : "") +
-      selectorFamilias(d.filas) +
-      '<div class="resumen">' + filtrarFamilia(d.filas).length + ' de ' +
-        d.filas.length + ' especies</div>' +
-      '<div class="hallazgo" style="padding:8px 10px">' +
-      '<table class="bonos"><thead><tr>' +
+      '<details class="filtros"' + (bFiltrosAbierto ? " open" : "") +
+        ' ontoggle="bFiltrosAbierto=this.open"><summary>Filtros' +
+        (filtrosActivos() ? ' · <b>' + filtrosActivos() + ' activo' +
+          (filtrosActivos() > 1 ? "s" : "") + '</b>' : "") + '</summary>' +
+        selectorFamilias(d.filas) + '</details>' +
+      '<div class="bonos-barra"><div class="resumen">' +
+        filtrarFamilia(d.filas).length + ' de ' + d.filas.length +
+        ' especies</div><button class="corto secundario" ' +
+        'onclick="alternarPuntas()">' +
+        (verPuntas() ? "Ocultar puntas" : "Ver puntas") + '</button></div>' +
+      '<div class="hallazgo tabla-bonos">' +
+      '<table class="bonos' + (verPuntas() ? "" : " sin-puntas") +
+        '"><thead><tr>' +
       th("simbolo","Especie") + th("md","MD") +
       th("last","Last") + th("tir_last","TIR Last") +
       th("bid","Bid","hbid") + th("tir_bid","TIR Bid","hbid") +
@@ -3204,17 +3384,17 @@ async function cargarBonos(){
         /* los bonos en pesos cotizan en miles y no necesitan decimales;
            los dolarizados y los CER sí */
         const p = v => !v ? "—" : (Math.abs(v) < 10000 ? precio(v) : ent(v));
-        const t = v => v == null ? "—" : v.toFixed(2) + "%";
+        const t = v => v == null ? "—" : dec(v, 2) + "%";
         const clase = f.moneda === "USD" ? "usd"
                     : f.moneda === "CER" ? "cer" : "";
         return '<tr class="' + clase +
           (f.falta_cer || f.falta_tc ? " sindato" : "") + '">' +
           '<td class="tk" onclick="verBono(\'' + esc(f.simbolo) + '\')">' +
           esc(f.simbolo) +
-          (f.etiqueta ? '<br><span class="tocar" style="margin-top:2px" ' +
+          (f.etiqueta ? '<br><span class="u-mt-2 tocar" ' +
             'title="' + esc(f.etiqueta_ayuda || "") + '">' +
             esc(f.etiqueta) + '</span>' : "") + '</td>' +
-          '<td class="md">' + (f.md != null ? f.md.toFixed(1) : "—") + '</td>' +
+          '<td class="md">' + (f.md != null ? dec(f.md, 1) : "—") + '</td>' +
           '<td' + (f.last_viejo ? ' class="viejo"' : "") + '>' + p(f.last) + '</td>' +
           '<td class="tir' + (f.last_viejo ? " viejo" : "") + '">' +
             t(f.tir_last) + '</td>' +
@@ -3225,7 +3405,7 @@ async function cargarBonos(){
           '<td class="' + claseDesvio(f) + '">' + textoDesvio(f) + '</td>' +
           '<td class="' + claseDesvio(f) + '">' + textoZ(f) + '</td></tr>';
       }).join("") + '</tbody></table></div>' +
-      '<div class="nota" style="margin-top:8px">Tocá un encabezado para ' +
+      '<div class="u-mt-8 nota">Tocá un encabezado para ' +
       'ordenar por esa columna, y el ticker para ver el detalle y el flujo. ' +
       'La TIR del último operado sirve cuando no hay puntas; atenuada ' +
       'significa que ese precio no es de hoy.<br><br>' +
@@ -3238,7 +3418,7 @@ async function cargarBonos(){
       'Las TIR de las especies C están medidas en dólar cable y las de las D ' +
       'en MEP, así que no se comparan entre sí. La solapa Rulo muestra esa ' +
       'diferencia.</div>' +
-      '<button class="secundario" id="b-curva" style="margin-top:10px">' +
+      '<button class="u-mt-10 secundario" id="b-curva">' +
       'Ver curva</button><div id="b-curva-out"></div>';
     $("#b-curva").addEventListener("click", () => {
       const c = $("#b-curva-out");
@@ -3270,7 +3450,7 @@ function dualHtml(x){
       ent(x.tamar_proyectados) + ' a la tasa vigente</dd>' +
     '<dt>Pata CER</dt><dd>' + (x.vpv_cer == null ? "—"
       : num(x.vpv_cer, 2) + ' · CER congelado en el vigente') +
-      ' <span style="color:var(--muted)">(base ' + esc(x.cer_base_fecha) +
+      ' <span class="u-muted">(base ' + esc(x.cer_base_fecha) +
       ')</span></dd>' +
     (eq ? '<dt>Inflación de equilibrio</dt><dd>' + (eq.ya_supera
       ? 'la pata CER ya supera a la TAMAR'
@@ -3310,7 +3490,7 @@ async function verBono(sim){
       (d.nota ? '<p class="nota">' + esc(d.nota) + '</p>' : "") +
       '<dl class="kv">' +
       (pp ? '<dt>Próximo pago</dt><dd>' + esc(pp.fecha) + ' · ' +
-        val(pp.total) + (pp.amortizacion ? ' <span style="color:var(--sage)">' +
+        val(pp.total) + (pp.amortizacion ? ' <span class="u-sage">' +
         '(renta ' + val(pp.renta) + ' + amort ' + val(pp.amortizacion) + ')</span>'
         : ' (renta)') + '</dd>' : "") +
       '<dt>Vencimiento</dt><dd>' + esc(d.vencimiento) +
@@ -3324,7 +3504,7 @@ async function verBono(sim){
         val(d.interes_corrido, "", 4) + '</dd>' +
       '<dt>Valor técnico</dt><dd>' + val(d.valor_tecnico) + '</dd>' +
       (d.cer_factor ? '<dt>Factor CER</dt><dd>' + val(d.cer_factor, "", 4) +
-        (d.cer_base_fecha ? ' <span style="color:var(--muted)">(base ' +
+        (d.cer_base_fecha ? ' <span class="u-muted">(base ' +
           esc(d.cer_base_fecha) + ')</span>' : "") + '</dd>' : "") +
       '<dt>Paridad</dt><dd>' + val(d.paridad) + '%</dd>' +
       (esDual ? "" : '<dt>Current yield</dt><dd>' +
@@ -3341,9 +3521,9 @@ async function verBono(sim){
           (d.fila.residuo >= 0 ? "+" : "") + d.fila.residuo.toFixed(0) + ' pb' +
           (d.fila.z != null
             ? '  ·  z ' + (d.fila.z >= 0 ? "+" : "") + d.fila.z.toFixed(2) +
-              ' <span style="color:var(--muted)">(sobre ' + d.fila.z_n +
+              ' <span class="u-muted">(sobre ' + d.fila.z_n +
               ' días)</span>'
-            : ' <span style="color:var(--muted)">(sin historia para el z)</span>') +
+            : ' <span class="u-muted">(sin historia para el z)</span>') +
           '</dd>' +
           (d.fila.vecino ? '<dt>Rotar contra</dt><dd>' +
             esc(d.fila.vecino) + '</dd>' : "")
@@ -3377,13 +3557,13 @@ async function graficarTir(sim, periodo){
   const barra = '<div class="periodos">' + PERIODOS_TIR.map(([k,t]) =>
     '<button aria-pressed="' + (k===periodo) + '" onclick="graficarTir(\'' +
     esc(sim) + '\',\'' + k + '\')">' + t + '</button>').join("") + '</div>';
-  cont.innerHTML = barra + '<div class="vacio" style="padding:12px">Cargando…</div>';
+  cont.innerHTML = barra + '<div class="u-p-12 vacio">Cargando…</div>';
 
   try{
     const d = await (await fetch(base + "api/bonos/" +
       encodeURIComponent(sim) + "/historico?periodo=" + periodo)).json();
     if(!d.puntos || d.puntos.length < 2){
-      cont.innerHTML = barra + '<div class="vacio" style="padding:12px">' +
+      cont.innerHTML = barra + '<div class="u-p-12 vacio">' +
         'Todavía no hay serie para este bono. El histórico se reconstruye ' +
         'la primera vez que arranca la app y tarda unos minutos.</div>';
       return;
@@ -3429,7 +3609,7 @@ function selectorFamilias(filas){
     const disp = opciones.filter(([k]) => hay(k));
     if(disp.length < 3) return "";
     return '<div class="filtro-fila"><span class="filtro-etq">' + etq + '</span>' +
-      '<div class="periodos" style="margin:0">' +
+      '<div class="u-m-0 periodos">' +
       disp.map(([k,t]) => '<button aria-pressed="' + (filtro[clave]===k) +
         '" onclick="elegirFiltro(\'' + clave + '\',\'' + k + '\')">' +
         t + '</button>').join("") + '</div></div>';
@@ -3437,7 +3617,7 @@ function selectorFamilias(filas){
   /* cartera: dos opciones, así que no pasa por fila(), que pide tres */
   const cartera = filas.some(f => f.en_cartera)
     ? '<div class="filtro-fila"><span class="filtro-etq">Cartera</span>' +
-      '<div class="periodos" style="margin:0">' +
+      '<div class="u-m-0 periodos">' +
       [["todas","Todas"],["si","En cartera"]].map(([k,t]) =>
         '<button aria-pressed="' + ((filtro.cartera || "todas") === k) +
         '" onclick="elegirFiltro(\'cartera\',\'' + k + '\')">' + t +
@@ -3448,6 +3628,25 @@ function selectorFamilias(filas){
          fila("Tipo", TIPOS, "tipo") +
          fila("Moneda", MONEDAS, "moneda") +
          fila("Emisor", EMISORES, "emisor");
+}
+
+/* Los filtros van plegados: ocupaban media pantalla del telefono antes
+   de la primera fila. El resumen dice cuantos hay puestos. */
+let bFiltrosAbierto = false;
+function filtrosActivos(){
+  return ["ley","tipo","moneda","emisor"].filter(k =>
+      !["todas","todos"].includes(filtro[k])).length +
+    ((filtro.cartera || "todas") !== "todas" ? 1 : 0);
+}
+
+/* Bid y ask ocupan cuatro columnas: en el telefono arrancan ocultas.
+   La eleccion se recuerda. */
+function verPuntas(){
+  return recordado("bonos-puntas", window.matchMedia("(min-width: 700px)").matches);
+}
+function alternarPuntas(){
+  recordar("bonos-puntas", !verPuntas());
+  cargarBonos();
 }
 
 function elegirFiltro(clave, valor){
@@ -3513,14 +3712,14 @@ function claseDesvio(f){
 
 function textoDesvio(f){
   if(f.residuo == null) return "—";
-  return (f.residuo >= 0 ? "+" : "") + f.residuo.toFixed(0) +
-    ' <span style="opacity:.45">pb</span>';
+  return conSigno(f.residuo, 0) +
+    ' <span class="u-op-45">pb</span>';
 }
 
 function textoZ(f){
   if(f.z == null)
-    return '<span style="opacity:.35">—</span>';
-  return (f.z >= 0 ? "+" : "") + f.z.toFixed(2);
+    return '<span class="u-op-35">—</span>';
+  return conSigno(f.z, 2);
 }
 
 /* ---------- curva TIR vs duration ---------- */
@@ -3550,7 +3749,7 @@ function dibujarCurva(){
   const usar = filtrarFamilia(filas);
 
   if(usar.length < 3){
-    cont.innerHTML = '<div class="vacio" style="padding:14px">' +
+    cont.innerHTML = '<div class="u-p-14 vacio">' +
       'Hacen falta al menos tres bonos con precio en esta selección.</div>';
     return;
   }
@@ -3610,14 +3809,14 @@ function dibujarCurva(){
       if(etiquetar.has(p.simbolo) || usar.length <= 8){
         const der = X(p.md) < (W - mr - 40);
         svg += '<text x="'+(X(p.md) + (der ? 5 : -5)).toFixed(1) +
-          '" y="'+(Y(p.tir_last)+3).toFixed(1) + '" style="font-size:7px"' +
+          '" y="'+(Y(p.tir_last)+3).toFixed(1) + '" class="u-fs-7"' +
           (der ? "" : ' text-anchor="end"') + '>'+esc(p.simbolo)+'</text>';
       }
     });
   });
 
   const leyenda = mezcla
-    ? '<div class="leyenda" style="flex-wrap:wrap">' + grupos.map(g =>
+    ? '<div class="u-wrap leyenda">' + grupos.map(g =>
         '<span><i style="border-top-color:'+g.col+'"></i>'+
         esc(g.fam) + ' (' + g.pts.length + ')</span>').join("") + '</div>'
     : "";
@@ -3628,12 +3827,12 @@ function dibujarCurva(){
       'una en MEP no son comparables, y un provincial rinde por encima de la ' +
       'curva nacional por su propio riesgo. Filtrá para ver una sola.</div>'
       : "") +
-    '<svg class="chart" viewBox="0 0 '+W+' '+H+'" style="height:190px" role="img">' +
+    '<svg class="u-h-190 chart" viewBox="0 0 '+W+' '+H+'" role="img">' +
     svg +
-    '<text x="2" y="'+(mt+4)+'" style="font-size:8px">'+y1.toFixed(1)+'%</text>' +
-    '<text x="2" y="'+(H-mb+4)+'" style="font-size:8px">'+y0.toFixed(1)+'%</text>' +
-    '<text x="'+ml+'" y="'+(H-6)+'" style="font-size:8px">'+x0.toFixed(1)+' años</text>' +
-    '<text x="'+(W-mr)+'" y="'+(H-6)+'" text-anchor="end" style="font-size:8px">'+
+    '<text x="2" y="'+(mt+4)+'" class="u-fs-8">'+y1.toFixed(1)+'%</text>' +
+    '<text x="2" y="'+(H-mb+4)+'" class="u-fs-8">'+y0.toFixed(1)+'%</text>' +
+    '<text x="'+ml+'" y="'+(H-6)+'" class="u-fs-8">'+x0.toFixed(1)+' años</text>' +
+    '<text x="'+(W-mr)+'" y="'+(H-6)+'" text-anchor="end" class="u-fs-8">'+
       x1.toFixed(1)+'</text></svg>' + leyenda +
     '<div class="nota">TIR del último operado contra duration modificada.' +
     ' En verde los que rinden más de lo que la curva sugiere para su plazo, ' +
@@ -3686,11 +3885,11 @@ function unCircuito(x){
     : "vía " + nombreMon(x.medio);
   const unidad = x.tipo === "bono" ? " en nominales" : "";
   const id = "cp-" + (cSerie++);
-  return '<div class="circuito' + (gana ? " gana" : "") +
-    '" data-pasos="' + id + '" style="cursor:pointer">' +
+  return '<div class="u-ptr circuito' + (gana ? " gana" : "") +
+    '" data-pasos="' + id + '">' +
     '<div><span class="r">' + (gana ? "+" : "") +
       x.resultado_pct.toFixed(3) + '%</span> ' +
-      '<span style="color:var(--muted);font-size:11px">' + esc(cab) +
+      '<span class="u-muted u-fs-11">' + esc(cab) +
       unidad + '</span></div>' +
     '<div class="ruta">' + esc(flechas) + '</div>' +
     '<div class="ej">ejecutable ' + ent(Math.floor(x.nominales)) +
@@ -3755,14 +3954,14 @@ async function cargarCircuitos(){
     pintarTengo();
 
     if(!cTengo.monedas.length && !cTengo.bonos.length){
-      out.innerHTML = '<div class="vacio" style="padding:14px">' +
+      out.innerHTML = '<div class="u-p-14 vacio">' +
         'No hay de dónde partir. Cargá tus bonos en Posición → Tenencias, ' +
         'y revisá que la configuración tenga al menos una moneda en ' +
         '<b>monedas_rulo</b>.</div>';
       return;
     }
     if(!d.grupos || !d.grupos.length){
-      out.innerHTML = '<div class="vacio" style="padding:14px">' +
+      out.innerHTML = '<div class="u-p-14 vacio">' +
         'No hay circuitos calculables ahora. Fuera de la rueda las puntas ' +
         'quedan vacías o rotas, así que no se puede saber qué es ' +
         'ejecutable.</div>';
@@ -3844,7 +4043,7 @@ function sprDetalle(f){
     '</div>').join("");
   const dato = (t,v) => '<span>' + t + ' <b>' + v + '</b></span>';
   return sprPayoff(f) +
-    '<div class="datos" style="margin:8px 0">' +
+    '<div class="u-m-8-0 datos">' +
       dato("riesgo", "$" + ent(f.riesgo_total)) +
       dato("ganancia", "$" + ent(f.ganancia_total)) +
       dato("equilibrio", precio(f.equilibrio)) +
@@ -3853,7 +4052,7 @@ function sprDetalle(f){
       dato("máx. en", (f.var_max_pct>=0?"+":"") + f.var_max_pct.toFixed(1) + "%") +
       dato("comisión", precio(f.comision)) +
     '</div>' + patas +
-    (f.garantia ? '<div class="aviso" style="margin-top:8px">Inmoviliza ' +
+    (f.garantia ? '<div class="u-mt-8 aviso">Inmoviliza ' +
       '$' + ent(f.garantia) + ' de garantía por lote: es la diferencia de ' +
       'bases.</div>' : "") +
     '<div class="op-acc">' +
@@ -3874,19 +4073,22 @@ function sprFila(f){
   const id = "sp-" + (sprSerie++);
   sprDatos[f.id] = f;
   const alarma = f.riesgo_pct <= (sprDatos._umbral || 33);
-  const marca = f.a_favor === true ? '<span class="tocar">a favor</span>'
-              : f.a_favor === false ? "" : "";
-  return '<div class="circuito' + (alarma ? " gana" : "") +
-    '" data-pasos="' + id + '" style="cursor:pointer">' +
-    '<div><span class="r">' + f.riesgo_pct.toFixed(1) + '%</span> ' +
-      '<span style="color:var(--muted);font-size:11px">' +
-      esc(sprNombre(f.estructura)) + ' · 1 a ' + num(f.ratio,3) + '</span></div>' +
-    '<div class="ruta">' + num(f.base_compra,5) + ' / ' + num(f.base_venta,5) +
-      ' · ' + f.dias + ' días</div>' +
-    '<div class="ej">ejecutable ' + ent(f.lotes) +
-      (f.lotes === 1 ? ' lote' : ' lotes') + ' · riesgo $' +
-      ent(f.riesgo_total) + ' ' + marca +
-      ' <span class="tocar">tocar para el detalle</span></div>' +
+  const alc = f.estructura === "BULL_CALL" || f.estructura === "BULL_PUT";
+  /* Las bases sin decimales de mas: 5.800 y no 5.800,0. */
+  const b = v => v == null ? "—"
+    : v.toLocaleString("es-AR", {maximumFractionDigits:2});
+  return '<div class="u-ptr circuito spr' + (alarma ? " gana" : "") +
+    '" data-pasos="' + id + '"><div class="spr-fila">' +
+    '<div class="spr-r ' + (alc ? "alc" : "baj") + '">' +
+      dec(f.riesgo_pct, 1) + '%</div>' +
+    '<div><div class="spr-nom">' + esc(sprNombre(f.estructura)) + '</div>' +
+      '<div class="spr-sub">' + b(f.base_compra) + ' / ' + b(f.base_venta) +
+      ' · ' + f.dias + ' d · 1 a ' + num(f.ratio,3) + '</div></div>' +
+    '<div class="spr-der">$' + ent(f.riesgo_total) +
+      '<div class="spr-sub">' + ent(f.lotes) +
+      (f.lotes === 1 ? ' lote' : ' lotes') +
+      (f.a_favor === true ? ' · <b>a favor</b>' : "") + '</div></div>' +
+    '</div>' +
     '<div class="pasos" id="' + id + '" hidden>' + sprDetalle(f) + '</div>' +
     '</div>';
 }
@@ -3910,7 +4112,7 @@ async function cargarOpcPosiciones(){
         '<div><span class="r">' + (v && v.ganancia_pct !== null
           ? (v.ganancia_pct >= 0 ? "+" : "") + v.ganancia_pct.toFixed(0) + "%"
           : "—") + '</span> ' +
-          '<span style="color:var(--muted);font-size:11px">' +
+          '<span class="u-muted u-fs-11">' +
           esc(p.subyacente) + ' ' + num(p.base_compra,5) + '/' +
           num(p.base_venta,5) + ' · ' + ent(p.lotes) + ' lotes' +
           (p.lotes_de_tenencia ? '' : ' (cargados)') + '</span></div>' +
@@ -4088,7 +4290,7 @@ async function cargarOpciones(){
           ' tienen las dos puntas, y ninguna arma un spread dentro del ' +
           ((d.parametros||{}).riesgo_max_tabla_pct || 45) + '% del ancho.';
       }
-      out.innerHTML = '<div class="vacio" style="padding:14px">' + msg + '</div>';
+      out.innerHTML = '<div class="u-p-14 vacio">' + msg + '</div>';
       return;
     }
     out.innerHTML =
@@ -4141,7 +4343,7 @@ function pintarMapaOpc(){
     (opcMapa.estr === "todas"
       || (opcMapa.estr === "alcistas") === alcista(f.estructura)));
 
-  const chips = (id, ops, actual) => '<div class="filtro-fila">' +
+  const chips = (id, ops, actual) => '<div class="u-mb-6 periodos">' +
     ops.map(o => '<button aria-pressed="' + (actual === o[0]) +
       '" data-mapa="' + id + '" data-val="' + esc(String(o[0])) + '">' +
       esc(o[1]) + '</button>').join("") + '</div>';
@@ -4179,10 +4381,10 @@ function pintarMapaOpc(){
     (opcMapa.sel === f.id ? 7 : 4.5) + '" fill="' + color(f) +
     '" fill-opacity="' + (opcMapa.sel === f.id ? 1 : .6) +
     '" stroke="' + (opcMapa.sel === f.id ? "var(--txt)" : "none") +
-    '" stroke-width="1.5" style="cursor:pointer"></circle>').join("");
+    '" stroke-width="1.5" class="u-ptr"></circle>').join("");
 
   const yU = opcMapa.umbral != null ? py(opcMapa.umbral) : null;
-  h += '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto">' +
+  h += '<svg viewBox="0 0 ' + W + ' ' + H + '" class="u-w-100 u-h-auto">' +
     '<line x1="' + px(refX).toFixed(1) + '" y1="' + mA + '" x2="' +
       px(refX).toFixed(1) + '" y2="' + (H - mB) +
       '" stroke="var(--muted)" stroke-dasharray="3 3"></line>' +
@@ -4356,12 +4558,12 @@ async function logCrudo(){
       '<table class="tabla"><thead><tr><th>Fecha y hora</th>' +
       '<th>Dirección</th><th>Quién</th><th class="num">Est.</th></tr></thead>' +
       '<tbody>' + u.map(x =>
-        '<tr data-ruta="' + esc(x.ruta) + '" style="cursor:pointer">' +
-          '<td style="font-size:11px;white-space:nowrap">' +
+        '<tr data-ruta="' + esc(x.ruta) + '" class="u-ptr">' +
+          '<td class="u-fs-11 u-nowrap">' +
           esc((x.ts || "").replace("T", " ")) + '</td>' +
-          '<td style="word-break:break-all;font-size:11px">' +
+          '<td class="u-quebrar u-fs-11">' +
             esc(x.ruta) + '</td>' +
-          '<td style="font-size:11px">' + esc(x.origen || "") + '</td>' +
+          '<td class="u-fs-11">' + esc(x.origen || "") + '</td>' +
           '<td class="num">' + esc(x.status) + '</td></tr>').join("") +
       '</tbody></table>' +
       '<div class="nota">Las ' + u.length + ' más recientes, de las últimas ' +
@@ -4395,18 +4597,18 @@ async function logResumen(){
       '<th class="num">ms</th><th>Última</th></tr></thead><tbody>' +
       (r.por_fuente || []).map(f =>
         '<tr><td>' + esc(f.fuente) + '</td><td class="num">' + ent(f.n) +
-        '</td><td class="num"' + (f.errores ? ' style="color:var(--coral)"'
+        '</td><td class="u-coral num"' + (f.errores ? ''
           : "") + '>' + ent(f.errores) + '</td><td class="num">' +
-        ent(f.ms) + '</td><td style="font-size:11px">' +
+        ent(f.ms) + '</td><td class="u-fs-11">' +
         esc((f.ultima || "").replace("T", " ").slice(5, 16)) +
         '</td></tr>').join("") + '</tbody></table>' +
-      '<div class="nota" style="margin:8px 0 12px">Solo las de IOL ' +
+      '<div class="u-m-8-0-12 nota">Solo las de IOL ' +
       'consumen su cupo.</div>' +
       '<table class="tabla"><thead><tr><th>Dirección</th><th>Tipo</th>' +
       '<th class="num">Veces</th></tr></thead><tbody>' +
       (r.por_ruta || []).map(x =>
-        '<tr data-ruta="' + esc(x.ruta) + '" style="cursor:pointer">' +
-          '<td style="word-break:break-all;font-size:11px">' + esc(x.ruta) +
+        '<tr data-ruta="' + esc(x.ruta) + '" class="u-ptr">' +
+          '<td class="u-quebrar u-fs-11">' + esc(x.ruta) +
           '</td><td>' + esc(x.tipo || "") + '</td>' +
           '<td class="num">' + ent(x.n) + '</td></tr>').join("") +
       '</tbody></table>' +
@@ -4503,7 +4705,7 @@ function feFila(a){
   return '<div class="circuito' + (a.avisada ? "" : d != null && d <= (a.dias_antes || 0) ? " gana" : "") +
     (a.activa ? "" : " flojo") + '">' +
     '<div><span class="r">' + esc(a.titulo) + '</span> ' +
-      '<span style="color:var(--muted);font-size:11px">' + esc(a.fecha) +
+      '<span class="u-muted u-fs-11">' + esc(a.fecha) +
       (cuando ? " · " + cuando : "") +
       (a.dias_antes ? " · avisa " + a.dias_antes + " días antes" : "") +
       (a.activa ? "" : " · pausado") + '</span></div>' +
@@ -4538,7 +4740,7 @@ function feFormulario(a){
   return '<div class="hallazgo"><h3>' + (a ? "Modificar" : "Nuevo") +
     ' recordatorio</h3><div class="form">' +
     '<div class="ancho"><label for="fe-tit">Título</label>' +
-    '<input id="fe-tit" style="text-transform:none" value="' +
+    '<input id="fe-tit" class="u-sin-mayus" value="' +
       esc((a && a.titulo) || "") + '" placeholder="Revisar D30S6"></div>' +
     '<div><label for="fe-fecha">Fecha</label>' +
     '<input id="fe-fecha" type="date" value="' + esc((a && a.fecha) || "") +
@@ -4547,10 +4749,10 @@ function feFormulario(a){
     '<input id="fe-antes" inputmode="numeric" value="' +
       ((a && a.dias_antes) || 0) + '"></div>' +
     '<div class="ancho"><label for="fe-nota">Nota</label>' +
-    '<input id="fe-nota" style="text-transform:none" value="' +
+    '<input id="fe-nota" class="u-sin-mayus" value="' +
       esc((a && a.nota) || "") + '"></div>' +
     '</div><div class="op-acc">' +
-      '<button class="primario" id="fe-guardar" style="width:auto;padding:0 16px">' +
+      '<button class="corto-16 primario" id="fe-guardar">' +
         'Guardar</button>' +
       '<button class="secundario" id="fe-cancelar">Cancelar</button>' +
     '</div></div>';
@@ -4626,7 +4828,7 @@ function alFila(a){
   return '<div class="circuito' + (e.cumple ? " gana" : "") +
     (a.activa ? "" : " flojo") + '">' +
     '<div><span class="r">' + esc(a.titulo) + '</span> ' +
-      '<span style="color:var(--muted);font-size:11px">' +
+      '<span class="u-muted u-fs-11">' +
       (a.modo === "alguna" ? "alguna condición" : "todas las condiciones") +
       (a.activa ? "" : " · pausada") + '</span></div>' +
     '<div class="ej">' + (e.cumple ? "Se cumple ahora"
@@ -4677,7 +4879,7 @@ function pintarVigilancia(lista){
   const nombres = {};
   estrOtras.concat(estrPar).forEach(e => { nombres[e.id] = e.nombre; });
   caja.innerHTML = lista.map(a =>
-    alFila(a) + '<div class="pos-pie" style="margin:-8px 0 12px">vigila ' +
+    alFila(a) + '<div class="u-m-n8-0-12 pos-pie">vigila ' +
     esc(nombres[a.estrategia_id] || ("estrategia " + a.estrategia_id)) +
     '</div>').join("");
 }
@@ -4708,7 +4910,7 @@ function alFormulario(a){
     '<div id="al-conds">' + conds.map(alCondFila).join("") + '</div>' +
     '<div class="op-acc">' +
       '<button class="secundario" id="al-mas">Agregar condición</button>' +
-      '<button class="primario" id="al-guardar" style="width:auto;padding:0 16px">' +
+      '<button class="corto-16 primario" id="al-guardar">' +
         'Guardar</button>' +
       '<button class="secundario" id="al-cancelar">Cancelar</button>' +
     '</div></div>';
@@ -4730,7 +4932,7 @@ function opcionesEstrategia(eid){
 
 function alCondFila(c){
   c = c || {simbolo:"", operacion:"vender", precio:""};
-  return '<div class="form al-cond" style="margin-top:8px">' +
+  return '<div class="u-mt-8 form al-cond">' +
     '<div><label>Símbolo</label><input class="al-sim" list="tickers" ' +
       'value="' + esc(c.simbolo || "") + '" placeholder="TZXM9"></div>' +
     '<div><label>Operación</label><select class="al-op">' +
@@ -4856,11 +5058,11 @@ async function cargarCobros(){
       const resumen = Object.entries(totales)
         .map(([mon, v]) => mon + " " + ent(v)).join(" · ");
       return '<div class="hallazgo"><h3>' + esc(nombreMes(m)) +
-        (resumen ? ' <span style="color:var(--muted);font-size:11px">' +
+        (resumen ? ' <span class="u-muted u-fs-11">' +
           esc(resumen) + '</span>' : "") + '</h3>' +
         '<table class="tabla"><tbody>' + filas.map(p =>
           '<tr><td>' + esc(p.simbolo) +
-            '<div style="font-size:10px;color:var(--muted)">' +
+            '<div class="u-fs-10 u-muted">' +
               esc(p.fecha) + ' · ' + (p.dias === 0 ? "hoy"
                 : p.dias === 1 ? "mañana" : "en " + p.dias + " días") +
             '</div></td>' +
@@ -4868,7 +5070,7 @@ async function cargarCobros(){
             ? esc(p.moneda) + " " + ent(p.importe) +
               (p.estimado ? ' <span class="tocar">est.</span>' : "")
             : "—") +
-            '<div style="font-size:10px;color:var(--muted)">' +
+            '<div class="u-fs-10 u-muted">' +
               (p.renta ? "renta " + num(p.renta, 3) : "") +
               (p.renta && p.amortizacion ? " + " : "") +
               (p.amortizacion ? "amort " + num(p.amortizacion, 3) : "") +
@@ -4930,7 +5132,7 @@ async function cargarPropuestos(){
         qué = "Salió " + ent(m.cant_sale) + " de " + esc(m.sale);
       return '<div class="pos"><div class="pos-top">' +
         '<span>' + qué + '</span></div>' +
-        '<div class="pos-pie" style="display:block">' + esc(m.broker) +
+        '<div class="u-block pos-pie">' + esc(m.broker) +
           " · entre " + esc(m.desde) + " y " + esc(m.hasta) +
           (m.tipo === "rotacion"
             ? " · salieron " + ent(m.cant_sale) + ", entraron " +
@@ -4944,9 +5146,9 @@ async function cargarPropuestos(){
           ? '<div class="fila"><span>Precio al que entró</span>' +
             '<input type="number" step="any" data-precio="' + m.id + '" ' +
             'value="' + (m.precio_entra == null ? "" : m.precio_entra) +
-            '" style="width:130px"></div>'
+            '" class="u-w-130"></div>'
           : "") +
-        '<div class="acciones" style="margin-top:6px">' +
+        '<div class="u-mt-6 acciones">' +
         '<button class="primario" data-prop="' + m.id +
           '" data-accion="confirmar">Confirmar</button>' +
         '<button data-prop="' + m.id + '" data-accion="descartar">' +
@@ -4988,7 +5190,7 @@ async function rotar(sale, entra, destino, cantidad){
   const cont = document.getElementById(destino);
   if(!cont) return;
   cont.hidden = false;
-  cont.innerHTML = '<div class="vacio" style="padding:10px">Calculando…</div>';
+  cont.innerHTML = '<div class="u-p-10 vacio">Calculando…</div>';
   let d;
   try{
     d = await (await fetch(base + "api/rotacion", {method:"POST",
@@ -5007,7 +5209,7 @@ async function rotar(sale, entra, destino, cantidad){
   }
   const br = Object.keys(d.brokers || {});
   cont.innerHTML =
-    '<div class="pos" style="margin-top:8px">' +
+    '<div class="u-mt-8 pos">' +
     '<div class="pos-top"><span>Vendés ' + ent(d.cantidad_sale) + ' ' +
       esc(d.sale) + '</span><span>' + precio(d.precio_sale) +
       (d.base_sale === 100 ? ' <span class="t">por 100</span>' : "") +
@@ -5021,9 +5223,9 @@ async function rotar(sale, entra, destino, cantidad){
     '<div class="pos-pie"><span>ratio ' + num(d.ratio, 4) + ' ' +
       esc(d.entra) + ' por cada ' + esc(d.sale) + '</span>' +
       '<span>costo ' + num(d.costo_pct, 3) + '%</span></div>' +
-    (d.mep ? '<div class="pos-pie" style="display:block">Cruce de monedas ' +
+    (d.mep ? '<div class="u-block pos-pie">Cruce de monedas ' +
       'al MEP ' + num(d.mep, 2) + '</div>' : "") +
-    (br.length ? '<div class="pos-pie" style="display:block">Está en ' +
+    (br.length ? '<div class="u-block pos-pie">Está en ' +
       br.map(b => esc(b) + " " + ent(d.brokers[b])).join(" · ") + '</div>'
       : "") +
     (d.avisos || []).map(a =>
@@ -5034,11 +5236,11 @@ async function rotar(sale, entra, destino, cantidad){
 /* Por defecto se rota todo lo que se tiene, pero la punta no siempre da
    para el tamaño entero: por eso la cantidad se puede escribir. */
 function cajaCantidad(sale, entra, destino, cantidad){
-  return '<div class="fila" style="margin-top:6px"><span>Nominales de ' +
+  return '<div class="u-mt-6 fila"><span>Nominales de ' +
     esc(sale) + '</span><input type="number" step="any" ' +
     'id="rotq-' + destino + '" value="' +
     (cantidad == null ? "" : Math.round(cantidad)) + '" ' +
-    'style="width:130px"></div>' +
+    'class="u-w-130"></div>' +
     '<div class="acciones"><button data-rotar-calc="' + esc(sale) +
     '" data-entra="' + esc(entra) + '" data-destino="' + destino +
     '">Recalcular</button>' +
@@ -5093,23 +5295,23 @@ async function cargarCanjes(recalcular){
     if(!c.length){
       out.innerHTML = '<div class="vacio">Ningún canje supera ' +
         num(d.minimo, 3) + '% neto. Es lo normal la mayoría de los días.' +
-        '</div><div class="acciones" style="margin-top:8px">' +
+        '</div><div class="u-mt-8 acciones">' +
         '<button data-canje-recalc>Recalcular ahora</button></div>';
       return;
     }
     out.innerHTML = c.map(f =>
       '<div class="pos"><div class="pos-top">' +
       '<span>' + esc(f.desde) + ' → ' + esc(f.hacia) + '</span>' +
-      '<span style="color:var(--sage)">+' + num(f.ganancia_pct, 3) + '%</span>' +
-      '</div><div class="pos-pie" style="display:block">' +
+      '<span class="u-sage">+' + num(f.ganancia_pct, 3) + '%</span>' +
+      '</div><div class="u-block pos-pie">' +
       esc(f.desde) + ': z ' + (f.z_desde == null ? "—" : num(f.z_desde, 3)) +
         ' · MD ' + num(f.md_desde, 3) +
         ' · recorrido ' + num(f.recorrido_desde, 3) + '%' +
-      '</div><div class="pos-pie" style="display:block">' +
+      '</div><div class="u-block pos-pie">' +
       esc(f.hacia) + ': z ' + num(f.z_hacia, 3) +
         ' · MD ' + num(f.md_hacia, 3) +
         ' · recorrido ' + num(f.recorrido_hacia, 3) + '%' +
-      '</div><div class="pos-pie" style="display:block">' +
+      '</div><div class="u-block pos-pie">' +
       esc(f.familia) + ' · costo de ida y vuelta ' + num(f.costo_pct, 3) + '%' +
       '</div><div class="acciones">' +
       '<button data-rotar="' + esc(f.desde) + '" data-entra="' +
@@ -5117,10 +5319,10 @@ async function cargarCanjes(recalcular){
         '">Armar la orden</button></div>' +
       '<div id="rot-' + css(f.desde + f.hacia) + '" hidden></div>' +
       '</div>').join("") +
-      '<div class="nota" style="margin-top:8px">Del ciclo de ' +
+      '<div class="u-mt-8 nota">Del ciclo de ' +
       esc((d.calculado || "").replace("T", " ").slice(0, 16) || "—") +
       '. Ya te llegó como aviso.</div>' +
-      '<div class="acciones" style="margin-top:6px">' +
+      '<div class="u-mt-6 acciones">' +
       '<button data-canje-recalc>Recalcular ahora</button></div>';
   }catch(e){
     out.innerHTML = '<div class="msg error">No se pudo calcular.</div>';
@@ -5191,7 +5393,7 @@ function resumenArchivo(cerradas){
 function graficoEvolucion(serie){
   const p = (serie || []).filter(x => x.rendimiento_pct != null);
   if(p.length < 2)
-    return '<div class="vacio" style="padding:10px">Con una sola medición ' +
+    return '<div class="u-p-10 vacio">Con una sola medición ' +
       'no hay evolución. Se guarda una por día.</div>';
   const W = 320, H = 110, ml = 6, mr = 40, mt = 10, mb = 16;
   const vals = p.map(x => x.rendimiento_pct)
@@ -5215,14 +5417,14 @@ function graficoEvolucion(serie){
     '<line x1="' + ml + '" y1="' + py(0) + '" x2="' + (W - mr) + '" y2="' +
       py(0) + '" stroke="var(--rule)" stroke-width=".5"/>' +
     '<text x="' + (W - mr + 4) + '" y="' + (py(0) + 3) +
-      '" style="font-size:8px;opacity:.6">0%</text>' +
+      '" class="u-fs-8 u-op-60">0%</text>' +
     traza("patron_pct", "var(--muted)", true) +
     traza("rendimiento_pct", ult.rendimiento_pct >= 0 ? "var(--sage)"
                                                       : "var(--coral)") +
-    '<text x="' + ml + '" y="' + (H - 3) + '" style="font-size:8px;opacity:.7">' +
+    '<text x="' + ml + '" y="' + (H - 3) + '" class="u-fs-8 u-op-70">' +
       corto(p[0].fecha) + '</text>' +
     '<text x="' + (W - mr) + '" y="' + (H - 3) + '" text-anchor="end" ' +
-      'style="font-size:8px;opacity:.7">' + corto(ult.fecha) + '</text>' +
+      'class="u-fs-8 u-op-70">' + corto(ult.fecha) + '</text>' +
     '</svg>' +
     '<div class="pos-pie"><span>' + p.length + ' mediciones</span><span>' +
       'línea llena: la estrategia' +
@@ -5263,7 +5465,7 @@ function formEstrategia(e, famFija){
       (e.grupo_id === g.id ? " selected" : "") + '>' + esc(g.nombre) +
       '</option>')).join("");
   const v = k => e[k] == null ? "" : e[k];
-  return '<div class="form" style="margin:8px 0">' +
+  return '<div class="u-m-8-0 form">' +
     '<label>Nombre<input data-e="nombre" value="' + esc(v("nombre")) +
       '"></label>' +
     '<label>Familia<select data-e="familia"' +
@@ -5288,11 +5490,11 @@ function formEstrategia(e, famFija){
       '<small class="nota">Una sola vez y no se cambia: cambiarlo mueve ' +
       'la vara y el rendimiento acumulado deja de significar nada.</small>' +
       '</label>' +
-    '<label style="grid-column:1/-1">Tesis<textarea data-e="tesis" rows="2">' +
+    '<label class="ancho">Tesis<textarea data-e="tesis" rows="2">' +
       esc(v("tesis")) + '</textarea></label>' +
-    '<label style="grid-column:1/-1">Origen<input data-e="origen" value="' +
+    '<label class="ancho">Origen<input data-e="origen" value="' +
       esc(v("origen")) + '"></label></div>' +
-    '<div class="nota" style="margin-bottom:8px">El patrón es opcional en ' +
+    '<div class="u-mb-8 nota">El patrón es opcional en ' +
       'todas las familias: es la vara externa contra la que se compara, ' +
       'aparte del rendimiento propio. Sin él, un activo que sube en pesos ' +
       'menos que el dólar se lee como ganancia. El valor se busca solo en ' +
@@ -5311,8 +5513,8 @@ function expoChips(){
   cont.innerHTML = [["", "Todas"]].concat(todas.map(n => [n, n]))
     .map(([k, t]) => '<button aria-pressed="' +
       (tenFiltro.exposicion === k) + '" data-expo="' + esc(k) + '">' +
-      (k ? '<i class="punto" style="background:' + colorExpo(k) +
-           ';display:inline-block;margin-right:5px"></i>' : "") +
+      (k ? '<i class="u-inline-block u-mr-5 punto" style="background:' + colorExpo(k) +
+           '"></i>' : "") +
       esc(t) + '</button>').join("");
 }
 
@@ -5369,19 +5571,19 @@ function pintarCartera(d){
              : (res >= 0 ? "var(--sage)" : "var(--coral)");
   let h = '<div class="cart-tot">' +
     '<div class="cart-cifra">' +
-      (cartTotal ? plata(d.total) : '<span style="letter-spacing:.1em">' +
+      (cartTotal ? plata(d.total) : '<span class="u-ls-10">' +
         '••••••</span>') + '</div>' +
     '<div class="cart-sub">' +
       (cartTotal
         ? (d.total_usd ? "US$ " + ent(d.total_usd) + " al MEP " + ent(d.mep)
                        : "sin MEP disponible")
         : "total oculto") +
-      ' <button id="cart-ojo" style="margin-left:8px">' +
+      ' <button id="cart-ojo" class="u-ml-8">' +
       (cartTotal ? "Ocultar" : "Ver") + '</button></div>';
   /* Valuar con un precio de hace días es mejor que no valuar, pero hay
      que decirlo: el total es real, la última punta no. */
   if((d.precios_viejos || []).length){
-    h += '<div class="cart-sub" style="opacity:.8">' +
+    h += '<div class="u-op-80 cart-sub">' +
       d.precios_viejos.length + ' valuada' +
       (d.precios_viejos.length === 1 ? "" : "s") + ' con precios viejos: ' +
       d.precios_viejos.map(v => esc(v[0]) + (v[1] ? " (" + esc(v[1]) + ")" : ""))
@@ -5408,11 +5610,11 @@ function pintarCartera(d){
         (d.estimado_usd_pct
           ? ", " + d.estimado_usd_pct.toFixed(0) + "% estimado con el MEP " +
             "de la fecha de alta" : "") + '</span></div>'
-      : '<div class="cart-res" style="color:var(--muted)">— en dólares' +
+      : '<div class="u-muted cart-res">— en dólares' +
         '<span class="tocar">ninguna posición tiene PPC en dólares ' +
         'todavía</span></div>';
   } else {
-    h += '<div class="cart-res" style="color:var(--muted)">' +
+    h += '<div class="u-muted cart-res">' +
       'Sin PPC cargado: no hay resultado que medir.</div>';
   }
   h += '</div>';
@@ -5429,14 +5631,14 @@ function pintarCartera(d){
     ).join("") + '</div><div class="expo-ley">' + ex.map(e =>
       '<div data-expo="' + esc(e.nombre) + '" aria-pressed="' +
       (tenFiltro.exposicion === e.nombre) +
-      '"><span style="display:flex;align-items:center;gap:6px">' +
+      '"><span class="u-flex u-centro-v u-gap-6">' +
       '<i class="punto" style="background:' + colorExpo(e.nombre) +
       '"></i>' + esc(e.nombre) + '</span><b>' + e.pct.toFixed(1) +
       '%</b></div>').join("") + '</div>';
   }
 
   if((d.sin_precio || []).length)
-    h += '<div class="aviso" style="margin-top:10px">Sin precio en caché: ' +
+    h += '<div class="u-mt-10 aviso">Sin precio en caché: ' +
       d.sin_precio.map(esc).join(", ") + '. No entran en el total, pero ' +
       'siguen en la lista.</div>';
   out.innerHTML = h;
@@ -5573,14 +5775,14 @@ function tenPintar(){
     const p = t._suma || val[t.broker + "|" + t.simbolo] || {};
     const tono = p.resultado_pct == null ? "var(--muted)"
                : (p.resultado_pct >= 0 ? "var(--sage)" : "var(--coral)");
-    const der = p.valor == null ? '<span style="color:var(--muted)">sin precio</span>'
+    const der = p.valor == null ? '<span class="u-muted">sin precio</span>'
       : (cartTotal ? plata(p.valor) : num(p.peso_pct || 0, 3) + "%");
     return '<div class="pos' + (t._suma ? "" : " ten-fila") +
       '" data-br="' + esc(t.broker) + '" data-sim="' + esc(t.simbolo) + '">' +
       '<div class="pos-top"><span>' + esc(t.simbolo) +
         (t.ajuste_supuesto ? ' <span class="tocar">aj?</span>' : "") +
         (t.extranjero ? ' <span class="tocar">exterior</span>' : "") +
-        (p.precio_viejo ? ' <span class="tocar" style="color:var(--amber)">' +
+        (p.precio_viejo ? ' <span class="u-amber tocar">' +
           'precio viejo</span>' : "") +
       '</span><span>' + der + '</span></div>' +
       /* toFixed y no num(): es-AR formatea con coma y "width:34,4%"
@@ -5590,7 +5792,7 @@ function tenPintar(){
         colorExpo(p.exposicion) + '"></span></div>' +
       '<div class="pos-pie"><span>' +
         (t.estrategia ? esc(t.estrategia)
-          : '<span style="color:var(--amber)">sin asignar</span>') +
+          : '<span class="u-amber">sin asignar</span>') +
         ' · ' + esc(t.broker) + paramsPos(t) +
       '</span><span style="color:' + tono + '">' +
         (p.resultado_pct == null ? "sin PPC"
@@ -5603,9 +5805,9 @@ function tenPintar(){
         (p.resultado_usd_pct == null ? ""
           : ' <span style="color:' + (p.resultado_usd_pct >= 0
               ? "var(--sage)" : "var(--coral)") + ';opacity:.75">' +
-            (p.ppc_usd_estimado ? "~" : "") +
-            (p.resultado_usd_pct >= 0 ? "+" : "") +
-            num(p.resultado_usd_pct, 1) + '% US$</span>') +
+            (p.ppc_usd_estimado ? "≈ " : "") +
+            (p.resultado_usd_pct >= 0 ? "+" : "−") +
+            num(Math.abs(p.resultado_usd_pct), 1) + '% US$</span>') +
       '</span></div></div>' + (t._suma ? "" : tenFicha(t, p));
   }).join("") +
     '<div class="nota">' + filas.length +
@@ -5625,7 +5827,7 @@ function paramsPos(t){
       ? " " + (t.ratio_min == null ? "" : num(t.ratio_min, 4)) + "–" +
         (t.ratio_max == null ? "" : num(t.ratio_max, 4)) : ""));
   if(t.revisar) p.push("revisar " + esc(t.revisar));
-  return p.length ? '<br><span style="color:var(--muted)">' +
+  return p.length ? '<br><span class="u-muted">' +
     p.join(" · ") + '</span>' : "";
 }
 
@@ -5747,10 +5949,10 @@ function tenFicha(t, p){
      rendimiento caian en filas distintas de la grilla y habia que
      buscarlos. */
   const usd = (v, est) => v == null
-    ? '<span style="color:var(--muted)">—</span>'
+    ? '<span class="u-muted">—</span>'
     : (est ? "~ " : "") + v;
   const pct = (v, dec, est) => v == null
-    ? '<span style="color:var(--muted)">—</span>'
+    ? '<span class="u-muted">—</span>'
     : '<span style="color:' + (v >= 0 ? "var(--sage)" : "var(--coral)") +
       '">' + (est ? "~ " : "") + (v >= 0 ? "+" : "") + num(v, dec) + '%</span>';
 
@@ -5759,7 +5961,7 @@ function tenFicha(t, p){
     /* Que es esto: el nombre largo del panel. Un ticker como DNC3O no
        dice nada por si solo tres meses despues de comprarlo. */
     (p.descripcion
-      ? '<div class="nota" style="margin-bottom:6px">' + esc(p.descripcion) +
+      ? '<div class="u-mb-6 nota">' + esc(p.descripcion) +
         '</div>' : "") +
     (p.precio_viejo
       ? '<div class="aviso">Valuada con un precio viejo' +
@@ -5794,20 +5996,20 @@ function tenFicha(t, p){
     /* La renta fija se pide al abrir y solo para renta fija: una TIR no
        se calcula sola y pedirla para toda la cartera seria la tabla de
        bonos entera por cada fila que se despliega. */
-    '<span id="rf-' + css(t.simbolo) + '" style="display:contents"></span>' +
+    '<span id="rf-' + css(t.simbolo) + '" class="u-contents"></span>' +
     (p.ppc_usd == null
-      ? '<div class="nota" style="grid-column:1/-1">Sin PPC en dólares: ' +
+      ? '<div class="ancho nota">Sin PPC en dólares: ' +
         'sale de confirmar un aporte con su precio, o de Fechas de alta ' +
         'en Explorar, que lo calcula compra por compra al MEP de cada ' +
         'día.</div>'
       : "") +
-    '</div><div class="acciones" style="margin-top:8px">' +
+    '</div><div class="u-mt-8 acciones">' +
     '<button data-editar-ten>Editar datos</button></div>';
 
   const e = estrDatos.find(x => x.id === t.estrategia_id);
   if(e){
     const m = estrMedidas.find(x => x.id === e.id);
-    h += '<div class="ficha" style="margin-top:12px">' +
+    h += '<div class="u-mt-12 ficha">' +
       '<div class="pos-pie"><span><b>' + esc(e.nombre) + '</b></span>' +
       '<span>' + esc(famNombre(e.familia)) + '</span></div>' +
       dato("Stop loss", t.stop == null ? null : num(t.stop, 6)) +
@@ -5824,16 +6026,16 @@ function tenFicha(t, p){
             (m.contra_patron_pct >= 0 ? "+" : "") +
             num(m.contra_patron_pct, 3) + '%</span>')
         : "") +
-      (e.tesis ? '<div class="nota" style="grid-column:1/-1;margin:4px 0 0">' +
+      (e.tesis ? '<div class="ancho u-m-4-0-0 nota">' +
         esc(e.tesis) + '</div>' : "") +
-      '</div><div class="acciones" style="margin-top:8px">' +
+      '</div><div class="u-mt-8 acciones">' +
       '<button data-editar-estr="' + e.id + '">Editar estrategia</button>' +
       '<button data-editar-ten>Cambiar parámetros</button></div>';
   } else {
-    h += '<div class="nota" style="margin-top:10px;color:var(--amber)">' +
+    h += '<div class="u-mt-10 u-amber nota">' +
       'Sin estrategia asignada.</div>';
   }
-  return h + '<div class="acciones" style="margin-top:8px">' +
+  return h + '<div class="u-mt-8 acciones">' +
     '<button data-cerrar>Cerrar</button></div></div>';
 }
 
@@ -5855,7 +6057,7 @@ function tenEditor(t){
 
   return '<div class="ten-edit" data-br="' + esc(t.broker) + '" data-sim="' +
     esc(t.simbolo) + '">' +
-    '<div class="form" style="margin-bottom:8px">' +
+    '<div class="u-mb-8 form">' +
     '<label>Cantidad<input data-c="cantidad" type="number" step="any" value="' +
       t.cantidad + '"></label>' +
     '<label>Tipo<select data-c="tipo">' + opc + '</select></label>' +
@@ -5878,13 +6080,13 @@ function tenEditor(t){
        precio sale de CAFCI, que identifica por nombre completo con la
        clase: se elige de la lista, no se escribe. */
     (t.tipo === "fci"
-      ? '<label style="grid-column:1/-1">Fondo en CAFCI' +
+      ? '<label class="ancho">Fondo en CAFCI' +
         '<input data-c="fci_nombre" data-fci-buscar placeholder="' +
         'escribí parte del nombre y elegí" value="' +
         esc(t.fci_nombre || "") + '"></label>' +
-        '<div data-fci-out style="grid-column:1/-1"></div>'
+        '<div data-fci-out class="ancho"></div>'
       : "") +
-    '<label style="grid-column:1/-1">Estrategia<select data-estr-sel>' +
+    '<label class="ancho">Estrategia<select data-estr-sel>' +
       ['<option value="">Sin asignar</option>'].concat(
         estrDatos.filter(x => !x.cierre).map(x =>
           '<option value="' + x.id + '"' +
@@ -5894,7 +6096,7 @@ function tenEditor(t){
       ).join("") + '</select></label>' +
     propios +
     '</div>' +
-    '<div class="form" data-estr-nueva hidden style="margin-bottom:8px">' +
+    '<div class="u-mb-8 form" data-estr-nueva hidden>' +
     '<label>Familia<select data-n="familia">' +
       estrFamilias.map(f => '<option value="' + f.id + '"' +
         (f.id === "tecnica" ? " selected" : "") + '>' + esc(f.nombre) +
@@ -5906,9 +6108,9 @@ function tenEditor(t){
         estrPatrones.map(p => '<option value="' + p + '">' +
           esc(NOM_PATRON[p] || p) + '</option>')).join("") +
       '</select></label>' +
-    '<label style="grid-column:1/-1">Tesis<textarea data-n="tesis" rows="2">' +
+    '<label class="ancho">Tesis<textarea data-n="tesis" rows="2">' +
       '</textarea></label></div>' +
-    '<div class="nota" style="margin:0 0 8px">' +
+    '<div class="u-m-0-0-8 nota">' +
       (t.estrategia ? esc(t.estrategia) + ' · ' : "") +
       'Los parámetros de arriba son de este título; la estrategia agrupa ' +
       'y mide. Guardá para que aparezcan los campos de una familia recién ' +
@@ -5979,7 +6181,7 @@ function tenPpc(t){
 }
 
 function tenAlta(t){
-  if(!t.fecha_alta) return '<span style="color:var(--muted)">—</span>';
+  if(!t.fecha_alta) return '<span class="u-muted">—</span>';
   const marca = {mes: " (mes)", antes: " (antes de)"}[t.precision] || "";
   return esc(t.fecha_alta) + marca;
 }
@@ -6020,10 +6222,10 @@ async function cargarHistorial(){
         // que el anterior del mismo broker esta mas abajo en la lista.
         const prev = h.slice(i + 1).find(x => x.broker === f.broker);
         const dif = prev ? f.cantidad - prev.cantidad : null;
-        return '<tr><td>' + esc(f.fecha) + '</td><td style="font-size:11px">' +
+        return '<tr><td>' + esc(f.fecha) + '</td><td class="u-fs-11">' +
           esc(f.broker) + '</td><td class="num">' + ent(f.cantidad) +
           '</td><td class="num">' + (dif ? (dif > 0 ? "+" : "") + ent(dif)
-            : '<span style="color:var(--muted)">—</span>') + '</td></tr>';
+            : '<span class="u-muted">—</span>') + '</td></tr>';
       }).join("") + '</tbody></table>';
   }catch(e){
     out.innerHTML = '<div class="msg error">No se pudo leer el historial.</div>';
@@ -6046,7 +6248,7 @@ async function cargarEventos(){
       '<th></th></tr></thead><tbody>' +
       ev.map(e => '<tr><td>' + esc(e.simbolo) + '</td><td>' + esc(e.fecha) +
         '</td><td class="num">×' + num(e.factor, 4) +
-        '</td><td style="font-size:11px">' + esc(e.nota || "") +
+        '</td><td class="u-fs-11">' + esc(e.nota || "") +
         '</td><td><button data-borrar-ev="' + e.id + '">Borrar</button>' +
         '</td></tr>').join("") + '</tbody></table>';
   }catch(e){
@@ -6071,8 +6273,8 @@ function tenChips(){
       const c = COLOR_TIPO[k];
       return '<button aria-pressed="' + (tenFiltro.tipo === k) +
         '" data-tipo="' + k + '">' +
-        (c ? '<i class="punto" style="background:' + c +
-             ';display:inline-block;margin-right:5px"></i>' : "") +
+        (c ? '<i class="u-inline-block u-mr-5 punto" style="background:' + c +
+             '"></i>' : "") +
         t + '</button>';
     }).join("");
 }

@@ -2233,7 +2233,8 @@ def _limpiar(f):
         return {}
     out = {k: f.get(k) for k in
            ("id", "alias", "num", "den", "ratio", "zona", "resistencia", "soporte",
-            "z", "ts", "alertas", "error", "alerta_id", "origen", "cerca")}
+            "z", "ts", "alertas", "error", "alerta_id", "origen", "cerca",
+            "sugerencia")}
     est = f.get("est") or {}
     out["est"] = {k: est.get(k) for k in
                   ("n", "media", "desvio", "min", "max", "fuente", "aviso")}

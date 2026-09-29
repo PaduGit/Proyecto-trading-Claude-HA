@@ -1,5 +1,44 @@
 # Registro de cambios
 
+## 0.51.0
+
+**Sin campos nuevos de configuracion.**
+
+**RATIOS, en que activo estar.** Cada tarjeta dice en que punta conviene
+estar segun la zona del par: con el ratio en zona alta, el denominador;
+en zona baja, el numerador; en el medio, mantener. Lo cruza con la
+tenencia, sumando los brokers: "posicionado", "tenes X, rotar" o "sin
+tenencia", y resalta el boton de la rotacion que lleva ahi. En los pares
+de la misma especie en pesos y en dolares (AL30/AL30D, AL30/AL30C) la
+lectura es dolar caro, pesos; dolar barato, dolares. Ahi no se cruza con
+la tenencia, porque la tenencia suma las monedas en la misma especie.
+AL30D/AL30C es el canje y se lee como un par comun.
+
+**RATIOS, tarjeta.** Editar y Borrar pasan a un menu en la esquina de la
+tarjeta. Los periodos del grafico van en una sola fila deslizable.
+
+**BONOS.** Numeros en formato argentino en toda la tabla (TIR, MD,
+desvio y z). La columna del ticker queda fija al desplazar. Los filtros
+van plegados y el titulo dice cuantos hay activos. Bid y ask se muestran
+u ocultan con un boton; en el telefono arrancan ocultas y la eleccion se
+recuerda.
+
+**OPCIONES.** Un spread por fila: el riesgo a la izquierda en verde o
+rojo segun sea alcista o bajista, la estructura y las bases al centro, el
+riesgo en pesos y los lotes a la derecha. Los que estan bajo el umbral
+llevan un borde ambar. Los selectores del mapa tienen el mismo estilo que
+el resto.
+
+**TENENCIAS.** El resultado en dolares estimado se marca con "≈" y el
+signo menos tipografico: "~-11%" se leia como doble guion.
+
+**Estilos ordenados.** Los estilos escritos dentro de cada etiqueta pasan
+a clases: 320 de 337. Los que quedan dependen de un dato. No cambia nada
+a la vista; el CSS usa capas (`@layer`), que necesitan un navegador o
+WebView de 2022 en adelante. La linea del detalle del Registro usaba una
+variable de color que no existia y caia en un gris propio: ahora usa el
+mismo color que las demas. Se borraron dos clases CSS que nada usaba.
+
 ## 0.50.0
 
 **Sin campos nuevos de configuracion.**

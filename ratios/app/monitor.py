@@ -758,6 +758,8 @@ class Monitor:
             "resistencia": par.get("resistencia") or 0,
             "soporte": par.get("soporte") or 0,
             "z": z, "est": est, "p_num": num, "p_den": den,
+            "sugerencia": sugerencia_par(par["num"], par["den"], zona,
+                                         _saldos_par(par)),
             "ts": datetime.now().isoformat(timespec="seconds"),
             "alertas": bool(par.get("alertas")),
             "alerta_id": alerta_id,
@@ -1973,6 +1975,77 @@ class Monitor:
             else:
                 dormir = espera
             time.sleep(dormir)
+
+
+def _sufijo_dolar(sim, otro):
+    """"D" o "C" si `sim` es `otro` en dolares MEP o cable, si no None.
+
+    Misma guarda que `operaciones.simbolo_base`: la letra final se corta
+    solo si lo que queda es la otra punta del par, no a ciegas.
+    """
+    if len(sim) > 2 and sim[-1] in ("D", "C") and sim[:-1] == otro:
+        return sim[-1]
+    return None
+
+
+def es_par_moneda(num, den):
+    """AL30/AL30D o AL30/AL30C: la misma especie en pesos y en dolares.
+
+    AL30D/AL30C no cuenta: las dos puntas son dolares y el ratio es el
+    canje, que se lee como un par comun.
+    """
+    a, b = (num or "").upper(), (den or "").upper()
+    return bool(_sufijo_dolar(a, b) or _sufijo_dolar(b, a))
+
+
+def sugerencia_par(num, den, zona, saldos=None):
+    """En que punta del par conviene estar, segun la zona.
+
+    Con ratio = num / den:
+      - zona alta: el numerador esta caro, conviene el denominador;
+      - zona baja: el numerador esta barato, conviene el numerador;
+      - normal: sin ventaja, se mantiene lo que haya.
+
+    En un par de moneda (AL30/AL30D) el ratio es el MEP o su inversa y
+    la lectura se da vuelta: dolar caro, conviene pesos. Con el ratio en
+    pesos por dolar la zona alta es dolar caro y lleva al numerador, que
+    es la punta en pesos; con el ratio invertido la zona alta es dolar
+    barato y lleva al numerador, que es la punta en dolares. En los dos
+    casos, alta lleva al numerador.
+    """
+    moneda = es_par_moneda(num, den)
+    estar_en, lectura = None, ""
+    if zona in ("alta", "baja"):
+        if moneda:
+            estar_en = num if zona == "alta" else den
+            a, b = num.upper(), den.upper()
+            suf = _sufijo_dolar(a, b) or _sufijo_dolar(b, a)
+            dolar = "dólar cable" if suf == "C" else "dólar"
+            otra = den if estar_en == num else num
+            en_pesos = _sufijo_dolar(otra.upper(), estar_en.upper()) is not None
+            lectura = ("%s caro → pesos" % dolar) if en_pesos \
+                else ("%s barato → dólares" % dolar)
+        else:
+            estar_en = den if zona == "alta" else num
+            lectura = ("%s caro" % num) if zona == "alta" \
+                else ("%s barato" % num)
+    elif zona == "normal":
+        lectura = "ratio dentro del rango"
+    return {"estar_en": estar_en, "lectura": lectura, "moneda": moneda,
+            "tenencia": saldos or {}}
+
+
+def _saldos_par(par):
+    """Cantidad de cada punta, sumando los brokers. Sale de `tenencia`."""
+    try:
+        filas = db.conn().execute(
+            "SELECT simbolo, SUM(cantidad) FROM tenencia "
+            "WHERE simbolo IN (?, ?) GROUP BY simbolo",
+            (par["num"], par["den"])).fetchall()
+        return {r[0]: r[1] for r in filas if r[1]}
+    except Exception as e:
+        log.debug("saldos del par: %s", e)
+        return {}
 
 
 def _cerca_del_borde(par, ratio, est, umbral=0.15):
