@@ -47,7 +47,7 @@ class Monitor:
 
         self._zona_actual = self._cargar_zonas()
         self._zonas_curva = self._cargar_zonas_curva()
-        self._canjes_avisado = set()
+        self._canjes_avisado = self._cargar_canjes()
         self._cursor_especie = 0
         self.fuente = "iol"
         self.byma_fallas = []
@@ -92,6 +92,23 @@ class Monitor:
         except Exception as e:
             log.debug("zonas de curva: %s", e)
 
+    def _cargar_canjes(self):
+        """Canjes ya avisados, por especie que sale. Vive en la base: en
+        memoria, cada reinicio volvia a avisar todo lo vigente."""
+        import json
+        try:
+            d = json.loads(db.get_estado("canjes_avisado") or "{}")
+            return d if isinstance(d, dict) else {}
+        except (ValueError, TypeError):
+            return {}
+
+    def _guardar_canjes(self):
+        import json
+        try:
+            db.set_estado("canjes_avisado", json.dumps(self._canjes_avisado))
+        except Exception as e:
+            log.debug("canjes avisados: %s", e)
+
     def _guardar_zonas(self):
         import json
         try:
@@ -127,9 +144,10 @@ class Monitor:
     def _en_horario(self):
         """Si hay rueda ahora mismo, por calendario.
 
-        Incluye los feriados argentinos, que ya estaban cargados para el
-        calculo del CER. Sin esto, un feriado se trataba como dia habil y
-        se le seguia pidiendo datos a IOL toda la jornada.
+        Usa el calendario de rueda, no el de liquidacion: en un puente o
+        el 6/11 BYMA negocia aunque no liquide. Sin esto, un feriado se
+        trataba como dia habil y se le seguia pidiendo datos a IOL toda
+        la jornada.
         """
         try:
             ini = datetime.strptime(self.cfg["market_open"], "%H:%M").time()
@@ -138,8 +156,8 @@ class Monitor:
             return True
         ahora = datetime.now()
         try:
-            import cer as CER
-            if not CER.es_habil(ahora.date()):
+            import calendario as CAL
+            if not CAL.hay_rueda(ahora.date()):
                 return False
         except Exception:
             if ahora.weekday() >= 5:
@@ -304,11 +322,11 @@ class Monitor:
             f = date.fromisoformat(str(fecha_txt)[:10])
         except Exception:
             return True         # sin fecha no se puede confiar
-        import cer as CER
+        import calendario as CAL
         habiles, d = 0, date.today()
         while d > f and habiles <= dias_habiles:
             d -= timedelta(days=1)
-            if CER.es_habil(d):
+            if CAL.hay_rueda(d):
                 habiles += 1
         return habiles > dias_habiles
 
@@ -877,6 +895,45 @@ class Monitor:
         return "%s %s → %s %s" % (f(r["cantidad_sale"]), sale,
                                   f(r["cantidad_entra"]), entra)
 
+    def _canjes_nuevos(self, filas, hoy):
+        """Los canjes que hay que avisar en este ciclo.
+
+        **La clave es la especie que sale, no el par.** `curva.canjes`
+        devuelve solo el mejor destino de cada tenencia; si el mejor
+        alterna entre dos (DICP → TX31 y DICP → TZXM9), con la clave por
+        par cada cambio era un canje "nuevo" y volvia a avisar.
+
+        **Ausente no es afuera.** Un canje que se cae un ciclo porque la
+        ganancia o el margen de z quedaron justo debajo del minimo no se
+        rearma: se rearma recien cuando estuvo ausente una rueda entera,
+        es decir, cuando no se lo vio ni hoy ni el habil anterior. El
+        mismo bug que tenian las alertas de opciones hasta la 0.46.0:
+        DICP → TX31 aviso 16 veces el 29/09/2026.
+        """
+        import calendario as CAL
+        previo = self._canjes_avisado
+        anterior = hoy - timedelta(days=1)
+        while not CAL.hay_rueda(anterior):
+            anterior -= timedelta(days=1)
+        corte = anterior.isoformat()
+        nuevos, estado = [], {}
+        for f in filas:
+            p = previo.get(f["desde"]) or {}
+            if not p or (p.get("visto") or "") < corte:
+                nuevos.append(f)
+                p = {"avisado": hoy.isoformat()}
+            estado[f["desde"]] = dict(p, hacia=f["hacia"],
+                                      visto=hoy.isoformat())
+        # Los ausentes se arrastran con su ultima fecha vista; se olvidan
+        # a los 30 dias para que el estado no crezca sin fin.
+        olvido = (hoy - timedelta(days=30)).isoformat()
+        for desde, p in previo.items():
+            if desde not in estado and (p.get("visto") or "") >= olvido:
+                estado[desde] = p
+        self._canjes_avisado = estado
+        self._guardar_canjes()
+        return nuevos
+
     def revisar_canjes(self, cot=None):
         """Avisa cuando aparece un canje que antes no estaba."""
         if not float(self.cfg.get("canje_min_pct") or 0):
@@ -890,16 +947,11 @@ class Monitor:
             self.canjes = filas
         if getattr(self, "_silencio", False):
             return 0
-        vigentes = {"%s>%s" % (f["desde"], f["hacia"]) for f in filas}
-        nuevos = [f for f in filas
-                  if "%s>%s" % (f["desde"], f["hacia"]) not in self._canjes_avisado]
-        # Se rearma al desaparecer, igual que las alertas de precio.
-        self._canjes_avisado &= vigentes
+        nuevos = self._canjes_nuevos(filas, date.today())
         if not nuevos:
             return 0
         lineas, planas = [], []
         for f in nuevos:
-            self._canjes_avisado.add("%s>%s" % (f["desde"], f["hacia"]))
             orden = self._orden_rotacion(f["desde"], f["hacia"], cot)
             lineas.append(
                 "<b>%s → %s</b>: +%.2f%% neto<br>"
@@ -1882,7 +1934,16 @@ class Monitor:
     # -- historico de bonos -------------------------------------------
 
     def cerrar_dia_bonos(self):
-        """Un punto de TIR y duration por bono, con el cierre de hoy."""
+        """Un punto de TIR y duration por bono, con el cierre de hoy.
+
+        Solo en dia de rueda. Corre todos los dias a las 18 y antes
+        grababa los sabados, domingos y feriados con la fecha de hoy y
+        las cotizaciones de la ultima rueda: un precio repetido que
+        entraba al z como un dia mas (16/08, 12/09, 19/09 y 20/09/2026).
+        """
+        import calendario as CAL
+        if not CAL.hay_rueda(date.today()):
+            return 0
         try:
             import historico as H
             import bonos as BO
@@ -2033,6 +2094,12 @@ class Monitor:
             return
 
         try:
+            import calendario as CAL
+            CAL.actualizar()
+        except Exception as e:
+            log.warning("calendario: %s", e)
+
+        try:
             self.backfill()
         except Exception as e:
             log.warning("backfill incompleto: %s", e)
@@ -2055,6 +2122,11 @@ class Monitor:
 
                 hoy = datetime.now().date()
                 if hoy != ultimo_backfill and datetime.now().hour >= 18:
+                    try:
+                        import calendario as CAL
+                        CAL.actualizar()     # no hace nada hasta el mes
+                    except Exception as e:
+                        log.warning("calendario: %s", e)
                     self.backfill()
                     self.cerrar_dia_bonos()
                     db.purgar()

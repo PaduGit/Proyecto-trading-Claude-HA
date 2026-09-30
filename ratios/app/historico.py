@@ -52,6 +52,42 @@ def init():
         log.warning("estado del histórico: %s", e)
 
 
+def limpiar_no_habiles():
+    """Borra los puntos que no son de una rueda. Corre en cada arranque.
+
+    - **Sabados y domingos**, siempre: `cerrar_dia_bonos` los grababa
+      con el precio de la ultima rueda hasta que se le puso la guarda.
+      Entraban al z como un dia mas.
+    - **26 y 27/09/2024**, una sola vez: quedaron de una ventana
+      anterior de BYMA sin desajustar (AL30 46.567 contra 70.800) y
+      ninguna corrida posterior los alcanzaba. El recalculo forzado los
+      vuelve a pedir, ahora a IOL.
+
+    Los feriados no se tocan: BYMA tiene dias con negociacion y sin
+    liquidacion (puentes, 6/11, 24/12) y esos cierres son reales.
+    """
+    c = db.conn()
+    n = 0
+    for t in ("bono_hist", "residuo_hist"):
+        try:
+            n += c.execute("DELETE FROM %s WHERE strftime('%%w', fecha) "
+                           "IN ('0','6')" % t).rowcount
+        except Exception as e:
+            log.warning("limpieza de %s: %s", t, e)
+    try:
+        if not db.get_estado("migr_hist_2024_09"):
+            for t in ("bono_hist", "residuo_hist"):
+                n += c.execute("DELETE FROM %s WHERE fecha IN "
+                               "('2024-09-26','2024-09-27')" % t).rowcount
+            db.set_estado("migr_hist_2024_09", "1")
+    except Exception as e:
+        log.warning("limpieza de 09/2024: %s", e)
+    c.commit()
+    if n:
+        log.info("histórico: %d puntos fuera de rueda borrados", n)
+    return n
+
+
 def _guardar(filas):
     if not filas:
         return 0
@@ -227,9 +263,13 @@ def reconstruir(iol, simbolo=None, desde=None, hasta=None, mercado="bCBA",
         if err and not serie:
             log.warning("histórico %s: %s", sim, err)
             continue
-        if serie and serie[0].get("_fuente") == "byma":
-            serie = desajustar(iol, mercado, sim, serie, cfg, info)
-            serie = [p for p in serie
+        # Solo lo de BYMA viene ajustado. Lo de IOL anterior a su ventana
+        # ya es el precio real y no se toca.
+        de_byma = [p for p in serie or [] if p.get("_fuente") == "byma"]
+        if de_byma:
+            otros = [p for p in serie if p.get("_fuente") != "byma"]
+            de_byma = desajustar(iol, mercado, sim, de_byma, cfg, info)
+            serie = [p for p in otros + de_byma
                      if str(p.get("fechaHora") or "")[:10] <= hasta.isoformat()]
 
         filas = []
@@ -550,10 +590,8 @@ def serie_en_tramos(iol, mercado, sim, desde, hasta):
     Devuelve (puntos, huecos, error). Un 429 corta todo: IOL pidio
     frenar y seguir partiendo solo multiplica las llamadas.
     """
-    from iol import IOLError
-
-    # BYMA primero: una llamada, y responde donde IOL falla. Si trae
-    # datos se usan tal cual; IOL queda para cuando BYMA no tiene nada.
+    # BYMA primero: una llamada, y responde donde IOL falla. IOL queda
+    # para cuando BYMA no tiene nada y para lo anterior a su ventana.
     try:
         import byma as BY
         # Hasta hoy aunque se pida menos: la serie viene ajustada por
@@ -564,10 +602,51 @@ def serie_en_tramos(iol, mercado, sim, desde, hasta):
         if pts:
             for p in pts:
                 p["_fuente"] = "byma"
-            return pts, [], None
+            return _antes_de_byma(iol, mercado, sim, desde, pts)
     except Exception as e:
         log.info("histórico %s: BYMA sin datos (%s), sigo con IOL", sim,
                  str(e)[:120])
+    return _serie_iol(iol, mercado, sim, desde, hasta)
+
+
+# Margen antes de ir a buscar a IOL lo que BYMA no trae: el primer punto
+# de BYMA cae en el primer habil de su ventana, no en el `desde` pedido.
+MARGEN_BYMA = 7
+
+
+def _antes_de_byma(iol, mercado, sim, desde, pts):
+    """Completa con IOL lo anterior al primer punto de BYMA.
+
+    BYMA devuelve una ventana movil de unos dos años. Si se le pide desde
+    la emision, lo anterior queda sin tocar: ni un recalculo forzado lo
+    alcanzaba, y AL30 seguia con 987 dias sin TIR de una corrida vieja.
+    Peor, los dos primeros dias de una ventana anterior (26 y 27/09/2024)
+    quedaron grabados ajustados y ninguna corrida posterior los piso.
+
+    Los puntos de IOL van marcados con `_fuente = "iol"`: vienen
+    `sinAjustar` y no pasan por `desajustar`. Un error de IOL no tira la
+    serie de BYMA: se anota como hueco.
+    """
+    primero = min(str(p.get("fechaHora") or "")[:10] for p in pts)
+    try:
+        inicio = date.fromisoformat(primero)
+    except ValueError:
+        return pts, [], None
+    if inicio - desde <= timedelta(days=MARGEN_BYMA):
+        return pts, [], None
+    previos, huecos_, err = _serie_iol(iol, mercado, sim, desde,
+                                       inicio - timedelta(days=1))
+    if err and not previos:
+        huecos_ = huecos_ or [[desde.isoformat(),
+                               (inicio - timedelta(days=1)).isoformat()]]
+    for p in previos:
+        p["_fuente"] = "iol"
+    return previos + pts, huecos_, None
+
+
+def _serie_iol(iol, mercado, sim, desde, hasta):
+    """La serie de IOL `sinAjustar`, partida en tramos si hace falta."""
+    from iol import IOLError
 
     def pedir(d0, d1):
         # El `hasta` de IOL es excluyente: pedido igual al `desde` vuelve

@@ -792,6 +792,21 @@ details.par-menu .menu{top:24px}
         cambiaron. Tocá una foto para ver qué cambió contra la anterior.</div>
       <div id="fot-out"></div>
     </details>
+    <details id="cal-det" class="u-mt-12">
+      <summary>Calendario bursátil</summary>
+      <div class="u-mt-8 nota">Los días sin rueda o sin
+        liquidación. Son dos cosas distintas: en un puente o el 6/11 BYMA
+        negocia pero no liquida. La rueda decide cuándo consulta el monitor;
+        la liquidación, la T+1 y el rezago del CER. Se baja de BYMA una vez
+        por mes; el año que BYMA todavía no publicó sale de ArgentinaDatos.</div>
+      <div class="botonera u-m-8-0">
+        <button class="corto secundario" id="cal-ant">‹</button>
+        <button class="corto secundario" id="cal-sig">›</button>
+        <button class="corto secundario" id="cal-bajar">
+          Actualizar ahora</button>
+      </div>
+      <div id="cal-out"></div>
+    </details>
     <details class="u-mt-16">
       <summary>Mantenimiento de estrategias</summary>
       <div class="u-mt-8 nota">Una estrategia sin ninguna
@@ -2168,6 +2183,7 @@ async function iniciarExplorar(){
   cargarConsumo();
   if($("#hx-det").open) cargarHistExpl();
   if($("#fot-det").open) cargarFotos();
+  if($("#cal-det").open) cargarCalendario();
   if(explorarListo) return;
   explorarListo = true;
   await cargarInstrumentos();
@@ -3183,6 +3199,50 @@ $("#hx-completar").addEventListener("click", async () => {
     if(!d.arranco) alert("Ya hay una reconstrucción en curso.");
     setTimeout(cargarHistExpl, 800);
   }catch(err){ alert("No se pudo arrancar."); }
+});
+
+/* ---------- explorar: calendario bursatil ---------- */
+let calAnio = new Date().getFullYear();
+const CAL_TIPO = {feriado: "Feriado", sin_liquidacion: "Sin liquidación",
+                  sin_rueda: "Sin rueda ni liquidación"};
+const CAL_DIA = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"];
+const CAL_FUENTE = {byma: "BYMA", argentinadatos: "ArgentinaDatos",
+                    "lista fija": "lista fija del código"};
+async function cargarCalendario(){
+  const out = $("#cal-out");
+  try{
+    const d = await (await fetch(base + "api/calendario?anio=" + calAnio)).json();
+    const filas = (d.dias || []).filter(x => x.dia < 5);
+    out.innerHTML =
+      '<div class="u-m-10-0-4 filtro-etq">' + d.anio + ' · ' +
+        esc(CAL_FUENTE[d.fuente] || d.fuente || "—") +
+        (d.bajado ? ' · bajado el ' + esc(d.bajado) : "") + '</div>' +
+      ((d.errores || []).length ? '<div class="msg error">' +
+        d.errores.map(esc).join("<br>") + '</div>' : "") +
+      (filas.length ? '<div class="u-p-6-10 hallazgo">' + filas.map(x =>
+        '<div class="u-m-3-0">' + esc(x.fecha.slice(8, 10) + "/" +
+          x.fecha.slice(5, 7)) + ' ' + CAL_DIA[x.dia] + ' · ' +
+          esc(CAL_TIPO[x.tipo] || x.tipo) +
+          (x.nombre ? ' · ' + esc(x.nombre) : "") +
+          (x.ref ? ' (' + esc(x.ref) + ')' : "") + '</div>').join("") +
+        '</div>' : '<div class="vacio">Sin días marcados.</div>');
+  }catch(err){
+    out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
+  }
+}
+$("#cal-det").addEventListener("toggle", () => {
+  if($("#cal-det").open) cargarCalendario();
+});
+$("#cal-ant").addEventListener("click", () => { calAnio--; cargarCalendario(); });
+$("#cal-sig").addEventListener("click", () => { calAnio++; cargarCalendario(); });
+$("#cal-bajar").addEventListener("click", async () => {
+  const b = $("#cal-bajar");
+  b.disabled = true;
+  try{
+    await fetch(base + "api/calendario/actualizar", {method: "POST"});
+  }catch(err){}
+  b.disabled = false;
+  cargarCalendario();
 });
 
 /* ---------- explorar: fotos de tenencia ---------- */

@@ -152,6 +152,7 @@ def main():
     dolar.init()
     historico.init()
     curva.init()
+    historico.limpiar_no_habiles()
     db.quitar_indices_redundantes()
     db.init_puntas()
 

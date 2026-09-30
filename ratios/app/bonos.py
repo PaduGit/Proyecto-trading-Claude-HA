@@ -231,7 +231,8 @@ def liquidacion(d=None):
     del dia ex. El 08/07/2026 AL30D ya cotizaba sin el pago del 09/07 y
     la TIR daba 16,24% en vez de ~7,6%. Con T+1 el pago sale del flujo
     justo desde la fecha ex (el flujo toma los pagos posteriores a la
-    liquidacion). Los feriados salen de `cer.FERIADOS`.
+    liquidacion). Cuenta habiles de liquidacion (`calendario`): un
+    puente o el 6/11 tienen rueda pero no liquidan.
     """
     import cer as CER
     d = (d or date.today()) + timedelta(days=1)

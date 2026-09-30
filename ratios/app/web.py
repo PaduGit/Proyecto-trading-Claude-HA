@@ -1888,6 +1888,26 @@ def crear_app(monitor):
         return jsonify({"arranco": arranco, "forzado": forzar,
                         "progreso": dict(H.progreso)})
 
+    @app.get("/api/calendario")
+    def calendario_listar():
+        import calendario as CAL
+        from datetime import date as _d
+        try:
+            anio = int(request.args.get("anio") or _d.today().year)
+        except ValueError:
+            anio = _d.today().year
+        return jsonify(CAL.listar(anio))
+
+    @app.post("/api/calendario/actualizar")
+    def calendario_actualizar():
+        """Baja el calendario ahora, sin esperar al refresco mensual. Para
+        un feriado decretado con pocos dias de anticipacion."""
+        import calendario as CAL
+        try:
+            return jsonify(CAL.actualizar(forzar=True))
+        except Exception as e:
+            return jsonify({"hecho": False, "errores": [str(e)[:200]]}), 502
+
     @app.get("/api/historico/progreso")
     def historico_progreso():
         return jsonify({"progreso": dict(H.progreso), "huecos": H.huecos(),

@@ -1,5 +1,38 @@
 # Registro de cambios
 
+## 0.54.0
+
+**Despues de actualizar: Explorar → Historico de bonos → Recalcular
+historico entero.** Cambian los habiles de liquidacion de varios dias
+(ver calendario) y ademas se completa desde IOL todo lo anterior a la
+ventana de BYMA.
+
+**Calendario bursatil con rueda y liquidacion por separado.** BYMA
+negocia sin liquidar en los puentes, el 6/11 y el 24/12; el 31/12 no
+negocia ni liquida. El monitor, el cierre diario y el rearme de canjes
+miran la rueda; la T+1, el CER, la TAMAR, los duales y el A3500 miran la
+liquidacion. Fuente: la pagina del calendario de BYMA (sin las filas de
+EE.UU.) encima de ArgentinaDatos, que cubre el año siguiente mientras
+BYMA no lo publica; la lista fija queda de respaldo, sin el 19/06/2026
+(era el Juneteenth) y con los puentes de 2026. Se baja una vez por mes.
+Nueva seccion en Explorar → Calendario bursatil, con "Actualizar ahora".
+
+**Avisos de canje sin repetir.** La clave es la especie que sale, no el
+par: si el mejor destino alterna, no vuelve a avisar. Un canje ausente
+se rearma recien despues de una rueda entera sin verse, y el estado vive
+en la base, asi que un reinicio no repite. DICP → TX31 habia avisado 16
+veces el 29/09.
+
+**Historia anterior a BYMA.** La serie de BYMA es una ventana movil de
+unos dos años; lo anterior ahora se pide a IOL sinAjustar y no pasa por
+el desajuste. Antes ni el recalculo forzado lo alcanzaba: AL30 tenia 987
+dias sin TIR.
+
+**Sin puntos fuera de rueda.** El cierre diario ya no graba sabados,
+domingos ni feriados con el precio de la ultima rueda. Al arrancar se
+borran los que quedaron, y una sola vez el 26 y 27/09/2024, que estaban
+ajustados.
+
 ## 0.53.0
 
 **Campo nuevo de configuracion: `canje_min_dz`** (1,0 por defecto).
