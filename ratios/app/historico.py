@@ -779,6 +779,9 @@ def en_fondo(iol, simbolo=None, forzar=False):
                     progreso["puntos"] = total
                 import curva as CU
                 CU.reconstruir()
+                # Con la historia nueva, las señales simuladas se vuelven a
+                # armar en la proxima medicion.
+                db.set_estado("senales_simuladas", "")
             else:
                 completar(iol)
         except Exception as e:

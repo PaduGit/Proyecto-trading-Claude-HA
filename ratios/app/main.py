@@ -153,6 +153,8 @@ def main():
     historico.init()
     curva.init()
     historico.limpiar_no_habiles()
+    import senales
+    senales.init()
     db.quitar_indices_redundantes()
     db.init_puntas()
 

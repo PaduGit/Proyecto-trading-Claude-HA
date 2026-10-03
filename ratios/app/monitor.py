@@ -20,6 +20,25 @@ MIN_MUESTRA_PROPIA = 15
 BACKFILL_DIAS = 400
 
 
+def _zona_curva(z, umbral, h, previa):
+    """Zona de un bono contra su curva, con histeresis.
+
+    Entra con |z| >= umbral; una vez adentro sale recien cuando |z| baja
+    de umbral - h. Sin eso, un z que oscilaba entre 2,49 y 2,51 rearmaba
+    y volvia a avisar cada dos ciclos: el 30/09/2026 TZX27 aviso cinco
+    veces y TZXD8 cuatro.
+    """
+    if previa == "barato" and z >= umbral - h:
+        return "barato"
+    if previa == "caro" and z <= -(umbral - h):
+        return "caro"
+    if z >= umbral:
+        return "barato"
+    if z <= -umbral:
+        return "caro"
+    return None
+
+
 class Monitor:
     def __init__(self, cfg, iol, notif):
         self.cfg = cfg
@@ -781,6 +800,9 @@ class Monitor:
             msg = self._mensaje(par, ratio, zona, nivel, est, num, den)
             alerta_id = db.registrar_alerta(
                 par["alias"], zona, ratio, nivel, msg, num, den)
+            import senales as SE
+            SE.registrar("par", par["alias"], direccion=zona, z=z,
+                         valor0=ratio)
             self.notif.enviar(
                 "%s %s" % (par["alias"], "▲" if zona == "alta" else "▼"),
                 msg, urgente=True)
@@ -895,6 +917,166 @@ class Monitor:
         return "%s %s → %s %s" % (f(r["cantidad_sale"]), sale,
                                   f(r["cantidad_entra"]), entra)
 
+    def oportunidades(self):
+        """Lo que esta vigente ahora, en un solo lugar y por prioridad.
+
+        1. Sobre lo que ya tenes: canjes, pares donde estas del lado que
+           no conviene, bonos tuyos caros contra su curva.
+        2. Sin tenencia: bonos baratos, pares sin posicion.
+        3. Informativas: bonos caros que no tenes.
+
+        Dentro de cada prioridad, por lo que se espera ganar (canje y
+        curva, en %) o por |z| (pares). `desde` es el ultimo aviso de esa
+        señal: con la persistencia y la histeresis, es cuando entro.
+        """
+        saldos = saldos_tenencia()
+        tenidos = {k for k, v in saldos.items() if v}
+        with self.lock:
+            canjes = list(getattr(self, "canjes", []) or [])
+            curva = dict(getattr(self, "curva_vigentes", {}) or {})
+            pares = list(self.snapshot.values())
+            opc = list(getattr(self, "opc_vigentes", []) or [])
+        c = db.conn()
+
+        def desde(alias, tipo):
+            r = c.execute("SELECT MAX(ts) t FROM alertas WHERE alias=? AND "
+                          "tipo=?", (alias, tipo)).fetchone()
+            return r["t"] if r else None
+
+        out = []
+        for f in canjes:
+            out.append({
+                "tipo": "canje", "prioridad": 1,
+                "clave": "%s>%s" % (f["desde"], f["hacia"]),
+                "titulo": "Rotar %s → %s" % (f["desde"], f["hacia"]),
+                "detalle": "%+.2f%% esperado · z %+.2f → %+.2f" % (
+                    f["ganancia_pct"], f.get("z_desde") or 0,
+                    f.get("z_hacia") or 0),
+                "valor": f["ganancia_pct"], "desde": desde(f["desde"], "canje"),
+                "sale": f["desde"], "entra": f["hacia"]})
+        for sim, v in curva.items():
+            barato = v["zona"] == "barato"
+            tengo = sim in tenidos
+            pr = 2 if barato else (1 if tengo else 3)
+            out.append({
+                "tipo": "curva", "prioridad": pr, "clave": sim,
+                "titulo": "%s %s contra su curva%s" % (
+                    sim, "barato" if barato else "caro",
+                    " · lo tenés" if tengo else ""),
+                "detalle": "desvío %+.0f pb · z %+.2f%s" % (
+                    v["residuo"], v["z"],
+                    (" · recorrido %.2f%%" % abs(v["recorrido"]))
+                    if v.get("recorrido") is not None else ""),
+                "valor": abs(v["recorrido"] or 0),
+                "desde": desde(sim, "curva_" + v["zona"])})
+        for p in pares:
+            if p.get("zona") not in ("alta", "baja") or not p.get("num"):
+                continue
+            sg = sugerencia_par(p["num"], p["den"], p["zona"], {
+                s_: saldos[s_] for s_ in (p["num"], p["den"]) if s_ in saldos})
+            estar = sg.get("estar_en")
+            otra = p["den"] if estar == p["num"] else p["num"]
+            # En los pares de moneda la tenencia no dice la moneda: no se
+            # cruza, igual que en la tarjeta.
+            rotar = (not sg.get("moneda")) and bool(saldos.get(otra))
+            posicionado = (not sg.get("moneda")) and bool(saldos.get(estar))
+            out.append({
+                "tipo": "par", "prioridad": 1 if rotar else 2,
+                "clave": p["alias"],
+                "titulo": "%s: estar en %s" % (p["alias"], estar),
+                "detalle": "%s%s%s" % (
+                    sg.get("lectura") or "",
+                    (" · z %+.2f" % p["z"]) if p.get("z") is not None else "",
+                    " · tenés %s → rotar" % otra if rotar else
+                    " · posicionado" if posicionado else ""),
+                "valor": abs(p.get("z") or 0),
+                "desde": desde(p["alias"], p["zona"])})
+        if opc:
+            m = opc[0]
+            out.append({
+                "tipo": "opciones", "prioridad": 3, "clave": "opciones",
+                "titulo": "Opciones: %d combinación%s bajo el umbral" % (
+                    len(opc), "" if len(opc) == 1 else "es"),
+                "detalle": "mejor %s %s/%s al %.1f%% de riesgo" % (
+                    self.NOMBRE_ESTRUCTURA.get(m["estructura"],
+                                               m["estructura"]),
+                    _n(m.get("base_compra") or 0),
+                    _n(m.get("base_venta") or 0),
+                    m["riesgo_pct"]) if m.get("estructura") else "",
+                "valor": -m["riesgo_pct"], "desde": None})
+        out.sort(key=lambda o: (o["prioridad"], -(o["valor"] or 0)))
+        return out
+
+    def enviar_resumen(self, ahora=None):
+        """El resumen de oportunidades a las horas de `resumen_horas`.
+
+        Una vez por hora configurada y por dia, solo en dia de rueda. No
+        reemplaza a los avisos en el momento: es la lista para quien no
+        pudo mirar cuando llegaron.
+        """
+        import calendario as CAL
+        ahora = ahora or datetime.now()
+        horas = [h.strip() for h in str(self.cfg.get("resumen_horas") or "")
+                 .replace(";", ",").split(",") if h.strip()]
+        if not horas or not CAL.hay_rueda(ahora.date()):
+            return False
+        hhmm = ahora.strftime("%H:%M")
+        toca = [h for h in horas if h <= hhmm]
+        if not toca:
+            return False
+        marca = "%s %s" % (ahora.date().isoformat(), max(toca))
+        if db.get_estado("resumen_enviado") == marca:
+            return False
+        db.set_estado("resumen_enviado", marca)
+        ops = self.oportunidades()
+        if not ops:
+            return False
+        lineas = []
+        for pr, nombre in ((1, "Sobre lo que tenés"), (2, "Oportunidades"),
+                           (3, "Para mirar")):
+            grupo = [o for o in ops if o["prioridad"] == pr]
+            if not grupo:
+                continue
+            lineas.append("<b>%s</b>" % nombre)
+            for o in grupo[:8]:
+                lineas.append("• %s — %s" % (o["titulo"], o["detalle"]))
+            if len(grupo) > 8:
+                lineas.append("  y %d más" % (len(grupo) - 8))
+            lineas.append("")
+        self.notif.enviar("Resumen %s · %d oportunidades" % (
+            max(toca), len(ops)), "\n".join(lineas).strip(), urgente=False)
+        return True
+
+    def medir_senales(self, reconstruir=False):
+        """Completa los resultados de las señales a 5, 20 y 60 ruedas.
+
+        Con `reconstruir`, ademas arma las simuladas de curva y canje con
+        la historia guardada y los parametros de hoy. Se hace sola la
+        primera vez y despues de cada recalculo del historico.
+        """
+        import senales as SE
+        try:
+            if reconstruir or not db.get_estado("senales_simuladas"):
+                import costos as CO_COSTOS
+                una = CO_COSTOS.pct(self.cfg.get("comisiones") or {}, "bonos",
+                                    self.cfg.get("derechos_mercado"),
+                                    self.cfg.get("iva_pct") or 0)
+                h = self.cfg.get("curva_histeresis_z")
+                dz = self.cfg.get("canje_min_dz")
+                n = SE.reconstruir(
+                    umbral_z=float(self.cfg.get("curva_umbral_z") or 2.5),
+                    histeresis=0.5 if h is None else float(h),
+                    canje_min_pct=float(self.cfg.get("canje_min_pct") or 1.0),
+                    canje_min_dz=1.0 if dz is None else float(dz),
+                    costo_pct=una * 2 * 100)
+                db.set_estado("senales_simuladas",
+                              datetime.now().isoformat(timespec="seconds"))
+                log.info("señales: %d simuladas", n)
+            return SE.medir(self.horario())
+        except Exception as e:
+            log.warning("señales: %s", e)
+            return 0
+
     def _canjes_nuevos(self, filas, hoy):
         """Los canjes que hay que avisar en este ciclo.
 
@@ -977,6 +1159,15 @@ class Monitor:
         for f in nuevos:
             db.registrar_alerta(f["desde"], "canje", f["ganancia_pct"], None,
                                 texto)
+            import senales as SE
+            SE.registrar("canje", "%s>%s" % (f["desde"], f["hacia"]),
+                         sale=f["desde"], entra=f["hacia"],
+                         z=f.get("z_hacia"), dz=f.get("dz"),
+                         esperado=f.get("ganancia_pct"),
+                         costo=f.get("costo_pct"),
+                         md_sale=f.get("md_desde"), md_entra=f.get("md_hacia"),
+                         r_sale=f.get("residuo_desde"),
+                         r_entra=f.get("residuo_hacia"))
         return len(nuevos)
 
     # -- desvíos de curva ---------------------------------------------
@@ -994,6 +1185,9 @@ class Monitor:
         umbral = float(self.cfg.get("curva_umbral_z") or 2.5)
         if not umbral:
             return 0
+        # Sin cargar el campo, 0,5. HA no aplica defaults nuevos.
+        h = self.cfg.get("curva_histeresis_z")
+        h = 0.5 if h is None else max(0.0, min(float(h), umbral))
 
         with self.lock:
             cot = cot or dict(self.cotizaciones)
@@ -1007,6 +1201,7 @@ class Monitor:
 
         avisadas = self._zonas_curva
         enviadas = 0
+        vigentes = {}
 
         minimo = self._min_monto()
         mep = self._mep(cot)
@@ -1015,7 +1210,8 @@ class Monitor:
             z = d.get("z")
             if z is None:
                 continue
-            zona = "barato" if z >= umbral else "caro" if z <= -umbral else None
+            previa = avisadas.get(sim)
+            zona = _zona_curva(z, umbral, h, previa)
             # Un desvio calculado sobre una punta suelta no se puede
             # operar. El ajuste de la curva sigue usando a todos, que es
             # lo que hace comparable el z-score contra su historia; lo
@@ -1026,7 +1222,13 @@ class Monitor:
                                    "ask" if zona == "barato" else "bid", mep)
                 if m is not None and m < minimo:
                     continue
-            previa = avisadas.get(sim)
+            if zona:
+                fz = por_sim.get(sim) or {}
+                rec = None
+                if fz.get("md") is not None and d.get("media_hist") is not None:
+                    rec = fz["md"] * (d["residuo"] - d["media_hist"]) / 100.0
+                vigentes[sim] = {"zona": zona, "z": z, "residuo": d["residuo"],
+                                 "recorrido": rec, "familia": fz.get("familia")}
             if zona != previa:
                 avisadas[sim] = zona
                 self._guardar_zonas_curva()
@@ -1062,9 +1264,20 @@ class Monitor:
             self.notif.enviar("%s %s contra su curva" % (sim, que), msg,
                               urgente=(zona == "barato"))
             db.registrar_alerta(sim, "curva_" + zona, d["residuo"], umbral, msg)
+            import senales as SE
+            barato = zona == "barato"
+            SE.registrar("curva", sim, direccion=zona, z=z,
+                         entra=sim if barato else None,
+                         sale=None if barato else sim,
+                         md_entra=f.get("md") if barato else None,
+                         md_sale=None if barato else f.get("md"),
+                         r_entra=d["residuo"] if barato else None,
+                         r_sale=None if barato else d["residuo"])
             log.info("curva: %s %s z=%+.2f", sim, zona, z)
             enviadas += 1
 
+        with self.lock:
+            self.curva_vigentes = vigentes
         return enviadas
 
     # -- arbitraje de plazos t0 / t1 ---------------------------------
@@ -1235,6 +1448,11 @@ class Monitor:
             except Exception as e:
                 log.debug("revisar alertas de fecha: %s", e)
             try:
+                if en_rueda:
+                    self.enviar_resumen()
+            except Exception as e:
+                log.warning("resumen: %s", e)
+            try:
                 self._guardar_snapshot()
             except Exception as e:
                 log.debug("guardar snapshot: %s", e)
@@ -1401,8 +1619,19 @@ class Monitor:
                       if not (marcas.get(f["id"]) or {}).get("silenciada")]
         avisos, self._opc_estado = OP.cruces(
             candidatas, getattr(self, "_opc_estado", None), par)
-        if avisos:
+        # Avisos de armado: "inmediato" como antes, "resumen" solo en el
+        # resumen diario, "apagado" nada. Sin cargar el campo, resumen:
+        # casi no se operan y eran la mayor parte de los avisos.
+        modo = (self.cfg.get("opc_avisos") or "resumen").strip().lower()
+        if avisos and modo == "inmediato":
             self._avisar_opciones(avisos)
+        u_ = float(par.get("riesgo_max_alarma_pct") or 33)
+        l_ = int(par.get("lotes_min") or 2)
+        with self.lock:
+            self.opc_vigentes = [] if modo == "apagado" else sorted(
+                (f for f in candidatas
+                 if f["riesgo_pct"] <= u_ and f["lotes"] >= l_),
+                key=lambda f: f["riesgo_pct"])
 
         # desarme
         salidas = []
@@ -2128,6 +2357,7 @@ class Monitor:
                     except Exception as e:
                         log.warning("calendario: %s", e)
                     self.backfill()
+                    self.medir_senales()
                     self.cerrar_dia_bonos()
                     db.purgar()
                     db.purgar_api_log()

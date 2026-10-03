@@ -1231,6 +1231,19 @@ def init_alertas():
             log.warning("migrar %s: %s", tabla, e)
     _migrar_parametros(c)
     _migrar_modelo_estrategias(c)
+    # `signo` llego despues de que las dos tablas existieran, y CREATE
+    # TABLE IF NOT EXISTS no agrega columnas. Sin esto el INSERT del diff
+    # fallaba para todos los brokers -el error quedaba en el registro
+    # como "diff de X"- y desde el 09/09/2026 no se propuso nada: ni el
+    # diff de Veta (pendiente 1) ni la rotacion DICP → TX31.
+    for tabla in ("mov_propuesto", "estrategia_mov"):
+        try:
+            cs = {r["name"] for r in c.execute("PRAGMA table_info(%s)" % tabla)}
+            if cs and "signo" not in cs:
+                c.execute("ALTER TABLE %s ADD COLUMN signo INTEGER NOT NULL "
+                          "DEFAULT 1" % tabla)
+        except Exception as e:
+            log.warning("migrar signo en %s: %s", tabla, e)
     c.commit()
 
 
@@ -2025,6 +2038,58 @@ def _estrategia_de(simbolo):
     return r["estrategia_id"] if r else None
 
 
+# Las familias donde rotar es el punto. En tecnica u opciones cambiar una
+# especie por otra es cerrar una posicion y abrir otra; reserva de valor
+# no tiene ledger.
+FAMILIAS_ROTAN = ("par", "curva")
+
+
+def _familia_de(eid):
+    if not eid:
+        return None
+    r = conn().execute("SELECT familia FROM estrategia WHERE id=?",
+                       (eid,)).fetchone()
+    return r["familia"] if r else None
+
+
+def _rotaciones_por_estrategia(exp, usados):
+    """Pares (sale, entra, estrategia) que se pueden armar sin adivinar.
+
+    Baja una especie de una estrategia de par o curva y sube otra que es
+    de esa misma estrategia o de ninguna. Se arma solo cuando hay un
+    unico candidato: primero los de la misma estrategia, despues los sin
+    estrategia. Con dos o mas posibles quedan como retiro y aporte, y la
+    union la elige el que opero ("Unir con…").
+    """
+    bajan = [s for s in exp if exp[s][0] < 0 and exp[s][1] > 0
+             and s not in usados]
+    suben = [s for s in exp if exp[s][0] > 0 and exp[s][1] > 0
+             and s not in usados]
+    por_eid = {}
+    for s in bajan:
+        eid = _estrategia_de(s)
+        if eid and _familia_de(eid) in FAMILIAS_ROTAN:
+            por_eid.setdefault(eid, []).append(s)
+    sin_estr = [s for s in suben if not _estrategia_de(s)]
+    out, tomados = [], set()
+    for eid, salen in sorted(por_eid.items()):
+        if len(salen) != 1:
+            continue
+        propias = [s for s in suben if _estrategia_de(s) == eid]
+        cand = propias or sin_estr
+        if len(cand) != 1 or cand[0] in tomados:
+            continue
+        # Un mismo sin-estrategia no puede ser candidato unico de dos
+        # estrategias a la vez: si pasa, ninguna lo toma.
+        if not propias and sum(
+                1 for e2, sl in por_eid.items() if len(sl) == 1 and not
+                [x for x in suben if _estrategia_de(x) == e2]) > 1:
+            continue
+        out.append((salen[0], cand[0], eid))
+        tomados.add(cand[0])
+    return out
+
+
 def _cambio_de_exposicion(antes, despues):
     """(cuanto cambio la exposicion, con que signo esta la especie).
 
@@ -2126,6 +2191,21 @@ def detectar_movimientos(broker, precios=None):
                 "precio_entra": precios.get(entra)})
             usados.update((sale, entra))
 
+    # Despues de los grupos, las estrategias. Los grupos son del modelo
+    # viejo de pares; en curva no hay ninguno y una rotacion DICP → TX31
+    # salia como un retiro y un aporte sueltos.
+    for sale, entra, eid in _rotaciones_por_estrategia(exp, usados):
+        cs, ce = -exp[sale][0], exp[entra][0]
+        props.append({
+            "broker": broker, "desde": desde, "hasta": hasta,
+            "tipo": "rotacion", "sale": sale, "cant_sale": cs,
+            "entra": entra, "cant_entra": ce,
+            "ratio": (ce / cs) if cs else None, "grupo_id": None,
+            "signo": 1, "grupo": None, "estrategia_id": eid,
+            "precio_sale": precios.get(sale),
+            "precio_entra": precios.get(entra)})
+        usados.update((sale, entra))
+
     for sim, (antes, despues) in sorted(difs.items()):
         if sim in usados:
             continue
@@ -2182,10 +2262,13 @@ def candidatos_a_unir(mid):
     brokers distintos y una sola rotacion. La app NO une sola. Ofrece, y
     la union la confirma el que opero.
 
-    Dos formas validas, las dos en otro broker y en sentido contrario:
+    Dos formas validas, en sentido contrario:
 
-    - **rotacion entre cuentas**: simbolos distintos del mismo grupo.
-    - **transferencia**: el mismo simbolo. No es una operacion: la plata
+    - **rotacion**: simbolos distintos del mismo grupo, o un retiro de
+      una estrategia de par o curva con un aporte de esa estrategia o de
+      ninguna. En el mismo broker o en otro: el diff solo la arma solo
+      cuando hay un unico candidato.
+    - **transferencia**: el mismo simbolo en otro broker. No es una operacion: la plata
       no entro ni salio, cambio de cuenta. Confirmarla no escribe ledger.
     """
     import json as _json
@@ -2206,14 +2289,29 @@ def candidatos_a_unir(mid):
         if mio in tk:
             juntos |= tk
 
+    # Por estrategia: el retiro tiene que ser de una estrategia de par o
+    # curva, y el aporte de esa misma o de ninguna.
+    def rota_por_estrategia(retiro_sim, aporte_sim):
+        e_r = _estrategia_de(retiro_sim)
+        if not e_r or _familia_de(e_r) not in FAMILIAS_ROTAN:
+            return False
+        e_a = _estrategia_de(aporte_sim)
+        return e_a is None or e_a == e_r
+
     out = []
     for o in c.execute("SELECT * FROM mov_propuesto WHERE estado='pendiente' "
-                       "AND unido_a IS NULL AND tipo=? AND broker<>? "
-                       "ORDER BY detectado DESC", (busco, p["broker"])):
+                       "AND unido_a IS NULL AND tipo=? AND id<>? "
+                       "ORDER BY detectado DESC", (busco, mid)):
         suyo = o["entra"] if o["tipo"] == "aporte" else o["sale"]
+        mismo_broker = o["broker"] == p["broker"]
+        retiro_sim, aporte_sim = ((mio, suyo) if p["tipo"] == "retiro"
+                                  else (suyo, mio))
         if suyo == mio:
+            # La misma especie en el mismo broker no es transferencia.
+            if mismo_broker:
+                continue
             union = "transferencia"
-        elif suyo in juntos:
+        elif suyo in juntos or rota_por_estrategia(retiro_sim, aporte_sim):
             union = "rotacion"
         else:
             continue
@@ -2235,7 +2333,25 @@ def movimientos_propuestos(estado="pendiente", eid=None):
     if cond:
         q += " WHERE " + " AND ".join(cond)
     q += " ORDER BY hasta DESC, id DESC"
-    return [dict(r) for r in conn().execute(q, args)]
+    c = conn()
+    nombres = {r["id"]: r["nombre"] for r in c.execute(
+        "SELECT id, nombre FROM estrategia")}
+    out = []
+    for r in c.execute(q, args):
+        d = dict(r)
+        d["estrategia_nombre"] = nombres.get(d.get("estrategia_id"))
+        # Confirmar una rotacion asigna la especie que entra a la
+        # estrategia, y una especie es de una estrategia en todos los
+        # brokers: lo que haya en otros entra tambien, sin aporte en el
+        # ledger, y la cuotaparte lo leeria como ganancia.
+        ent_ = d.get("entra")
+        if d["tipo"] == "rotacion" and ent_ and not _estrategia_de(ent_):
+            d["otros_brokers"] = {
+                x["broker"]: x["cantidad"] for x in c.execute(
+                    "SELECT broker, cantidad FROM tenencia WHERE simbolo=? "
+                    "AND broker<>? AND cantidad<>0", (ent_, d["broker"]))}
+        out.append(d)
+    return out
 
 
 def resolver_propuesto(mid, accion, editado=None, unir_con=None):
@@ -2294,8 +2410,10 @@ def resolver_propuesto(mid, accion, editado=None, unir_con=None):
             "precio_sale": a["precio_sale"],
             "entra": b["entra"], "cant_entra": b["cant_entra"],
             "precio_entra": b["precio_entra"],
-            "ratio": ((a["cant_sale"] / b["cant_entra"])
-                      if b["cant_entra"] else None),
+            # Cuantos entran por cada uno que sale, igual que el diff.
+            # Estaba al reves: la union daba el inverso del panel.
+            "ratio": ((b["cant_entra"] / a["cant_sale"])
+                      if a["cant_sale"] else None),
             "estrategia_id": (d.get("estrategia_id")
                               or otro["estrategia_id"]),
         })

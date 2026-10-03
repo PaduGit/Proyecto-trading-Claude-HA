@@ -1,5 +1,5 @@
 name: Ratios IOL
-version: "0.54.0"
+version: "0.55.0"
 slug: ratios_iol
 description: Monitor de ratios entre especies, arbitraje de plazos y screener
 url: https://github.com/PaduGit/Proyecto-trading-Claude-HA
@@ -40,6 +40,7 @@ options:
   histeresis_pct: 0.5
   rulo_umbral_pct: 0.6
   curva_umbral_z: 2.5
+  curva_histeresis_z: 0.5
   canje_min_pct: 1.0
   canje_min_dz: 1.0
   monto_min_punta: 300000
@@ -59,6 +60,8 @@ options:
   opc_lotes_min: 2
   opc_ciclos_persistencia: 1
   opc_histeresis_pct: 3
+  opc_avisos: resumen
+  resumen_horas: "12:00,16:30"
   opc_ganancia_min_pct: 100
   opc_dias_min_desarme: 10
   opc_mov_contrario_pct: 4
@@ -159,6 +162,7 @@ schema:
   histeresis_pct: float(0,10)
   rulo_umbral_pct: float(0,20)
   curva_umbral_z: float(0,10)
+  curva_histeresis_z: float(0,5)?
   canje_min_pct: float(0,20)
   canje_min_dz: float(0,5)?
   monto_min_punta: float(0,1000000000)
@@ -178,6 +182,8 @@ schema:
   opc_lotes_min: int(0,10000)
   opc_ciclos_persistencia: int(1,20)
   opc_histeresis_pct: float(0,50)
+  opc_avisos: list(inmediato|resumen|apagado)?
+  resumen_horas: str?
   opc_ganancia_min_pct: float(0,1000)
   opc_dias_min_desarme: int(0,120)
   opc_mov_contrario_pct: float(0,50)

@@ -514,7 +514,11 @@ details.par-menu .menu{top:24px}
 
 <main>
   <section id="v-panel">
-    <details id="calc-caja">
+    <details id="opor-caja" open>
+      <summary id="opor-tit">Oportunidades vigentes</summary>
+      <div id="opor-out"></div>
+    </details>
+    <details id="calc-caja" class="u-mt-12">
       <summary>Calcular un ratio</summary>
       <div class="chips" id="c-chips"></div>
       <div class="form">
@@ -791,6 +795,23 @@ details.par-menu .menu{top:24px}
         foto, si el broker figura con otro nombre o si las cantidades no
         cambiaron. Tocá una foto para ver qué cambió contra la anterior.</div>
       <div id="fot-out"></div>
+    </details>
+    <details id="sen-det" class="u-mt-12">
+      <summary>Medición de señales</summary>
+      <div class="u-mt-8 nota">Qué pasó con cada aviso de canje, curva
+        y par a las 5, 20 y 60 ruedas, se haya operado o no. En curva y
+        canje es lo que convergió el desvío contra la curva (el mismo modelo
+        que da la señal), no el resultado con precios. En par, lo que ganó
+        la punta donde la señal decía estar. Las simuladas se arman con la
+        historia guardada, la tenencia de hoy y la configuración actual.</div>
+      <div class="botonera u-m-8-0">
+        <label class="corto"><input type="checkbox" id="sen-sim" checked>
+          incluir simuladas</label>
+        <button class="corto secundario" id="sen-medir">Medir ahora</button>
+        <button class="corto secundario" id="sen-rearmar">
+          Rearmar simuladas</button>
+      </div>
+      <div id="sen-out"></div>
     </details>
     <details id="cal-det" class="u-mt-12">
       <summary>Calendario bursátil</summary>
@@ -1239,8 +1260,49 @@ function cartelFuente(d){
   }
 }
 
+/* ---------- oportunidades vigentes ---------- */
+/* Lo que esta vigente ahora, por prioridad: lo que ya tenes primero.
+   Una señal que sigue vigente es una linea que se queda, no un aviso
+   nuevo; "desde" es cuando entro. */
+const OPOR_GRUPO = {1: "Sobre lo que tenés", 2: "Oportunidades", 3: "Para mirar"};
+const OPOR_TIPO = {canje: "canje", curva: "curva", par: "par", opciones: "opciones"};
+function oporDesde(ts){
+  if(!ts) return "";
+  const hoy = new Date().toISOString().slice(0, 10);
+  return ts.slice(0, 10) === hoy ? "desde las " + ts.slice(11, 16)
+    : "desde el " + ts.slice(8, 10) + "/" + ts.slice(5, 7);
+}
+async function cargarOportunidades(){
+  const out = $("#opor-out");
+  if(!out) return;
+  let d;
+  try{ d = await (await fetch(base + "api/oportunidades")).json(); }
+  catch(e){ out.innerHTML = '<div class="msg error">No se pudo consultar.</div>'; return; }
+  const ops = d.oportunidades || [];
+  $("#opor-tit").textContent = ops.length
+    ? "Oportunidades vigentes · " + ops.length : "Oportunidades vigentes";
+  if(!ops.length){
+    out.innerHTML = '<div class="vacio">Nada vigente.' +
+      (d.en_rueda ? "" : " Fuera de rueda se muestra lo último de la rueda.") +
+      '</div>';
+    return;
+  }
+  out.innerHTML = [1, 2, 3].map(pr => {
+    const g = ops.filter(o => o.prioridad === pr);
+    if(!g.length) return "";
+    return '<div class="u-m-10-0-4 filtro-etq">' + OPOR_GRUPO[pr] + '</div>' +
+      g.map(o => '<div class="pos"><div class="pos-top"><span>' +
+        esc(o.titulo) + '</span><span class="t">' +
+        esc(OPOR_TIPO[o.tipo] || o.tipo) + '</span></div>' +
+        '<div class="u-block pos-pie">' + esc(o.detalle || "") +
+        (o.desde ? " · " + esc(oporDesde(o.desde)) : "") + '</div></div>')
+      .join("");
+  }).join("");
+}
+
 /* ---------- panel ---------- */
 async function cargarPanel(){
+  cargarOportunidades();
   let d;
   try{ d = await (await fetch(base + "api/estado")).json(); }
   catch(e){ $("#hace").innerHTML = "<b>—</b>sin conexión"; return; }
@@ -2184,6 +2246,7 @@ async function iniciarExplorar(){
   if($("#hx-det").open) cargarHistExpl();
   if($("#fot-det").open) cargarFotos();
   if($("#cal-det").open) cargarCalendario();
+  if($("#sen-det").open) cargarSenales();
   if(explorarListo) return;
   explorarListo = true;
   await cargarInstrumentos();
@@ -3200,6 +3263,61 @@ $("#hx-completar").addEventListener("click", async () => {
     setTimeout(cargarHistExpl, 800);
   }catch(err){ alert("No se pudo arrancar."); }
 });
+
+/* ---------- explorar: medicion de senales ---------- */
+const SEN_TIPO = {canje: "Canjes", curva: "Curva", par: "Pares"};
+function senCelda(x){
+  if(!x) return '<td class="vacio">—</td>';
+  return '<td>' + conSigno(x.media, 2) + '%<br><span class="t">' +
+    dec(x.positivas * 100, 0) + '% · ' + x.n + '</span></td>';
+}
+async function cargarSenales(){
+  const out = $("#sen-out");
+  try{
+    const d = await (await fetch(base + "api/senales?simuladas=" +
+      ($("#sen-sim").checked ? "1" : "0"))).json();
+    const g = d.grupos || [];
+    if(!g.length){
+      out.innerHTML = '<div class="vacio">Todavía no hay señales ' +
+        'medidas. Se miden a diario después de las 18.</div>';
+      return;
+    }
+    const hs = d.horizontes || [5, 20, 60];
+    const tipos = [...new Set(g.map(x => x.tipo))];
+    out.innerHTML = tipos.map(t =>
+      '<div class="u-m-10-0-4 filtro-etq">' + esc(SEN_TIPO[t] || t) + '</div>' +
+      '<div class="u-scroll-x"><table class="tabla"><thead><tr><th></th><th>n</th>' +
+        hs.map(h => '<th>' + h + ' r.</th>').join("") + '</tr></thead><tbody>' +
+      g.filter(x => x.tipo === t)
+        .sort((a, b) => (a.tramo === "todas" ? -1 : b.tramo === "todas" ? 1 :
+                         a.tramo.localeCompare(b.tramo)))
+        .map(x => '<tr><td>' + esc(x.tramo) + '</td><td>' + x.n + '</td>' +
+          hs.map(h => senCelda(x["h" + h])).join("") + '</tr>').join("") +
+      '</tbody></table></div>').join("") +
+      '<div class="u-mt-6 nota">Cada celda: resultado medio y, abajo, ' +
+        'porcentaje de señales positivas y cuántas ya llegaron a ese ' +
+        'horizonte.</div>';
+  }catch(err){
+    out.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
+  }
+}
+$("#sen-det").addEventListener("toggle", () => {
+  if($("#sen-det").open) cargarSenales();
+});
+$("#sen-sim").addEventListener("change", cargarSenales);
+async function senAccion(boton, reconstruir){
+  boton.disabled = true;
+  $("#sen-out").innerHTML = '<div class="vacio">Midiendo…</div>';
+  try{
+    await fetch(base + "api/senales/medir", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({reconstruir: reconstruir})});
+  }catch(err){}
+  boton.disabled = false;
+  cargarSenales();
+}
+$("#sen-medir").addEventListener("click", ev => senAccion(ev.target, false));
+$("#sen-rearmar").addEventListener("click", ev => senAccion(ev.target, true));
 
 /* ---------- explorar: calendario bursatil ---------- */
 let calAnio = new Date().getFullYear();
@@ -5243,8 +5361,17 @@ async function cargarPropuestos(){
         qué = "Entró " + ent(m.cant_entra) + " de " + esc(m.entra);
       else
         qué = "Salió " + ent(m.cant_sale) + " de " + esc(m.sale);
+      const otros = Object.entries(m.otros_brokers || {});
       return '<div class="pos"><div class="pos-top">' +
-        '<span>' + qué + '</span></div>' +
+        '<span>' + qué + '</span>' +
+        (m.estrategia_nombre ? '<span class="t">' +
+          esc(m.estrategia_nombre) + '</span>' : "") + '</div>' +
+        /* Confirmar asigna la especie a la estrategia en todos los
+           brokers: lo de los otros entra sin aporte en el ledger. */
+        (otros.length ? '<div class="msg error">Al confirmar, ' +
+          esc(m.entra) + ' pasa a ' + esc(m.estrategia_nombre || "la estrategia") +
+          ' también en ' + otros.map(([b, q]) => esc(b) + ' (' + ent(q) + ')')
+            .join(", ") + ', sin aporte en el ledger.</div>' : "") +
         '<div class="u-block pos-pie">' + esc(m.broker) +
           " · entre " + esc(m.desde) + " y " + esc(m.hasta) +
           (m.tipo === "rotacion"
@@ -5265,14 +5392,54 @@ async function cargarPropuestos(){
         '<button class="primario" data-prop="' + m.id +
           '" data-accion="confirmar">Confirmar</button>' +
         '<button data-prop="' + m.id + '" data-accion="descartar">' +
-          'Descartar</button></div></div>';
+          'Descartar</button>' +
+        (m.tipo !== "rotacion" ? '<button data-unir="' + m.id + '">' +
+          'Unir con…</button>' : "") +
+        '</div><div data-cands="' + m.id + '"></div></div>';
     }).join("");
   }catch(e){
     out.innerHTML = '<div class="msg error">No se pudieron leer.</div>';
   }
 }
 
+/* Unir un retiro y un aporte en una rotacion, o la misma especie entre
+   dos brokers en una transferencia. La app no une sola cuando hay mas
+   de un candidato: los ofrece y elige el que opero. */
+async function candidatosUnir(mid){
+  const cont = $("#prop-out").querySelector('[data-cands="' + mid + '"]');
+  if(!cont) return;
+  cont.innerHTML = '<div class="vacio">Buscando…</div>';
+  try{
+    const d = await (await fetch(base + "api/movimientos-propuestos/" +
+                                 mid + "/candidatos")).json();
+    const cs = d.candidatos || [];
+    cont.innerHTML = cs.length ? cs.map(o =>
+      '<button class="u-mt-6" data-unir-con="' + o.id + '" data-de="' + mid +
+        '">' + (o.union === "transferencia" ? "Transferencia: " : "Rotación: ") +
+        (o.tipo === "aporte" ? "entró " + ent(o.cant_entra) + " " + esc(o.entra)
+                             : "salió " + ent(o.cant_sale) + " " + esc(o.sale)) +
+        " · " + esc(o.broker) + '</button>').join("")
+      : '<div class="vacio">Sin contraparte posible.</div>';
+  }catch(e){
+    cont.innerHTML = '<div class="msg error">No se pudo consultar.</div>';
+  }
+}
+
 $("#prop-out").addEventListener("click", async ev => {
+  const u = ev.target.closest("[data-unir]");
+  if(u){ candidatosUnir(u.dataset.unir); return; }
+  const uc = ev.target.closest("[data-unir-con]");
+  if(uc){
+    uc.disabled = true;
+    try{
+      await fetch(base + "api/movimientos-propuestos/" + uc.dataset.de,
+        {method:"POST", headers:{"Content-Type":"application/json"},
+         body: JSON.stringify({accion: "confirmar",
+                               unir_con: parseInt(uc.dataset.unirCon)})});
+      cargarPropuestos(); cargarTenencias(); cargarEstrategias();
+    }catch(e){ alert("No se pudo."); uc.disabled = false; }
+    return;
+  }
   const b = ev.target.closest("[data-prop]");
   if(!b) return;
   b.disabled = true;

@@ -1,5 +1,45 @@
 # Registro de cambios
 
+## 0.55.0
+
+**Campos nuevos, cargar a mano:** `curva_histeresis_z: 0.5`,
+`opc_avisos: resumen` y `resumen_horas: "12:00,16:30"`. Sin cargar,
+el codigo usa esos mismos valores.
+
+**El diff de tenencias volvio a funcionar.** Las tablas `mov_propuesto`
+y `estrategia_mov` de las bases anteriores no tenian la columna `signo`
+y el INSERT fallaba para todos los brokers: desde el 09/09/2026 no se
+propuso ningun movimiento. Era la causa del diff de Veta. Se agrega al
+arrancar.
+
+**Rotaciones por estrategia.** El diff solo armaba rotaciones entre
+especies del mismo grupo de pares; en curva no hay ninguno y DICP → TX31
+salia como un retiro y un aporte. Ahora tambien rota cuando baja una
+especie de una estrategia de par o curva y sube otra de esa estrategia o
+de ninguna, si hay un unico candidato. Con mas de uno, "Unir con…" en la
+propuesta. La propuesta avisa cuando confirmarla va a sumar a la
+estrategia la misma especie en otros brokers. La union manual guardaba
+el ratio invertido.
+
+**Oportunidades vigentes**, arriba de todo en RATIOS: canjes, curva,
+pares y opciones en una lista, por prioridad (sobre lo que tenes,
+oportunidades, para mirar) y con desde cuando estan vigentes.
+
+**Resumen diario** en las horas de `resumen_horas`, solo en rueda.
+
+**Alertas de opciones:** `opc_avisos` inmediato, resumen o apagado. Por
+defecto, resumen: el armado ya no avisa en el momento. El desarme no
+cambia.
+
+**Alertas de curva con histeresis.** Una vez avisado, un bono se rearma
+recien cuando |z| baja de `curva_umbral_z − curva_histeresis_z`. El
+30/09 TZX27 aviso cinco veces oscilando alrededor de 2,5.
+
+**Medicion de señales** (Explorar): cada aviso de canje, curva y par se
+mide a 5, 20 y 60 ruedas, se haya operado o no. Curva y canje se
+reconstruyen hacia atras con la historia guardada. Es convergencia del
+desvio segun el mismo modelo, no resultado con precios.
+
 ## 0.54.0
 
 **Despues de actualizar: Explorar → Historico de bonos → Recalcular

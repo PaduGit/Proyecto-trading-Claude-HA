@@ -1888,6 +1888,25 @@ def crear_app(monitor):
         return jsonify({"arranco": arranco, "forzado": forzar,
                         "progreso": dict(H.progreso)})
 
+    @app.get("/api/oportunidades")
+    def oportunidades():
+        return jsonify({"oportunidades": monitor.oportunidades(),
+                        "en_rueda": monitor._en_horario()})
+
+    @app.get("/api/senales")
+    def senales_resumen():
+        import senales as SE
+        sim = (request.args.get("simuladas") or "1") != "0"
+        return jsonify(SE.resumen(simuladas=sim))
+
+    @app.post("/api/senales/medir")
+    def senales_medir():
+        """Mide ahora. Con `reconstruir`, rearma tambien las simuladas
+        con los parametros actuales de la configuracion."""
+        d = request.get_json(silent=True) or {}
+        n = monitor.medir_senales(reconstruir=bool(d.get("reconstruir")))
+        return jsonify({"medidas": n})
+
     @app.get("/api/calendario")
     def calendario_listar():
         import calendario as CAL
