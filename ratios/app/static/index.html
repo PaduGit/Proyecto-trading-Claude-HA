@@ -464,6 +464,51 @@ details.par-menu .menu{top:24px}
 .u-w-130{width:130px}
 .u-wrap{flex-wrap:wrap}
 }
+
+/* ---------- curva y graficos interactivos (0.56.0) ---------- */
+@layer base{
+:root{ --barato:#62B6F2; --barato-t:rgba(98,182,242,.14);
+       --caro:#F2A65A; --caro-t:rgba(242,166,90,.14); --neutro:#8D9BB0; }
+#curva-svg{ display:block; width:100%; height:300px; touch-action:pan-y; }
+#curva-svg .eje{ stroke:var(--rule); }
+#curva-svg .grid{ stroke:var(--rule); stroke-dasharray:2 4; }
+#curva-svg text{ fill:var(--muted); font-size:11px; font-family:var(--sans); }
+#curva-svg .ajuste{ fill:none; stroke:var(--bone); stroke-width:1.5; opacity:.6; }
+#curva-svg .pt{ cursor:pointer; }
+#curva-svg .etq{ fill:var(--bone); font-size:11px; font-weight:600; pointer-events:none; }
+.curva-ley{ display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--muted); padding:6px 2px 0; }
+.curva-ley span{ display:inline-flex; align-items:center; gap:6px; }
+.curva-ley b{ width:10px; height:10px; border-radius:50%; display:inline-block; }
+.chips{ display:flex; gap:6px; flex-wrap:wrap; margin:8px 0; }
+.chips button{ border:1px solid var(--rule); background:transparent; border-radius:999px; padding:0 12px; min-height:34px; color:var(--muted); font-size:13px; cursor:pointer; }
+.chips button[aria-pressed="true"]{ background:var(--bone); border-color:var(--bone); color:var(--ink); font-weight:600; }
+.hist-lectura{ display:flex; justify-content:space-between; gap:8px; font-size:13px; padding:4px 2px 6px; min-height:26px; }
+.hist-lectura .f{ color:var(--muted); }
+.hist-tit{ display:flex; justify-content:space-between; font-size:11px; color:var(--muted); padding:4px 2px 0; }
+.hist-ayuda{ font-size:11px; color:var(--muted); padding:6px 2px 0; }
+.u-graf{ touch-action:pan-y; }
+.pagos{ display:grid; gap:6px; margin:8px 0 4px; }
+.pago{ display:grid; grid-template-columns:96px 1fr 72px; align-items:center; gap:10px; font-size:13px; }
+.pago .f{ color:var(--muted); }
+.pago .f b{ display:block; color:var(--bone); font-weight:600; }
+.pago .barra{ display:flex; height:9px; border-radius:5px; overflow:hidden; background:var(--panel-2); }
+.pago .barra i{ display:block; height:100%; }
+.pago .barra .renta{ background:var(--bone); opacity:.8; }
+.pago .barra .amort{ background:var(--neutro); opacity:.5; }
+.pago .num{ text-align:right; font-weight:600; }
+.pago.prox .f b::after{ content:" · próximo"; color:var(--barato); font-weight:500; }
+/* uPlot, lo minimo: su hoja de estilos no viene en el .js */
+.uplot{ font-family:var(--sans); line-height:1.2; position:relative; }
+.uplot canvas{ display:block; position:relative; width:100%; height:100%; }
+.u-graf .u-over, .u-graf .u-under{ position:absolute; }
+.u-over{ overflow:hidden; }
+.u-cursor-x, .u-cursor-y{ position:absolute; left:0; top:0; pointer-events:none; will-change:transform; }
+.u-cursor-x{ height:100%; border-right:1px dashed var(--muted); }
+.u-cursor-y{ width:100%; border-bottom:1px dashed transparent; }
+.u-cursor-pt{ position:absolute; top:0; left:0; border-radius:50%; border:0 solid; pointer-events:none; will-change:transform; background-clip:padding-box!important; }
+.u-select{ position:absolute; pointer-events:none; }
+.u-legend{ display:none; }
+}
 </style>
 </head>
 <body>
@@ -571,6 +616,19 @@ details.par-menu .menu{top:24px}
     <div id="curva-estr"></div>
     <div id="reserva-estr"></div>
 
+    <details class="u-mt-12" id="curva-caja" open>
+      <summary>Curva</summary>
+      <div class="u-mt-8 nota">Cada punto es un bono. Arriba de la línea
+        rinde más que sus pares de la misma duration: está barato. Tocá uno
+        para abrir su detalle.</div>
+      <div class="chips" id="curva-fam" role="group" aria-label="Familia"></div>
+      <svg id="curva-svg" role="img" aria-label="TIR contra duration de la familia"></svg>
+      <div class="curva-ley">
+        <span><b style="background:var(--barato)"></b>barato (z ≥ umbral)</span>
+        <span><b style="background:var(--caro)"></b>caro (z ≤ −umbral)</span>
+        <span><b style="background:var(--neutro)"></b>dentro del rango</span>
+      </div>
+    </details>
     <details class="u-mt-12" id="canje-caja">
       <summary id="canje-tit">Canjes convenientes</summary>
       <div class="u-mt-8 nota">Contra qué bono conviene
@@ -1117,6 +1175,10 @@ details.par-menu .menu{top:24px}
   <div id="o-msg"></div>
 </dialog>
 
+<!-- uPlot va copiada en el repo (app/static/uplot.min.js), no desde un CDN:
+     la app tiene que andar sin internet. Si falta, los graficos vuelven
+     a los SVG de antes. -->
+<script src="uplot.min.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const base = "";
@@ -3568,6 +3630,7 @@ async function cargarBonos(){
       'corresponde a cada punta.</div>';
 
     window._filasBonos = d.filas;
+    pintarCurvaBonos();
     /* Los dos bloques de arriba: lo que se tiene, medido. La tabla de
        abajo es la curva completa, que es seguimiento sin tenencia. */
     pintarEstrBonos(d.filas);
@@ -3719,6 +3782,7 @@ async function verBono(sim){
         d.cartera.brokers.map(b => '<dt>' + esc(b.broker) + '</dt><dd>' +
           num(b.cantidad, 0) + '</dd>').join("") + '</dl></div>' : "") +
       (d.nota ? '<p class="nota">' + esc(d.nota) + '</p>' : "") +
+      pagosHtml(d.flujo) +
       '<dl class="kv">' +
       (pp ? '<dt>Próximo pago</dt><dd>' + esc(pp.fecha) + ' · ' +
         val(pp.total) + (pp.amortizacion ? ' <span class="u-sage">' +
@@ -3770,7 +3834,7 @@ async function verBono(sim){
         (x.amortizacion ? num(x.amortizacion, 3) : "—") + '</td><td>' +
         num(x.total, 3) + '</td></tr>').join("") +
       '</tbody></table></div></details>';
-    graficarTir(sim);
+    if(window.uPlot) graficarHist(sim); else graficarTir(sim);
   }catch(e){
     $("#bono-cuerpo").innerHTML = '<div class="msg error">No se pudo cargar.</div>';
   }
@@ -3807,6 +3871,260 @@ async function graficarTir(sim, periodo){
     cont.innerHTML = barra + '<div class="msg error">No se pudo cargar.</div>';
   }
 }
+
+/* ---------- curva TIR vs duration (0.56.0) ---------- */
+/* Decimales fijos; `num` cuenta cifras significativas. */
+const fx = (v, n) => (v == null || !isFinite(v)) ? "—" : dec(v, n);
+/* SVG propio: son pocos puntos y lo que importa es tocar el mas cercano.
+   La linea es el valor de curva que calcula el servidor para cada bono,
+   unido por duration. */
+let curvaFam = null;
+const curvaUmbral = () => 2.5;
+function colorZ(z){
+  const u = curvaUmbral(), cs = getComputedStyle(document.documentElement);
+  if(z != null && z >= u) return cs.getPropertyValue("--barato").trim();
+  if(z != null && z <= -u) return cs.getPropertyValue("--caro").trim();
+  return cs.getPropertyValue("--neutro").trim();
+}
+function pasoLindo(raw){
+  const p = Math.pow(10, Math.floor(Math.log10(raw))), n = raw / p;
+  return (n < 1.5 ? 1 : n < 3.5 ? 2 : n < 7.5 ? 5 : 10) * p;
+}
+function pintarCurvaBonos(){
+  const filas = (window._filasBonos || []).filter(f =>
+    f.tir_last != null && f.md != null && f.md > 0 && f.familia);
+  const porFam = {};
+  filas.forEach(f => (porFam[f.familia] = porFam[f.familia] || []).push(f));
+  const fams = Object.keys(porFam).filter(k => porFam[k].length >= 3)
+    .sort((a, b) => porFam[b].length - porFam[a].length);
+  const svg = $("#curva-svg");
+  if(!fams.length){ svg.innerHTML = ""; $("#curva-fam").innerHTML = ""; return; }
+  if(!fams.includes(curvaFam)) curvaFam = fams.includes("CER") ? "CER" : fams[0];
+  $("#curva-fam").innerHTML = fams.map(k => '<button aria-pressed="' +
+    (k === curvaFam) + '" data-fam="' + esc(k) + '">' + esc(k) + '</button>').join("");
+  const bs = porFam[curvaFam];
+  const W = svg.clientWidth || 340, H = 300, L = 40, R = 12, T = 16, B = 34;
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  const mdMax = Math.max(...bs.map(b => b.md)) * 1.08;
+  const ys = bs.map(b => b.tir_last).concat(bs.filter(b => b.curva != null).map(b => b.curva));
+  let yMin = Math.min(...ys), yMax = Math.max(...ys);
+  const pad = (yMax - yMin) * .15 + .3; yMin -= pad; yMax += pad;
+  const X = v => L + v / mdMax * (W - L - R);
+  const Y = v => T + (yMax - v) / (yMax - yMin) * (H - T - B);
+  let h = "";
+  const py = pasoLindo((yMax - yMin) / 4);
+  for(let v = Math.ceil(yMin / py) * py; v <= yMax; v += py)
+    h += '<line class="grid" x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(v) + '" y2="' + Y(v) + '"/>' +
+         '<text x="' + (L - 6) + '" y="' + (Y(v) + 4) + '" text-anchor="end">' + fx(v, py < 1 ? 1 : 0) + '</text>';
+  const px = pasoLindo(mdMax / 5);
+  for(let v = 0; v <= mdMax; v += px)
+    h += '<text x="' + X(v) + '" y="' + (H - B + 16) + '" text-anchor="middle">' + fx(v, px < 1 ? 1 : 0) + '</text>';
+  h += '<text x="' + (W - R) + '" y="' + (H - 4) + '" text-anchor="end">duration modificada</text>' +
+       '<text x="' + (L - 6) + '" y="' + (T - 4) + '" text-anchor="end">TIR %</text>';
+  const conCurva = bs.filter(b => b.curva != null).sort((a, b) => a.md - b.md);
+  if(conCurva.length > 1)
+    h += '<path class="ajuste" d="' + conCurva.map((b, i) =>
+      (i ? "L" : "M") + X(b.md) + "," + Y(b.curva)).join("") + '"/>';
+  const u = curvaUmbral();
+  for(const b of bs){
+    const c = colorZ(b.z), fuera = b.z != null && Math.abs(b.z) >= u;
+    h += '<circle class="pt" cx="' + X(b.md) + '" cy="' + Y(b.tir_last) + '" r="5.5" fill="' + c + '" data-sim="' + esc(b.simbolo) + '"><title>' +
+      esc(b.simbolo) + ' · TIR ' + fx(b.tir_last, 2) + '% · z ' + (b.z == null ? "—" : fx(b.z, 2)) + '</title></circle>';
+    if(fuera){
+      const der = X(b.md) < W * .75;
+      h += '<text class="etq" x="' + (X(b.md) + (der ? 10 : -10)) + '" y="' + (Y(b.tir_last) - 8) +
+        '" text-anchor="' + (der ? "start" : "end") + '">' + esc(b.simbolo) + '</text>';
+    }
+  }
+  svg.innerHTML = h;
+  svg._pts = bs.map(b => ({sim: b.simbolo, x: X(b.md), y: Y(b.tir_last)}));
+}
+$("#curva-fam").addEventListener("click", e => {
+  const b = e.target.closest("[data-fam]"); if(!b) return;
+  curvaFam = b.dataset.fam; pintarCurvaBonos();
+});
+$("#curva-svg").addEventListener("click", e => {
+  const svg = e.currentTarget, rc = svg.getBoundingClientRect();
+  const k = svg.viewBox.baseVal.width / rc.width;
+  const x = (e.clientX - rc.left) * k, y = (e.clientY - rc.top) * k;
+  let mejor = null, dist = 28 * k;
+  for(const p of svg._pts || []){
+    const d = Math.hypot(p.x - x, p.y - y);
+    if(d < dist){ dist = d; mejor = p.sim; }
+  }
+  if(mejor) verBono(mejor);
+});
+$("#curva-caja").addEventListener("toggle", () => {
+  if($("#curva-caja").open) pintarCurvaBonos();
+});
+
+/* ---------- proximos pagos ---------- */
+function pagosHtml(flujo){
+  const hoy = new Date().toISOString().slice(0, 10);
+  const fut = (flujo || []).filter(p => p.fecha > hoy);
+  if(!fut.length) return "";
+  const prox = fut.slice(0, 6), maxT = Math.max(...prox.map(p => p.total || 0), 1e-9);
+  const MESES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+  const corta = f => { const [y, m, d] = f.split("-"); return +d + " " + MESES[+m - 1] + " " + y; };
+  return '<div class="hallazgo"><h3>Próximos pagos <span class="u-muted">· por cada 100 nominales</span></h3>' +
+    '<div class="pagos">' + prox.map((p, i) => {
+      const dias = Math.round((new Date(p.fecha + "T12:00:00") - new Date()) / 86400000);
+      return '<div class="pago' + (i ? "" : " prox") + '"><span class="f"><b>' + corta(p.fecha) +
+        '</b>en ' + ent(dias) + ' días</span><span class="barra" aria-hidden="true">' +
+        '<i class="renta" style="width:' + ((p.renta || 0) / maxT * 100) + '%"></i>' +
+        '<i class="amort" style="width:' + ((p.amortizacion || 0) / maxT * 100) + '%"></i></span>' +
+        '<span class="num">' + fx(p.total, 2) + '</span></div>';
+    }).join("") + '</div>' +
+    (fut.length > 6 ? '<div class="hist-ayuda">y ' + (fut.length - 6) + ' pagos más hasta el vencimiento.</div>' : "") +
+    '<div class="curva-ley"><span><b style="background:var(--bone);border-radius:2px"></b>renta</span>' +
+    '<span><b style="background:var(--neutro);opacity:.5;border-radius:2px"></b>amortización</span></div></div>';
+}
+
+/* ---------- historia de TIR y z con uPlot ---------- */
+const HIST_PER = [["1M", 22], ["3M", 66], ["6M", 132], ["1A", 260], ["Todo", 0]];
+let hist = null;   // {sim, t, tir, z, uTir, uZ, periodo}
+const MESC = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+const MESL = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+const DIAC = ["dom","lun","mar","mié","jue","vie","sáb"];
+const DIAL = ["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
+const fechaLarga = ts => { const d = new Date(ts * 1000); return DIAC[d.getDay()] + " " + d.getDate() + " " + MESC[d.getMonth()] + " " + d.getFullYear(); };
+
+async function graficarHist(sim){
+  const cont = $("#bono-hist");
+  if(!cont) return;
+  cont.innerHTML = '<div class="u-p-12 vacio">Cargando…</div>';
+  let d;
+  try{
+    d = await (await fetch(base + "api/bonos/" + encodeURIComponent(sim) + "/historico?periodo=max")).json();
+  }catch(e){ cont.innerHTML = '<div class="msg error">No se pudo cargar.</div>'; return; }
+  const pts = (d.puntos || []).filter(p => p.tir != null);
+  if(pts.length < 2){
+    cont.innerHTML = '<div class="u-p-12 vacio">Todavía no hay serie para este bono. ' +
+      'El histórico se reconstruye la primera vez que arranca la app.</div>';
+    return;
+  }
+  if(hist){ try{ hist.uTir.destroy(); hist.uZ && hist.uZ.destroy(); }catch(e){} }
+  const t = pts.map(p => new Date(p.fecha + "T12:00:00").getTime() / 1000);
+  const tir = pts.map(p => p.tir), z = pts.map(p => p.z == null ? null : p.z);
+  const conZ = z.some(v => v != null);
+  const u = curvaUmbral(), rea = u - 0.5;
+  hist = {sim, t, tir, z, periodo: (hist && hist.periodo) || "6M"};
+  cont.innerHTML =
+    '<div class="chips" id="hist-per" role="group" aria-label="Período">' + HIST_PER.map(([k]) =>
+      '<button aria-pressed="' + (k === hist.periodo) + '" data-per="' + k + '">' + k + '</button>').join("") + '</div>' +
+    '<div class="hist-lectura" aria-live="polite"><span class="f" id="hl-f"></span><span id="hl-v"></span></div>' +
+    '<div class="hist-tit"><span>TIR</span><span id="hl-rango"></span></div><div class="u-graf" id="hg-tir"></div>' +
+    (conZ ? '<div class="hist-tit"><span>z del desvío contra la curva</span><span>umbral ±' + fx(u, 1) +
+      ' · rearme ±' + fx(rea, 1) + '</span></div><div class="u-graf" id="hg-z"></div>' : "") +
+    '<div class="hist-ayuda">Deslizá un dedo para leer cada día. Con dos dedos, acercá o alejá. Doble toque vuelve al período.</div>';
+  const cs = getComputedStyle(document.documentElement), v = n => cs.getPropertyValue(n).trim();
+  const W = Math.max(260, cont.clientWidth || 300);
+  const base_ = (alto, ejeY, extra) => Object.assign({
+    width: W, height: alto,
+    fmtDate: tpl => uPlot.fmtDate(tpl, {MMMM: MESL, MMM: MESC, WWWW: DIAL, WWW: DIAC}),
+    cursor: {sync: {key: "bono-hist"}, drag: {x: false, y: false}, y: false,
+             points: {size: 8, width: 2, fill: v("--ink")}},
+    legend: {show: false},
+    scales: {x: {time: true}},
+    axes: [
+      {stroke: v("--muted"), grid: {stroke: v("--rule"), width: 1, dash: [2, 4]}, ticks: {show: false}, size: 28, font: "11px " + v("--sans")},
+      Object.assign({stroke: v("--muted"), grid: {stroke: v("--rule"), width: 1, dash: [2, 4]}, ticks: {show: false}, size: 40, font: "11px " + v("--sans")}, ejeY)],
+    series: [{}, {stroke: v("--bone"), width: 1.5, points: {show: false}}],
+    hooks: {setCursor: [uu => leerHist(uu.cursor.idx)]},
+  }, extra || {});
+  hist.uTir = new uPlot(base_(170, {values: (uu, vs) => vs.map(x => fx(x, 1))}), [t, tir], $("#hg-tir"));
+  if(conZ){
+    const barato = v("--barato-t"), caro = v("--caro-t"), az = v("--barato"), nar = v("--caro");
+    hist.uZ = new uPlot(base_(140, {values: (uu, vs) => vs.map(x => fx(x, 0))}, {
+      scales: {x: {time: true}, y: {range: (uu, mn, mx) => [Math.min(-3.5, mn), Math.max(3.5, mx)]}},
+      hooks: {
+        setCursor: [uu => leerHist(uu.cursor.idx)],
+        drawClear: [uu => {
+          const c = uu.ctx, bx = uu.bbox, y = val => uu.valToPos(val, "y", true);
+          c.save();
+          c.fillStyle = barato; c.fillRect(bx.left, bx.top, bx.width, Math.max(0, y(u) - bx.top));
+          c.fillStyle = caro; c.fillRect(bx.left, y(-u), bx.width, Math.max(0, bx.top + bx.height - y(-u)));
+          c.setLineDash([4, 4]); c.lineWidth = 1;
+          c.strokeStyle = az; c.beginPath(); c.moveTo(bx.left, y(rea)); c.lineTo(bx.left + bx.width, y(rea)); c.stroke();
+          c.strokeStyle = nar; c.beginPath(); c.moveTo(bx.left, y(-rea)); c.lineTo(bx.left + bx.width, y(-rea)); c.stroke();
+          c.restore();
+        }],
+      }}), [t, z], $("#hg-z"));
+  } else hist.uZ = null;
+  [hist.uTir, hist.uZ].filter(Boolean).forEach(gestosHist);
+  $("#hist-per").addEventListener("click", e => {
+    const b = e.target.closest("[data-per]"); if(!b) return;
+    hist.periodo = b.dataset.per;
+    $("#hist-per").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+    periodoHist();
+  });
+  periodoHist();
+}
+function periodoHist(){
+  const n = (HIST_PER.find(p => p[0] === hist.periodo) || [0, 0])[1], t = hist.t;
+  rangoHist(n ? t[Math.max(0, t.length - n)] : t[0], t[t.length - 1]);
+  leerHist(null);
+}
+function rangoHist(min, max){
+  [hist.uTir, hist.uZ].filter(Boolean).forEach(uu => uu.setScale("x", {min, max}));
+  const r = $("#hl-rango"); if(r) r.textContent = fechaLarga(min).slice(4) + " – " + fechaLarga(max).slice(4);
+}
+function leerHist(idx){
+  if(!hist) return;
+  const i = idx == null ? hist.t.length - 1 : idx;
+  const f = $("#hl-f"), vv = $("#hl-v");
+  if(!f) return;
+  f.textContent = (idx == null ? "Último · " : "") + fechaLarga(hist.t[i]);
+  const z = hist.z[i];
+  vv.textContent = "TIR " + fx(hist.tir[i], 2) + "%" + (z == null ? "" : " · z " + (z >= 0 ? "+" : "−") + fx(Math.abs(z), 2));
+}
+function limitarHist(min, ancho){
+  const t = hist.t, a = t[0], b = t[t.length - 1];
+  ancho = Math.min(Math.max(ancho, 10 * 86400), b - a);
+  min = Math.min(Math.max(min, a), b - ancho);
+  rangoHist(min, min + ancho);
+}
+function gestosHist(uu){
+  const over = uu.over;
+  let ini = null, ultimo = 0;
+  const xs = e => [...e.touches].map(t => t.clientX - over.getBoundingClientRect().left);
+  over.addEventListener("touchstart", e => {
+    if(e.touches.length === 2){
+      const [a, b] = xs(e);
+      ini = {d: Math.abs(b - a), c: (a + b) / 2, min: uu.scales.x.min, max: uu.scales.x.max};
+    } else if(e.touches.length === 1){
+      const ahora = Date.now();
+      if(ahora - ultimo < 300){ periodoHist(); e.preventDefault(); }
+      ultimo = ahora;
+    }
+  }, {passive: false});
+  over.addEventListener("touchmove", e => {
+    if(e.touches.length !== 2 || !ini) return;
+    e.preventDefault();
+    const [a, b] = xs(e), d = Math.max(20, Math.abs(b - a)), c = (a + b) / 2, w = over.clientWidth;
+    const ancho = (ini.max - ini.min) * ini.d / d;
+    limitarHist(ini.min + (ini.c / w) * (ini.max - ini.min) - (ini.c / w) * ancho - (c - ini.c) / w * ancho, ancho);
+  }, {passive: false});
+  over.addEventListener("touchend", e => { if(e.touches.length < 2) ini = null; });
+  over.addEventListener("wheel", e => {
+    e.preventDefault();
+    const f = e.deltaY > 0 ? 1.15 : 1 / 1.15, mn = uu.scales.x.min, mx = uu.scales.x.max;
+    const tc = uu.posToVal(e.offsetX, "x");
+    limitarHist(tc - (tc - mn) * f, (mx - mn) * f);
+  }, {passive: false});
+  over.addEventListener("dblclick", periodoHist);
+}
+addEventListener("resize", () => {
+  clearTimeout(window._tCurva);
+  window._tCurva = setTimeout(() => {
+    if($("#curva-caja") && $("#curva-caja").open) pintarCurvaBonos();
+    const g = $("#hg-tir");
+    if(hist && g && g.clientWidth){
+      hist.uTir.setSize({width: g.clientWidth, height: 170});
+      if(hist.uZ) hist.uZ.setSize({width: g.clientWidth, height: 140});
+    }
+  }, 150);
+});
 
 /* ---------- filtros ---------- */
 const filtro = {ley: "todas", tipo: "todos", moneda: "todas",

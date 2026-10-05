@@ -323,3 +323,23 @@ def analizar(filas):
             "vecino": vecino if mejor < (f["md"] or 1) * 0.5 else None,
         }
     return salida
+
+
+def z_historico(simbolo):
+    """{fecha: (residuo, z)} de cada dia, con la ventana de `VENTANA`
+    ruedas que terminaba ese dia y el mismo minimo que `zscore`."""
+    import statistics as st
+    filas = db.conn().execute(
+        "SELECT fecha, residuo FROM residuo_hist WHERE simbolo=? "
+        "ORDER BY fecha", (simbolo,)).fetchall()
+    out, vals = {}, []
+    for r in filas:
+        vals.append(r["residuo"])
+        h = vals[-VENTANA:]
+        if len(h) < MIN_HISTORIA:
+            out[r["fecha"]] = (r["residuo"], None)
+            continue
+        sd = st.pstdev(h)
+        out[r["fecha"]] = (r["residuo"],
+                           (r["residuo"] - st.mean(h)) / sd if sd > 1e-9 else None)
+    return out

@@ -1,5 +1,24 @@
 # Registro de cambios
 
+## 0.56.0
+
+**Antes de desplegar, una sola vez:** copiar uPlot al repositorio
+(`app/static/uplot.min.js`, desde GitHub). La app no la baja de internet.
+Sin el archivo, el detalle del bono vuelve al grafico de antes.
+
+**Curva en BONOS.** Una seccion nueva arriba de los canjes: TIR contra
+duration por familia, cada bono coloreado por su z (azul barato, naranja
+caro) y la linea de la curva que calcula el servidor. Tocar un punto abre
+el detalle.
+
+**Detalle del bono.** Proximos pagos con la renta y la amortizacion de
+cada uno. Historia interactiva de TIR y z sincronizadas: zonas de barato
+y caro, el nivel de rearme, periodos, lectura al deslizar, zoom con dos
+dedos y doble toque para volver.
+
+**`/api/bonos/<sim>/historico`** devuelve el desvio y el z de cada dia,
+con la ventana que terminaba ese dia: el mismo z que usan los avisos.
+
 ## 0.55.0
 
 **Campos nuevos, cargar a mano:** `curva_histeresis_z: 0.5`,

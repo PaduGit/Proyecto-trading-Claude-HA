@@ -1816,6 +1816,17 @@ def crear_app(monitor):
             puntos = H.serie(simbolo.upper(), desde)
         except Exception as e:
             return jsonify({"error": str(e)}), 500
+        # El z de cada dia, con la ventana que terminaba ese dia: el mismo
+        # que usan los avisos. Se calcula con toda la historia aunque se
+        # pida un periodo corto.
+        try:
+            zs = CU.z_historico(simbolo.upper())
+            for p in puntos:
+                x = zs.get(str(p.get("fecha"))[:10])
+                if x:
+                    p["residuo"], p["z"] = x
+        except Exception as e:
+            log.debug("z historico %s: %s", simbolo, e)
         return jsonify({"simbolo": simbolo.upper(), "periodo": periodo,
                         "puntos": puntos})
 
