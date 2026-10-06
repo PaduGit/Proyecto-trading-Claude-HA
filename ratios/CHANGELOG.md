@@ -1,5 +1,38 @@
 # Registro de cambios
 
+## 0.58.0
+
+**Pares por diferencial de TIR.** En el alta y la edicion de un par, el
+campo Comparar: precio (ratio) o TIR (diferencial en pb).
+- Se mide TIR del denominador menos TIR del numerador: un valor alto
+  quiere decir numerador caro, igual que en un ratio de precios, asi que
+  zonas, histeresis, "estar en" y rotacion no cambian.
+- La historia diaria sale de `bono_hist`: el par arranca con la ventana
+  completa. El valor de cada ciclo, de la TIR de la tabla de BONOS.
+- La tarjeta muestra el diferencial en pb, las dos TIR y el recorrido a
+  la media en % del capital (duration por diferencial). Avisa si las
+  familias son distintas.
+- Con un bono a menos de 60 dias del vencimiento se sigue calculando, con
+  un aviso en la tarjeta y en la notificacion.
+- Soporte y resistencia en pb, con 5 pb de histeresis fija.
+- Columna nueva `grupos.modo` (se agrega sola al arrancar).
+
+**Diseño nuevo en toda la app.** Oscuro, moderno y limpio: paleta nueva,
+tipografia sans con numeros tabulares en vez de monoespaciada, sin
+mayusculas espaciadas, pestañas y botones redondeados. Va en una capa CSS
+propia (`tema`), entre `base` y `util`: no toca la estructura.
+
+**RATIOS como la maqueta.**
+- Filtros arriba de los pares: Todos, En zona, Con tenencia y Por TIR (si
+  hay alguno). Los que estan en zona van primero, ordenados por |z|. El
+  filtro elegido se recuerda.
+- Cada tarjeta: etiqueta de tipo (precio, TIR o moneda), variacion del
+  dia contra el cierre anterior, borde de color si esta en zona y los
+  datos en cuatro recuadros.
+- Grafico del par con uPlot: zonas sombreadas (soporte y resistencia, o
+  ±2 desvios), la media punteada y lectura al deslizar. Sin
+  `uplot.min.js` vuelve al grafico de antes.
+
 ## 0.57.0
 
 **Curva en BONOS, segunda vuelta.**

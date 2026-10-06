@@ -15,7 +15,7 @@
   src:url("fonts/IBMPlexSans-Regular.woff2") format("woff2")}
 @font-face{font-family:"Plex Sans";font-display:swap;font-weight:600;
   src:url("fonts/IBMPlexSans-SemiBold.woff2") format("woff2")}
-@layer base, util;
+@layer base, tema, util;
 @layer base{
 :root{
   --ink:#0E141B; --panel:#161E28; --panel-2:#1C2632; --rule:#28323F;
@@ -522,6 +522,74 @@ details.par-menu .menu{top:24px}
 .u-select{ position:absolute; pointer-events:none; }
 .u-legend{ display:none; }
 }
+
+/* ---------- tema 0.58.0: oscuro, moderno y limpio ----------
+   Va en su propia capa: gana sobre `base` sin importar la especificidad
+   y pierde contra `util`, igual que antes perdia `base`. Cambia tokens,
+   tipografia (sans con numeros tabulares en vez de monoespaciada) y
+   saca las mayusculas espaciadas. La estructura no se toca. */
+@layer tema{
+:root{
+  --ink:#111923; --panel:#17212D; --panel-2:#1D2937; --rule:#2A3848;
+  --bone:#E7ECF2; --muted:#97A4B5;
+  --coral:#E07A6F; --sage:#5FC48A; --amber:#E0B45A;
+  --mono:var(--sans);
+  --code:ui-monospace,SFMono-Regular,"Roboto Mono",Menlo,Consolas,monospace;
+}
+body{ font-variant-numeric:tabular-nums; }
+pre, code, kbd, textarea, .bloque-json, .area-json{ font-family:var(--code); }
+header{ background:rgba(17,25,35,.94); border-bottom-color:transparent; padding:14px 16px 8px; }
+h1{ font-family:var(--sans); font-size:19px; font-weight:700; letter-spacing:-.01em; text-transform:none; }
+.ver-app{ font-size:12px; letter-spacing:0; }
+.hace{ font-size:12px; }
+button.refrescar{ width:40px; height:40px; }
+nav{ gap:4px; margin-top:12px; }
+nav button{ flex:0 0 auto; border:0; border-radius:8px !important; background:transparent;
+  font-family:var(--sans); font-size:14px; font-weight:500; letter-spacing:0;
+  text-transform:none; padding:0 12px; min-height:40px; color:var(--muted); }
+nav button + button{ border-left:0; }
+nav button[aria-selected="true"]{ background:var(--panel-2); color:var(--bone); }
+main{ padding:16px; }
+
+/* mayusculas espaciadas fuera */
+.alias, label, dialog h2, summary, th, .filtro-etq, .sugerencia .sug-etq,
+button, .periodos button, .op-acc button{
+  text-transform:none; letter-spacing:normal; font-family:var(--sans); }
+.alias{ font-size:15px; font-weight:600; }
+label{ font-size:12px; color:var(--muted); }
+dialog h2{ font-size:17px; font-weight:600; }
+summary{ font-size:16px; font-weight:600; }
+
+/* superficies y botones */
+.par, .pos, .hallazgo, dialog{ border-radius:12px; border-color:transparent; }
+.par, .pos{ background:var(--panel); }
+button, .periodos button{ border-radius:8px; }
+input, select, textarea{ border-radius:8px; }
+.periodos button[aria-pressed="true"], .chips button[aria-pressed="true"]{
+  background:var(--bone); color:var(--ink); border-color:var(--bone); }
+
+/* tarjeta de par */
+.par{ border-left:3px solid transparent; padding:14px; }
+.par.alta{ border-left-color:var(--caro); }
+.par.baja{ border-left-color:var(--barato); }
+.par-top{ gap:8px; }
+.tipo-par{ font-size:11px; color:var(--muted); border:1px solid var(--rule);
+  border-radius:999px; padding:1px 8px; margin-right:auto; }
+.ratio{ font-size:30px; font-weight:700; letter-spacing:-.02em; display:flex;
+  align-items:baseline; gap:10px; flex-wrap:wrap; }
+.ratio .dia{ font-size:13px; font-weight:500; letter-spacing:0; }
+.dia.sube{ color:var(--sage); } .dia.baja{ color:var(--coral); }
+.sugerencia{ background:var(--panel-2); border-radius:8px; padding:10px 12px;
+  border:0; font-size:14px; gap:8px; }
+.sugerencia .sug-etq{ font-size:13px; color:var(--muted); }
+.par .datos{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; font-size:13px; }
+.par .datos > span{ background:var(--panel-2); border-radius:8px; padding:7px 9px;
+  color:var(--muted); font-size:12px; }
+.par .datos > span b{ display:block; color:var(--bone); font-size:14px; font-weight:600; }
+.par .datos > span:empty{ display:none; }
+.acciones button{ min-height:40px; font-size:14px; }
+@media (max-width:520px){ .par .datos{ grid-template-columns:repeat(2,1fr); } }
+}
 </style>
 </head>
 <body>
@@ -622,7 +690,8 @@ details.par-menu .menu{top:24px}
       </div>
       <div id="par-arch"></div>
     </details>
-    <div id="panel-out" class="u-mt-18"></div>
+    <div class="chips u-mt-18" id="par-filtro" role="group" aria-label="Mostrar"></div>
+    <div id="panel-out" class="u-mt-8"></div>
 </section>
 
   <section id="v-bonos" hidden>
@@ -1069,6 +1138,19 @@ details.par-menu .menu{top:24px}
       <input id="g-den" list="tickers" placeholder="TXAR">
     </div>
     <div class="ancho">
+      <label for="g-modo">Comparar</label>
+      <select id="g-modo">
+        <option value="precio">Precio (ratio)</option>
+        <option value="tir">TIR (diferencial en pb)</option>
+      </select>
+      <div class="nota u-mt-6" id="g-modo-nota" hidden>Para bonos. Se mide
+        TIR del denominador menos TIR del numerador, en pb: alto quiere decir
+        numerador caro, igual que en un ratio. Arranca con dos años de historia.
+        Si las duration son muy distintas, el diferencial también se mueve
+        cuando cambia la pendiente de la curva. Con un bono a menos de 60 días
+        del vencimiento se sigue calculando, con un aviso.</div>
+    </div>
+    <div class="ancho">
       <label for="g-base">Unidad de medida</label>
       <select id="g-base"><option value="">Escribí los tickers primero</option></select>
     </div>
@@ -1426,12 +1508,45 @@ async function cargarPanel(){
     cont.innerHTML = cab + '<div class="vacio">Todavía no hay lecturas.</div>';
     return;
   }
-  cont.innerHTML = cab + d.pares.map(tarjeta).join("");
+  pintarFiltroPares(d.pares);
+  cont.innerHTML = cab + (paresVisibles(d.pares).map(tarjeta).join("") ||
+    '<div class="vacio">Ningún par con ese filtro.</div>');
   Object.keys(abierto).forEach(a => dibujar(a, abierto[a]));
   Object.keys(movsAbiertos).forEach(id => {
     if(movsAbiertos[id]) verMovimientos(parseInt(id, 10), true);
   });
 }
+
+/* ---------- filtro y orden de los pares (0.58.0) ---------- */
+/* Arriba lo que esta en zona, y dentro de cada grupo por |z|. */
+let parFiltro = (() => { try{ return localStorage.getItem("pares-filtro") || "todos"; }
+                         catch(e){ return "todos"; } })();
+function tieneTenencia(p){
+  const t = (p.sugerencia || {}).tenencia || {};
+  return Object.values(t).some(v => v > 0);
+}
+function paresVisibles(pares){
+  let l = pares.slice();
+  if(parFiltro === "zona") l = l.filter(p => p.zona === "alta" || p.zona === "baja");
+  if(parFiltro === "tenencia") l = l.filter(tieneTenencia);
+  if(parFiltro === "tir") l = l.filter(p => p.modo === "tir");
+  const enZona = p => (p.zona === "alta" || p.zona === "baja") ? 0 : 1;
+  return l.sort((a, b) => enZona(a) - enZona(b) ||
+    Math.abs(b.z || 0) - Math.abs(a.z || 0));
+}
+function pintarFiltroPares(pares){
+  const ops = [["todos", "Todos"], ["zona", "En zona"], ["tenencia", "Con tenencia"]];
+  if(pares.some(p => p.modo === "tir")) ops.push(["tir", "Por TIR"]);
+  if(!ops.some(o => o[0] === parFiltro)) parFiltro = "todos";
+  $("#par-filtro").innerHTML = ops.map(([k, t]) => '<button aria-pressed="' +
+    (k === parFiltro) + '" data-pf="' + k + '">' + t + '</button>').join("");
+}
+$("#par-filtro").addEventListener("click", e => {
+  const b = e.target.closest("[data-pf]"); if(!b) return;
+  parFiltro = b.dataset.pf;
+  try{ localStorage.setItem("pares-filtro", parFiltro); }catch(err){}
+  if(ultimoEstado) cargarPanel();
+});
 
 /* En que activo conviene estar. La regla la decide el backend
    (monitor.sugerencia_par); aca solo se muestra y se cruza con la tenencia. */
@@ -1483,8 +1598,15 @@ function tarjeta(p){
   const hacia = sug.estar_en;
   const resaltar = sale => hacia && sale !== hacia ? "op" : "";
 
+  const tipo = p.modo === "tir" ? "TIR" : (p.sugerencia || {}).moneda ? "moneda" : "precio";
+  const ayer = est.ayer;
+  const dia = ayer != null && p.ratio != null
+    ? (p.modo === "tir" ? p.ratio - ayer : (ayer ? (p.ratio / ayer - 1) * 100 : null)) : null;
+  const diaHtml = dia == null ? "" : '<span class="dia ' + (dia >= 0 ? "sube" : "baja") + '">' +
+    conSigno(dia, p.modo === "tir" ? 0 : 2) + (p.modo === "tir" ? " pb" : "%") + ' hoy</span>';
   return '<div class="par ' + zona + cerca + '">' +
     '<div class="par-top"><span class="alias">' + esc(p.alias) + '</span>' +
+    '<span class="tipo-par">' + tipo + '</span>' +
     '<span class="par-top-der">' +
     (p.alertas ? "" : '<span class="silencio">sin alertas</span>') +
     /* Editar y Borrar se usan poco: van al menu y los botones de la
@@ -1497,14 +1619,24 @@ function tarjeta(p){
         '.open=false;borrarGrupo(' + p.id + ')">Borrar</a>' : "") +
       '</div></details>' +
     '</span></div>' +
-    '<div class="ratio">' + num(p.ratio) + '</div>' +
+    (p.modo === "tir" && p.tir
+      ? '<div class="ratio">' + conSigno(p.ratio, 0) + ' <span class="u-muted">pb</span>' + diaHtml + '</div>' +
+        '<div class="aviso">TIR ' + esc(p.den) + ' ' + dec(p.tir.tir_den, 2) + '% − ' +
+          esc(p.num) + ' ' + dec(p.tir.tir_num, 2) + '%' +
+          (p.recorrido_pct != null ? ' · recorrido a la media ≈ ' + dec(p.recorrido_pct, 2) + '%' : "") +
+          (p.tir.aviso ? '<br>⚠ ' + esc(p.tir.aviso) : "") +
+          ((p.tir.familias || [])[0] && p.tir.familias[0] !== p.tir.familias[1]
+            ? '<br>Familias distintas: el diferencial mezcla curvas (por ejemplo, fija contra CER es la inflación de equilibrio).' : "") +
+        '</div>'
+      : '<div class="ratio">' + num(p.ratio) + diaHtml + '</div>') +
     sugerenciaHtml(p) +
     banda(p) +
     (est.aviso ? '<div class="aviso">' + esc(est.aviso) + '</div>' : "") +
     '<div class="datos">' +
       '<span>' + esc(p.num) + ' <b>' + precio(p.p_num && p.p_num.ref) + '</b>' + q(p.p_num) + '</span>' +
       '<span>' + esc(p.den) + ' <b>' + precio(p.p_den && p.p_den.ref) + '</b>' + q(p.p_den) + '</span>' +
-      (est.media ? '<span>media <b>' + num(est.media) + '</b></span>' : "<span></span>") +
+      (est.media != null && est.n ? '<span>media <b>' + (p.modo === "tir"
+        ? conSigno(est.media, 0) + ' pb' : num(est.media)) + '</b></span>' : "<span></span>") +
       (p.z != null ? '<span>z <b>' + conSigno(p.z, 2) + '</b></span>'
                    : '<span>n <b>' + (est.n||0) + '</b></span>') +
     '</div>' +
@@ -1945,11 +2077,69 @@ async function dibujar(alias, modo){
       ? '<div class="leyenda"><span><i></i>lecturas propias</span>' +
         '<span><i class="iol"></i>histórico de IOL</span></div>'
       : "";
-    cont.innerHTML = barra + grafico(d.puntos, d.resistencia, d.soporte, modo) +
-      leyenda;
+    if(window.uPlot && (d.puntos || []).length >= 2){
+      cont.innerHTML = barra + '<div class="hist-lectura"><span class="f" data-lf></span><span data-lv></span></div>' +
+        '<div class="u-graf" data-g></div>' + leyenda +
+        '<div class="hist-ayuda">Deslizá para leer cada punto. Sombreado: fuera del rango.</div>';
+      graficoPar(cont, alias, d);
+    } else
+      cont.innerHTML = barra + grafico(d.puntos, d.resistencia, d.soporte, modo) +
+        leyenda;
   }catch(e){
     cont.innerHTML = barra + '<div class="msg error">No se pudo cargar.</div>';
   }
+}
+
+/* El grafico de un par con uPlot: zonas sombreadas (soporte y
+   resistencia, o ±2 desvios si no hay niveles) y la media punteada. */
+const graficosPar = {};
+function graficoPar(cont, alias, d){
+  if(graficosPar[alias]){ try{ graficosPar[alias].destroy(); }catch(e){} }
+  const p = ((ultimoEstado || {}).pares || []).find(x => x.alias === alias) || {};
+  const est = p.est || {}, tir = (d.modo || p.modo) === "tir";
+  const t = d.puntos.map(x => new Date(x.x.length > 10 ? x.x : x.x + "T12:00:00").getTime() / 1000);
+  const v = d.puntos.map(x => x.y);
+  const hi = d.resistencia || (est.desvio ? est.media + 2 * est.desvio : null);
+  const lo = d.soporte || (est.desvio ? est.media - 2 * est.desvio : null);
+  const cs = getComputedStyle(document.documentElement), cv = n => cs.getPropertyValue(n).trim();
+  const txt = x => x == null ? "—" : tir ? conSigno(x, 0) : num(x);
+  const lf = cont.querySelector("[data-lf]"), lv = cont.querySelector("[data-lv]");
+  const leer = idx => {
+    const i = idx == null ? t.length - 1 : idx, f = new Date(t[i] * 1000);
+    lf.textContent = (idx == null ? "Último · " : "") + DIAC[f.getDay()] + " " + f.getDate() + " " +
+      MESC[f.getMonth()] + (d.puntos[i].x.length > 10 ? " " + d.puntos[i].x.slice(11, 16) : "");
+    lv.textContent = txt(v[i]) + (tir ? " pb" : "") +
+      (est.desvio ? " · z " + conSigno((v[i] - est.media) / est.desvio, 2) : "");
+  };
+  const g = cont.querySelector("[data-g]");
+  const u = new uPlot({
+    width: Math.max(260, g.clientWidth || cont.clientWidth || 300), height: 190,
+    legend: {show: false},
+    fmtDate: tpl => uPlot.fmtDate(tpl, {MMMM: MESL, MMM: MESC, WWWW: DIAL, WWW: DIAC}),
+    cursor: {drag: {x: false, y: false}, y: false, points: {size: 8, width: 2, fill: cv("--ink")}},
+    scales: {x: {time: true}},
+    axes: [
+      {stroke: cv("--muted"), grid: {stroke: cv("--rule"), width: 1, dash: [2, 4]}, ticks: {show: false}, size: 26, font: "11px " + cv("--sans")},
+      {stroke: cv("--muted"), grid: {stroke: cv("--rule"), width: 1, dash: [2, 4]}, ticks: {show: false}, size: 48, font: "11px " + cv("--sans"),
+       values: (uu, vs) => vs.map(txt)}],
+    series: [{}, {stroke: cv("--bone"), width: 1.6, points: {show: false}}],
+    hooks: {
+      setCursor: [uu => leer(uu.cursor.idx)],
+      drawClear: [uu => {
+        const c = uu.ctx, bx = uu.bbox, y = val => uu.valToPos(val, "y", true);
+        c.save();
+        if(hi != null){ c.fillStyle = cv("--caro-t"); c.fillRect(bx.left, bx.top, bx.width, Math.max(0, y(hi) - bx.top)); }
+        if(lo != null){ c.fillStyle = cv("--barato-t"); c.fillRect(bx.left, y(lo), bx.width, Math.max(0, bx.top + bx.height - y(lo))); }
+        if(est.media != null){
+          c.setLineDash([3, 5]); c.strokeStyle = cv("--muted"); c.lineWidth = 1;
+          c.beginPath(); c.moveTo(bx.left, y(est.media)); c.lineTo(bx.left + bx.width, y(est.media)); c.stroke();
+        }
+        c.restore();
+      }],
+    },
+  }, [t, v], g);
+  graficosPar[alias] = u;
+  leer(null);
 }
 
 function grafico(puntos, res, sop, modo){
@@ -2641,6 +2831,8 @@ function abrirDialogoPar(g){
   $("#g-soporte").value = g && g.soporte != null ? g.soporte : "";
   $("#g-resistencia").value = g && g.resistencia != null ? g.resistencia : "";
   $("#g-alertas").value = g && g.alertas === false ? "0" : "1";
+  $("#g-modo").value = g && g.modo === "tir" ? "tir" : "precio";
+  modoPar();
   refrescarBase(g ? g.base : "");
   $("#g-msg").innerHTML = "";
   $("#dlg-grupo").showModal();
@@ -2668,6 +2860,14 @@ async function editarPar(gid){
   }catch(e){ alert("No se pudo abrir."); }
 }
 
+/* En pb los niveles son otra escala: los ejemplos del formulario cambian. */
+function modoPar(){
+  const tir = $("#g-modo").value === "tir";
+  $("#g-modo-nota").hidden = !tir;
+  $("#g-soporte").placeholder = tir ? "-30 (pb)" : "1.36";
+  $("#g-resistencia").placeholder = tir ? "40 (pb)" : "1.54";
+}
+$("#g-modo").addEventListener("change", modoPar);
 $("#pos-nuevo").addEventListener("click", () => abrirDialogoPar(null));
 $("#g-num").addEventListener("input", () => refrescarBase($("#g-base").value));
 $("#g-den").addEventListener("input", () => refrescarBase($("#g-base").value));
@@ -2687,6 +2887,7 @@ $("#g-guardar").addEventListener("click", async () => {
     soporte: $("#g-soporte").value.replace(",", "."),
     resistencia: $("#g-resistencia").value.replace(",", "."),
     alertas: $("#g-alertas").value === "1",
+    modo: $("#g-modo").value,
   };
   try{
     const url = parEditando ? "api/grupos/" + parEditando : "api/grupos";

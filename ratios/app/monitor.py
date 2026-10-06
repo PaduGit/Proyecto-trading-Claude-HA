@@ -20,6 +20,11 @@ MIN_MUESTRA_PROPIA = 15
 BACKFILL_DIAS = 400
 
 
+# Pares por diferencial de TIR (0.58.0)
+MARGEN_TIR_PB = 5.0     # histeresis de soporte y resistencia, en pb
+MIN_DIAS_TIR = 60       # mas cerca del vencimiento se avisa en la tarjeta
+
+
 def _zona_curva(z, umbral, h, previa):
     """Zona de un bono contra su curva, con histeresis.
 
@@ -657,12 +662,25 @@ class Monitor:
     def estadistica(self, par):
         """Prefiere nuestras propias lecturas; el historico de IOL es respaldo."""
         desde = (datetime.now().date() - timedelta(days=VENTANA_DIAS)).isoformat()
+        hoy = date.today().isoformat()
+
+        def con_ayer(st, serie):
+            # El cierre de la rueda anterior, para la variacion del dia.
+            prev = [v for f, v in serie if f < hoy]
+            st["ayer"] = prev[-1] if prev else None
+            return st
+
+        if par.get("modo") == "tir":
+            # La historia diaria ya esta en bono_hist: el par arranca con
+            # la ventana completa, sin esperar lecturas propias.
+            serie = db.serie_tir_diaria(par["num"], par["den"], desde)
+            return con_ayer(_stats([v for _, v in serie], "bono_hist"), serie)
         propia = db.serie_propia_diaria(par["alias"], desde, self.horario())
         if len(propia) >= MIN_MUESTRA_PROPIA:
-            return _stats([v for _, v in propia], "propia")
+            return con_ayer(_stats([v for _, v in propia], "propia"), propia)
 
         serie = db.serie_ratio_diaria(par["num"], par["den"], desde)
-        st = _stats([v for _, v in serie], "iol")
+        st = con_ayer(_stats([v for _, v in serie], "iol"), serie)
         st["aviso"] = ("El histórico viene de IOL y puede mezclar plazos. "
                        "Se reemplaza solo cuando junte %d días propios."
                        % MIN_MUESTRA_PROPIA)
@@ -676,6 +694,20 @@ class Monitor:
         sop = par.get("soporte") or 0
         margen = float(self.cfg.get("histeresis_pct", 0.5)) / 100.0
         actual = self._zona_actual.get(par["alias"], "normal")
+
+        if par.get("modo") == "tir" and (res or sop):
+            # En pb el margen es una suma: un nivel puede ser cero o
+            # negativo y el porcentaje no tiene sentido.
+            m = MARGEN_TIR_PB
+            if actual == "alta" and res and ratio >= res - m:
+                return "alta", res
+            if actual == "baja" and sop and ratio <= sop + m:
+                return "baja", sop
+            if res and ratio >= res:
+                return "alta", res
+            if sop and ratio <= sop:
+                return "baja", sop
+            return "normal", None
 
         if res > 0 or sop > 0:
             if actual == "alta":
@@ -701,9 +733,25 @@ class Monitor:
                 return "baja", est["media"] - 2 * est["desvio"]
         return "normal", None
 
-    def _mensaje(self, par, ratio, zona, nivel, est, num, den):
+    def _mensaje(self, par, ratio, zona, nivel, est, num, den, tir=None):
         icono = "🔴" if zona == "alta" else "🟢"
         que = "tocó resistencia" if zona == "alta" else "tocó soporte"
+        if tir:
+            L = ["%s <b>%s</b> %s" % (icono, par["alias"], que),
+                 "Diferencial <b>%+.0f pb</b>  (nivel %+.0f)" % (ratio, nivel or 0),
+                 "TIR %s %.2f%% · %s %.2f%%" % (par["num"], tir["tir_num"],
+                                                par["den"], tir["tir_den"]),
+                 ""]
+            if tir.get("aviso"):
+                L += ["⚠ " + tir["aviso"], ""]
+            if est.get("n", 0) >= MIN_MUESTRA_Z and est.get("desvio"):
+                z = (ratio - est["media"]) / est["desvio"]
+                L += ["Media: %+.0f pb   z: %+.2f" % (est["media"], z), ""]
+            ten = self._tenencia_del_par(par, num["ref"] / den["ref"])
+            if ten:
+                L += ten + [""]
+            L += ["<i>%s</i>" % datetime.now().strftime("%H:%M:%S")]
+            return "\n".join(L)
         L = [
             "%s <b>%s</b> %s" % (icono, par["alias"], que),
             "Ratio <b>%.4f</b>  (nivel %.4f)" % (ratio, nivel or 0),
@@ -775,7 +823,12 @@ class Monitor:
         if not num or not den or not num["ref"] or not den["ref"]:
             raise IOLError("sin precio para %s o %s" % (par["num"], par["den"]))
 
-        ratio = num["ref"] / den["ref"] * self._factor(par, num, den)
+        tir = None
+        if par.get("modo") == "tir":
+            tir = self._tir_del_par(par, mapa)
+            ratio = tir["valor"]
+        else:
+            ratio = num["ref"] / den["ref"] * self._factor(par, num, den)
         est = self.estadistica(par)
         previa = self._zona_actual.get(par["alias"], "normal")
         zona, nivel = self._zona(par, ratio, est)
@@ -797,7 +850,7 @@ class Monitor:
         # avisa solo al ENTRAR en zona, no mientras se queda
         if registrar and par.get("alertas") and zona != "normal" \
                 and previa != zona and not viejas:
-            msg = self._mensaje(par, ratio, zona, nivel, est, num, den)
+            msg = self._mensaje(par, ratio, zona, nivel, est, num, den, tir)
             alerta_id = db.registrar_alerta(
                 par["alias"], zona, ratio, nivel, msg, num, den)
             import senales as SE
@@ -820,6 +873,7 @@ class Monitor:
             "resistencia": par.get("resistencia") or 0,
             "soporte": par.get("soporte") or 0,
             "z": z, "est": est, "p_num": num, "p_den": den,
+            "modo": par.get("modo") or "precio", "tir": tir,
             "ts": datetime.now().isoformat(timespec="seconds"),
             "alertas": bool(par.get("alertas")),
             "alerta_id": alerta_id,
@@ -827,6 +881,12 @@ class Monitor:
             "error": None,
         }
 
+        if tir and z is not None and est.get("media") is not None:
+            # Lo que se gana si el diferencial vuelve a su media, en % del
+            # capital: duration por el movimiento de tasa.
+            md = tir.get("md_num") if ratio >= est["media"] else tir.get("md_den")
+            if md:
+                estado["recorrido_pct"] = md * abs(ratio - est["media"]) / 100.0
         if registrar and self.cfg.get("publicar_sensores"):
             self.notif.publicar_sensor(par["alias"], ratio, {
                 "friendly_name": "Ratio " + par["alias"],
@@ -836,10 +896,50 @@ class Monitor:
                 "z_score": round(z, 3) if z is not None else None,
                 "numerador": par["num"], "denominador": par["den"],
                 "precio_numerador": num["ref"], "precio_denominador": den["ref"],
-                "unit_of_measurement": "ratio",
+                "unit_of_measurement": "pb" if tir else "ratio",
                 "icon": "mdi:swap-horizontal",
             })
         return estado
+
+    def _tir_del_par(self, par, mapa):
+        """TIR de las dos puntas con los precios del ciclo.
+
+        La tabla de BONOS se calcula una vez por mapa de cotizaciones: un
+        ciclo con varios pares por TIR no la repite. Con un bono a menos
+        de `MIN_DIAS_TIR` dias del vencimiento se sigue calculando, con un
+        aviso: anualizar pocos dias de precio exagera la TIR.
+        """
+        import bonos as BO
+        cache = getattr(self, "_tir_cache", None)
+        if not cache or cache[0] is not mapa:
+            filas = {}
+            try:
+                cer_act = float(self.cfg.get("cer_actual") or 0)
+                for f in (BO.tabla(mapa, cer_actual=cer_act) or {}).get("filas") or []:
+                    filas[f["simbolo"]] = f
+            except Exception as e:
+                log.debug("tabla para pares por TIR: %s", e)
+            cache = self._tir_cache = (mapa, filas)
+        fn, fd = cache[1].get(par["num"]), cache[1].get(par["den"])
+        cortos = []
+        for sim, f in ((par["num"], fn), (par["den"], fd)):
+            if not f or f.get("tir_last") is None:
+                raise IOLError("sin TIR para %s" % sim)
+            try:
+                dias = (date.fromisoformat(f["vencimiento"]) - date.today()).days
+            except (KeyError, TypeError, ValueError):
+                dias = None
+            if dias is not None and dias < MIN_DIAS_TIR:
+                cortos.append("%s vence en %d días" % (sim, dias))
+        # Se sigue calculando: el aviso queda en la tarjeta y en el mensaje.
+        aviso = ("%s: cerca del vencimiento la TIR anualiza pocos días de "
+                 "precio y el diferencial exagera." % " y ".join(cortos)) \
+            if cortos else None
+        return {"tir_num": fn["tir_last"], "tir_den": fd["tir_last"],
+                "md_num": fn.get("md"), "md_den": fd.get("md"),
+                "valor": (fd["tir_last"] - fn["tir_last"]) * 100.0,
+                "familias": [fn.get("familia"), fd.get("familia")],
+                "aviso": aviso}
 
     def _min_monto(self):
         """Plata minima que tiene que haber en una punta para creerle.

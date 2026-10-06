@@ -498,7 +498,10 @@ COLS_GRUPO_NUEVAS = (("num", "TEXT"), ("den", "TEXT"),
                      ("plazo", "TEXT DEFAULT 't1'"),
                      ("resistencia", "REAL"), ("soporte", "REAL"),
                      ("alertas", "INTEGER NOT NULL DEFAULT 1"),
-                     ("factor", "REAL"))
+                     ("factor", "REAL"),
+                     # "precio": ratio de precios; "tir": diferencial de
+                     # TIR en pb (0.58.0)
+                     ("modo", "TEXT NOT NULL DEFAULT 'precio'"))
 
 
 def init_posicion():
@@ -526,7 +529,7 @@ def actualizar_tickers(gid, tickers):
 def actualizar_par(gid, campos):
     """Los datos del ratio: numerador, denominador y zonas."""
     permitidos = ("num", "den", "plazo", "resistencia", "soporte",
-                  "alertas", "factor", "nombre", "base", "mercado")
+                  "alertas", "factor", "nombre", "base", "mercado", "modo")
     sets, args = [], []
     for k, v in (campos or {}).items():
         if k in permitidos:
@@ -560,8 +563,24 @@ def pares_guardados(solo_completos=True):
             "resistencia": g["resistencia"], "soporte": g["soporte"],
             "alertas": bool(g["alertas"]) if g["alertas"] is not None else True,
             "factor": g["factor"], "base": g["base"], "tickers": tickers,
+            "modo": g.get("modo") or "precio",
         })
     return out
+
+
+def serie_tir_diaria(num, den, desde):
+    """Diferencial diario TIR(den) − TIR(num), en pb, desde `bono_hist`.
+
+    Va al reves de lo que se lee a primera vista a proposito: asi un valor
+    alto quiere decir lo mismo que en un par de precios -el numerador esta
+    caro- y las zonas, la histeresis y el "estar en" no cambian.
+    """
+    filas = conn().execute(
+        "SELECT a.fecha f, (b.tir - a.tir) * 100 v FROM bono_hist a "
+        "JOIN bono_hist b ON b.fecha = a.fecha AND b.simbolo = ? "
+        "WHERE a.simbolo = ? AND a.fecha >= ? AND a.tir IS NOT NULL "
+        "AND b.tir IS NOT NULL ORDER BY a.fecha", (den, num, desde)).fetchall()
+    return [(r["f"], r["v"]) for r in filas]
 
 
 def crear_grupo(nombre, base, tickers, mercado="bCBA"):
@@ -590,8 +609,9 @@ def listar_grupos():
              "creado": f["creado"]}
         # los campos del par, si la base ya los tiene
         for k in ("num", "den", "plazo", "resistencia", "soporte",
-                  "alertas", "factor"):
+                  "alertas", "factor", "modo"):
             g[k] = f[k] if k in f.keys() else None
+        g["modo"] = g.get("modo") or "precio"
         out.append(g)
     return out
 

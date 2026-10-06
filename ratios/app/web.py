@@ -129,6 +129,12 @@ def crear_app(monitor):
                 + cond + " ORDER BY ts", [alias, desde] + extra).fetchall()
             puntos = [{"x": f["ts"], "y": f["ratio"],
                        "f": "propia" if f["p_num"] else "iol"} for f in filas]
+        elif par.get("modo") == "tir":
+            # Por TIR la historia diaria sale de bono_hist, no de las
+            # lecturas: el par tiene la serie completa desde el alta.
+            desde = (datetime.now().date() - timedelta(days=dias)).isoformat()
+            puntos = [{"x": f, "y": v, "f": "propia"}
+                      for f, v in db.serie_tir_diaria(par["num"], par["den"], desde)]
         else:
             desde = (datetime.now().date() - timedelta(days=dias)).isoformat()
             propia = dict(db.serie_propia_diaria(alias, desde,
@@ -147,6 +153,7 @@ def crear_app(monitor):
             "n_iol": n_iol, "n_propia": len(puntos) - n_iol,
             "resistencia": par.get("resistencia") or 0,
             "soporte": par.get("soporte") or 0,
+            "modo": par.get("modo") or "precio",
         })
 
     # -- calculadora --------------------------------------------------
@@ -350,6 +357,7 @@ def crear_app(monitor):
                 "plazo": g.get("plazo"), "resistencia": g.get("resistencia"),
                 "soporte": g.get("soporte"), "factor": g.get("factor"),
                 "alertas": bool(g.get("alertas", 1)),
+                "modo": g.get("modo") or "precio",
                 "precios": _precios_para(g),
             })
         return jsonify(salida)
@@ -397,7 +405,8 @@ def crear_app(monitor):
         res, sop = _f("resistencia"), _f("soporte")
         if res and sop and res <= sop:
             res = sop = None      # niveles invertidos: no sirven
-        return {"num": num, "den": den,
+        modo = "tir" if (d.get("modo") or "") == "tir" else "precio"
+        return {"num": num, "den": den, "modo": modo,
                 "plazo": (d.get("plazo") or "t1").strip(),
                 "resistencia": res, "soporte": sop,
                 "factor": _f("factor"),
