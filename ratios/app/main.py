@@ -155,6 +155,7 @@ def main():
     historico.limpiar_no_habiles()
     import senales
     senales.init()
+    db.init_cartera_hist()
     db.quitar_indices_redundantes()
     db.init_puntas()
 

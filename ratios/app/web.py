@@ -125,27 +125,39 @@ def crear_app(monitor):
             desde = (datetime.now() - timedelta(days=dias)).isoformat()
             cond, extra = db.filtro_horario(monitor.horario())
             filas = db.conn().execute(
-                "SELECT ts, ratio, p_num FROM lecturas WHERE alias=? AND ts>=?"
-                + cond + " ORDER BY ts", [alias, desde] + extra).fetchall()
+                "SELECT ts, ratio, p_num, p_den FROM lecturas WHERE alias=? "
+                "AND ts>=?" + cond + " ORDER BY ts", [alias, desde] + extra).fetchall()
             puntos = [{"x": f["ts"], "y": f["ratio"],
-                       "f": "propia" if f["p_num"] else "iol"} for f in filas]
+                       "f": "propia" if f["p_num"] else "iol",
+                       "p_num": f["p_num"] or None, "p_den": f["p_den"] or None}
+                      for f in filas]
         elif par.get("modo") == "tir":
             # Por TIR la historia diaria sale de bono_hist, no de las
             # lecturas: el par tiene la serie completa desde el alta.
             desde = (datetime.now().date() - timedelta(days=dias)).isoformat()
-            puntos = [{"x": f, "y": v, "f": "propia"}
-                      for f, v in db.serie_tir_diaria(par["num"], par["den"], desde)]
+            puntos = [{"x": x["f"], "y": x["v"], "f": "propia",
+                       "tir_num": x["tir_num"], "tir_den": x["tir_den"],
+                       "p_num": x["p_num"], "p_den": x["p_den"]}
+                      for x in db.serie_tir_detalle(par["num"], par["den"], desde)]
         else:
             desde = (datetime.now().date() - timedelta(days=dias)).isoformat()
             propia = dict(db.serie_propia_diaria(alias, desde,
                                                  monitor.horario()))
             iol = dict(db.serie_ratio_diaria(par["num"], par["den"], desde))
+            # Los precios de cada punta ese dia, para la lectura del
+            # grafico: de las lecturas propias o de los cierres de IOL.
+            pp = db.precios_propios_diarios(alias, desde, monitor.horario())
+            cn = {r["fecha"]: r["cierre"] for r in db.cierres_de(par["num"], desde)}
+            cd = {r["fecha"]: r["cierre"] for r in db.cierres_de(par["den"], desde)}
             puntos = []
             for f in sorted(set(propia) | set(iol)):
                 if f in propia:
-                    puntos.append({"x": f, "y": propia[f], "f": "propia"})
+                    pn, pd = pp.get(f, (cn.get(f), cd.get(f)))
+                    puntos.append({"x": f, "y": propia[f], "f": "propia",
+                                   "p_num": pn, "p_den": pd})
                 else:
-                    puntos.append({"x": f, "y": iol[f], "f": "iol"})
+                    puntos.append({"x": f, "y": iol[f], "f": "iol",
+                                   "p_num": cn.get(f), "p_den": cd.get(f)})
 
         n_iol = sum(1 for p in puntos if p["f"] == "iol")
         return jsonify({
@@ -154,6 +166,7 @@ def crear_app(monitor):
             "resistencia": par.get("resistencia") or 0,
             "soporte": par.get("soporte") or 0,
             "modo": par.get("modo") or "precio",
+            "num": par["num"], "den": par["den"],
         })
 
     # -- calculadora --------------------------------------------------
@@ -1589,6 +1602,57 @@ def crear_app(monitor):
             "filas": filas[:max(1, min(n, 25))],
         })
 
+    def _valuar_completa():
+        """La cartera entera valuada con lo que hay en cache. La usan la
+        pestaña y la foto diaria del monitor."""
+        import cartera as CA
+        import bonos as BO
+        filas = db.tenencias()
+        fuera = monitor.brokers_extranjeros()
+        for f in filas:
+            f["extranjero"] = f["broker"].upper() in fuera
+        precios = _precios_vigentes()
+        try:
+            bonos_cfg, _ = BO.cargar()
+        except Exception:
+            bonos_cfg = {}
+        cache = monitor.cotizaciones_vigentes()
+        mep = None
+        try:
+            mep = (BO.calcular_mep(
+                cache, monitor.cfg.get("mep_par_pesos") or "AL30",
+                monitor.cfg.get("mep_par_usd") or "AL30D"
+            ).get("medio") or 0) or None
+        except Exception:
+            pass
+        r = CA.valuar(filas, precios, mep, bonos_cfg,
+                      meta=monitor.cotizaciones_para_valuar(),
+                      estrategias_=db.estrategias())
+        return r, mep
+
+    def _foto_cartera():
+        from datetime import date as _d
+        r, mep = _valuar_completa()
+        if not r.get("total"):
+            return 0
+        return db.guardar_cartera_hist(_d.today().isoformat(),
+                                       r.get("posiciones") or [], mep)
+
+    # El monitor la llama a diario, despues del cierre.
+    monitor.foto_cartera = _foto_cartera
+
+    @app.get("/api/cartera/evolucion")
+    def cartera_evolucion():
+        # La primera vez, una foto de hoy para que la serie arranque.
+        try:
+            if not db.conn().execute("SELECT 1 FROM cartera_hist LIMIT 1").fetchone():
+                _foto_cartera()
+        except Exception as e:
+            log.warning("primera foto de cartera: %s", e)
+        return jsonify({"puntos": db.evolucion_cartera(
+            (request.args.get("broker") or "").strip() or None,
+            (request.args.get("exposicion") or "").strip() or None)})
+
     @app.get("/api/cartera")
     def cartera_valuada():
         import cartera as CA
@@ -1661,6 +1725,19 @@ def crear_app(monitor):
         # armar con las del subconjunto o al filtrar quedaria una sola y
         # no habria como volver.
         r["exposiciones"] = [e["nombre"] for e in completa["por_exposicion"]]
+        # La composicion siempre de la cartera entera: es el control con
+        # que se filtra, y filtrada mostraria un solo tramo.
+        r["composicion"] = {"exposicion": completa["por_exposicion"],
+                            "broker": completa["por_broker"],
+                            "total": completa.get("total")}
+        por_sim = {}
+        for f in completa.get("posiciones") or []:
+            if f.get("valor") and (f.get("tipo") or "") != "moneda":
+                por_sim[f["simbolo"]] = por_sim.get(f["simbolo"], 0) + f["valor"]
+        tot = completa.get("total") or 0
+        r["concentracion"] = [
+            {"simbolo": k, "valor": v, "pct": v / tot * 100 if tot else 0}
+            for k, v in sorted(por_sim.items(), key=lambda x: -x[1])[:5]]
         # Sin precios, decir por que: si los paneles estan caidos no es
         # que falte esperar el proximo ciclo.
         r["fallas"] = list(getattr(monitor, "orleans_fallas", []) or [])

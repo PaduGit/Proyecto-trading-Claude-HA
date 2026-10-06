@@ -484,6 +484,8 @@ details.par-menu .menu{top:24px}
 .chips button[aria-pressed="true"]{ background:var(--bone); border-color:var(--bone); color:var(--ink); font-weight:600; }
 .hist-lectura{ display:flex; justify-content:space-between; gap:8px; font-size:13px; padding:4px 2px 6px; min-height:26px; }
 .hist-lectura .f{ color:var(--muted); }
+.hist-l2{ font-size:12px; color:var(--muted); padding:0 2px 6px; min-height:18px; }
+.hist-l2 b{ color:var(--bone); font-weight:600; }
 .hist-tit{ display:flex; justify-content:space-between; font-size:11px; color:var(--muted); padding:4px 2px 0; }
 .hist-ayuda{ font-size:11px; color:var(--muted); padding:6px 2px 0; }
 .u-graf{ touch-action:pan-y; }
@@ -510,6 +512,46 @@ details.par-menu .menu{top:24px}
 .pago .barra .amort{ background:var(--neutro); opacity:.5; }
 .pago .num{ text-align:right; font-weight:600; }
 .pago.prox .f b::after{ content:" · próximo"; color:var(--barato); font-weight:500; }
+/* tenencias 0.59.0 */
+.aviso-mov{ display:flex; align-items:center; gap:10px; width:100%; margin:0 0 12px; padding:12px 14px;
+  border-radius:12px; background:rgba(224,180,90,.12); color:var(--amber); border:0; text-align:left;
+  min-height:48px; font-size:14px; cursor:pointer; }
+.aviso-mov b{ color:var(--bone); }
+.aviso-mov span:last-child{ margin-left:auto; }
+.cart-tit{ font-size:16px; font-weight:600; margin-bottom:6px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.chip-filtro{ border:1px solid var(--rule); background:var(--panel-2); color:var(--bone); border-radius:999px;
+  min-height:30px; padding:0 12px; font-size:13px; cursor:pointer; }
+.cart-cifra .ojo{ border:1px solid var(--rule); background:none; color:var(--muted); border-radius:999px;
+  min-height:30px; padding:0 12px; font-size:13px; vertical-align:middle; cursor:pointer; }
+.varas{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:12px 0 0; }
+.varas div{ background:var(--panel-2); border-radius:8px; padding:9px 10px; }
+.varas dt{ font-size:12px; color:var(--muted); }
+.varas dd{ margin:2px 0 0; font-size:18px; font-weight:600; }
+.varas small{ display:block; font-size:11px; color:var(--muted); font-weight:400; }
+.cart-bloque{ background:var(--panel); border-radius:12px; padding:14px; margin-top:12px; }
+.comp{ display:grid; grid-template-columns:150px 1fr; gap:16px; align-items:center; margin-top:10px; }
+.dona{ width:150px; height:150px; display:block; }
+.dona path{ cursor:pointer; }
+.dona-n{ fill:var(--bone); font-size:17px; font-weight:700; }
+.dona-e{ fill:var(--muted); font-size:11px; }
+.ley{ display:grid; gap:2px; }
+.ley button{ display:grid; grid-template-columns:12px 1fr auto; gap:8px; align-items:center; border:0;
+  background:none; color:var(--bone); text-align:left; padding:7px 6px; border-radius:8px; min-height:40px;
+  font-size:14px; cursor:pointer; }
+.ley button[aria-pressed="true"]{ background:var(--panel-2); }
+.ley b{ width:12px; height:12px; border-radius:3px; display:block; }
+.ley .p{ color:var(--muted); }
+.conc{ margin-top:14px; padding-top:12px; border-top:1px solid var(--rule); font-size:13px; color:var(--muted); }
+.conc b{ color:var(--bone); }
+.conc .barra{ display:flex; height:8px; border-radius:4px; overflow:hidden; margin:8px 0 6px; background:var(--panel-2); }
+.conc .barra i{ display:block; height:100%; border-right:2px solid var(--panel); }
+.cobro{ display:grid; grid-template-columns:70px 1fr auto; gap:10px; align-items:center; padding:9px 0;
+  border-bottom:1px solid var(--rule); font-size:14px; }
+.cobro:last-child{ border-bottom:0; }
+.cobro .f{ color:var(--muted); font-size:12px; }
+.cobro .f b{ display:block; color:var(--bone); font-size:15px; }
+.cobro .q{ text-align:right; font-weight:600; }
+@media (max-width:520px){ .comp{ grid-template-columns:1fr; justify-items:center; } .ley{ width:100%; } }
 /* uPlot, lo minimo: su hoja de estilos no viene en el .js */
 .uplot{ font-family:var(--sans); line-height:1.2; position:relative; }
 .uplot canvas{ display:block; position:relative; width:100%; height:100%; }
@@ -757,6 +799,7 @@ input, select, textarea{ border-radius:8px; }
   </section>
 
   <section id="v-pos" hidden>
+    <button class="aviso-mov" id="mov-aviso" hidden></button>
     <div id="cart-out"></div>
     <div id="filtro-resumen" class="u-mb-10 u-ptr filtro-fila">
       <span class="filtro-etq">Filtros</span>
@@ -2079,6 +2122,7 @@ async function dibujar(alias, modo){
       : "";
     if(window.uPlot && (d.puntos || []).length >= 2){
       cont.innerHTML = barra + '<div class="hist-lectura"><span class="f" data-lf></span><span data-lv></span></div>' +
+        '<div class="hist-l2" data-l2></div>' +
         '<div class="u-graf" data-g></div>' + leyenda +
         '<div class="hist-ayuda">Deslizá para leer cada punto. Sombreado: fuera del rango.</div>';
       graficoPar(cont, alias, d);
@@ -2104,8 +2148,18 @@ function graficoPar(cont, alias, d){
   const cs = getComputedStyle(document.documentElement), cv = n => cs.getPropertyValue(n).trim();
   const txt = x => x == null ? "—" : tir ? conSigno(x, 0) : num(x);
   const lf = cont.querySelector("[data-lf]"), lv = cont.querySelector("[data-lv]");
+  const l2 = cont.querySelector("[data-l2]");
+  const nN = d.num || p.num || "", nD = d.den || p.den || "";
+  /* Segunda linea: lo que habia detras del valor ese dia. Por TIR, la TIR
+     y el precio de cada bono; por precio, el precio de cada punta. */
+  const punta = (sim, tirV, pr) => '<b>' + esc(sim) + '</b> ' +
+    (tirV != null ? dec(tirV, 2) + '%' + (pr != null ? ' · ' : '') : '') +
+    (pr != null ? '$' + precio(pr) : (tirV == null ? '—' : ''));
   const leer = idx => {
     const i = idx == null ? t.length - 1 : idx, f = new Date(t[i] * 1000);
+    const q = d.puntos[i] || {};
+    l2.innerHTML = (q.tir_num != null || q.p_num != null || q.p_den != null)
+      ? punta(nN, q.tir_num, q.p_num) + ' &nbsp;|&nbsp; ' + punta(nD, q.tir_den, q.p_den) : "";
     lf.textContent = (idx == null ? "Último · " : "") + DIAC[f.getDay()] + " " + f.getDate() + " " +
       MESC[f.getMonth()] + (d.puntos[i].x.length > 10 ? " " + d.puntos[i].x.slice(11, 16) : "");
     lv.textContent = txt(v[i]) + (tir ? " pb" : "") +
@@ -4298,13 +4352,15 @@ async function graficarHist(sim){
   if(hist){ try{ hist.uTir.destroy(); hist.uZ && hist.uZ.destroy(); }catch(e){} }
   const t = pts.map(p => new Date(p.fecha + "T12:00:00").getTime() / 1000);
   const tir = pts.map(p => p.tir), z = pts.map(p => p.z == null ? null : p.z);
+  const precios = pts.map(p => p.precio), mds = pts.map(p => p.md), desv = pts.map(p => p.residuo);
   const conZ = z.some(v => v != null);
   const u = curvaUmbral(), rea = u - 0.5;
-  hist = {sim, t, tir, z, periodo: (hist && hist.periodo) || "6M"};
+  hist = {sim, t, tir, z, precios, mds, desv, periodo: (hist && hist.periodo) || "6M"};
   cont.innerHTML =
     '<div class="chips" id="hist-per" role="group" aria-label="Período">' + HIST_PER.map(([k]) =>
       '<button aria-pressed="' + (k === hist.periodo) + '" data-per="' + k + '">' + k + '</button>').join("") + '</div>' +
     '<div class="hist-lectura" aria-live="polite"><span class="f" id="hl-f"></span><span id="hl-v"></span></div>' +
+    '<div class="hist-l2" id="hl-2"></div>' +
     '<div class="hist-tit"><span>TIR</span><span id="hl-rango"></span></div><div class="u-graf" id="hg-tir"></div>' +
     (conZ ? '<div class="hist-tit"><span>z del desvío contra la curva</span><span>umbral ±' + fx(u, 1) +
       ' · rearme ±' + fx(rea, 1) + '</span></div><div class="u-graf" id="hg-z"></div>' : "") +
@@ -4369,6 +4425,14 @@ function leerHist(idx){
   f.textContent = (idx == null ? "Último · " : "") + fechaLarga(hist.t[i]);
   const z = hist.z[i];
   vv.textContent = "TIR " + fx(hist.tir[i], 2) + "%" + (z == null ? "" : " · z " + (z >= 0 ? "+" : "−") + fx(Math.abs(z), 2));
+  const l2 = $("#hl-2");
+  if(l2){
+    const pr = hist.precios[i], md = hist.mds[i], dv = hist.desv[i];
+    l2.innerHTML = [pr != null ? 'precio <b>$' + precio(pr) + '</b>' : "",
+                    md != null ? 'MD <b>' + fx(md, 2) + '</b>' : "",
+                    dv != null ? 'desvío <b>' + conSigno(dv, 0) + ' pb</b>' : ""]
+      .filter(Boolean).join(" · ");
+  }
 }
 function limitarHist(min, ancho){
   const t = hist.t, a = t[0], b = t[t.length - 1];
@@ -5980,6 +6044,17 @@ async function cargarPropuestos(){
   try{
     const d = await (await fetch(base + "api/movimientos-propuestos")).json();
     const p = d.propuestos || [];
+    /* Lo pendiente se avisa arriba de todo: abajo, en el desplegable,
+       pasaba desapercibido. */
+    const av = $("#mov-aviso");
+    if(av){
+      av.hidden = !p.length;
+      av.innerHTML = '<span>●</span><span><b>' + p.length + ' movimiento' +
+        (p.length === 1 ? "" : "s") + '</b> para confirmar: ' +
+        p.slice(0, 2).map(m => m.tipo === "rotacion" ? esc(m.sale) + " → " + esc(m.entra)
+          : (m.tipo === "aporte" ? "aporte de " + esc(m.entra) : "retiro de " + esc(m.sale)) ) .join(", ") +
+        (p.length > 2 ? "…" : "") + '</span><span>›</span>';
+    }
     if(!p.length){
       out.innerHTML = '<div class="vacio">Nada pendiente. Aparecen ' +
         'cuando las cantidades cambian entre dos actualizaciones.</div>';
@@ -6479,22 +6554,23 @@ function pintarCartera(d){
       'caché todavía. Se llena en el próximo ciclo.</div>';
     return;
   }
-  const res = d.resultado, rp = d.resultado_pct;
-  const tono = res == null ? "var(--muted)"
-             : (res >= 0 ? "var(--sage)" : "var(--coral)");
+  /* 0.59.0: total, resultado en dos varas, evolucion, composicion por
+     moneda de rendimiento o por broker, concentracion y cobros. Tocar la
+     composicion filtra todo: el total y los resultados los recalcula el
+     servidor con el mismo filtro que la lista. */
+  const filtroAct = tenFiltro.exposicion || tenFiltro.broker;
   let h = '<div class="cart-tot">' +
+    '<div class="cart-tit">Cartera' + (filtroAct ? ' <button class="chip-filtro" data-quitar="1">' +
+      esc(filtroAct) + (d.composicion && d.composicion.total ? ' · ' +
+      (d.total / d.composicion.total * 100).toFixed(0) + '%' : "") + ' ✕</button>' : "") + '</div>' +
     '<div class="cart-cifra">' +
-      (cartTotal ? plata(d.total) : '<span class="u-ls-10">' +
-        '••••••</span>') + '</div>' +
+      (cartTotal ? plata(d.total) : '<span class="u-ls-10">••••••</span>') +
+      ' <button id="cart-ojo" class="ojo">' + (cartTotal ? "Ocultar" : "Ver") + '</button></div>' +
     '<div class="cart-sub">' +
       (cartTotal
-        ? (d.total_usd ? "US$ " + ent(d.total_usd) + " al MEP " + ent(d.mep)
-                       : "sin MEP disponible")
-        : "total oculto") +
-      ' <button id="cart-ojo" class="u-ml-8">' +
-      (cartTotal ? "Ocultar" : "Ver") + '</button></div>';
-  /* Valuar con un precio de hace días es mejor que no valuar, pero hay
-     que decirlo: el total es real, la última punta no. */
+        ? (d.total_usd ? "US$ " + ent(d.total_usd) + " al MEP " + ent(d.mep) : "sin MEP disponible") +
+          (filtroAct && d.composicion ? " · de " + plata(d.composicion.total) + " en total" : "")
+        : "total oculto") + '</div>';
   if((d.precios_viejos || []).length){
     h += '<div class="u-op-80 cart-sub">' +
       d.precios_viejos.length + ' valuada' +
@@ -6502,60 +6578,179 @@ function pintarCartera(d){
       d.precios_viejos.map(v => esc(v[0]) + (v[1] ? " (" + esc(v[1]) + ")" : ""))
         .join(" · ") + '</div>';
   }
-  if(res != null){
-    /* El porcentaje se muestra siempre: no revela cuanto hay. */
-    h += '<div class="cart-res" style="color:' + tono + '">' +
-      (cartTotal ? (res >= 0 ? "+" : "") + plata(res).replace("-", "") + "  " : "") +
-      "(" + (rp >= 0 ? "+" : "") + rp.toFixed(2) + "%)" +
-      '<span class="tocar">sobre ' + (d.cubierto_pct || 0).toFixed(0) +
-      '% con PPC cargado</span></div>';
-    /* El mismo resultado medido en dolares, al MEP de cada compra. Es
-       otra pregunta: cuanto rindio contra el dolar, no contra el peso.
-       Se mide sobre menos cartera, porque necesita `ppc_usd`, y por eso
-       dice sobre cuanta. */
-    h += d.resultado_usd_pct != null
-      ? '<div class="cart-res" style="color:' +
-        (d.resultado_usd_pct >= 0 ? "var(--sage)" : "var(--coral)") + '">' +
-        (d.resultado_usd_pct >= 0 ? "+" : "") +
-        d.resultado_usd_pct.toFixed(2) + '% en dólares' +
-        '<span class="tocar">sobre ' +
-        (d.cubierto_usd_pct || 0).toFixed(0) + '% de la cartera' +
-        (d.estimado_usd_pct
-          ? ", " + d.estimado_usd_pct.toFixed(0) + "% estimado con el MEP " +
-            "de la fecha de alta" : "") + '</span></div>'
-      : '<div class="u-muted cart-res">— en dólares' +
-        '<span class="tocar">ninguna posición tiene PPC en dólares ' +
-        'todavía</span></div>';
-  } else {
-    h += '<div class="u-muted cart-res">' +
-      'Sin PPC cargado: no hay resultado que medir.</div>';
-  }
+  const vara = (titulo, v, nota) => '<div><dt>' + titulo + '</dt><dd class="' +
+    (v == null ? "" : v >= 0 ? "u-sage" : "u-coral") + '">' +
+    (v == null ? "—" : (v >= 0 ? "+" : "−") + dec(Math.abs(v), 1) + "%") +
+    '<small>' + nota + '</small></dd></div>';
+  h += '<dl class="varas">' +
+    vara("En pesos", d.resultado_pct, d.resultado_pct == null ? "sin PPC cargado"
+      : "sobre " + (d.cubierto_pct || 0).toFixed(0) + "% con PPC") +
+    vara("En dólares MEP", d.resultado_usd_pct, d.resultado_usd_pct == null
+      ? "sin PPC en dólares" : "sobre " + (d.cubierto_usd_pct || 0).toFixed(0) + "%" +
+        (d.estimado_usd_pct ? ", " + d.estimado_usd_pct.toFixed(0) + "% estimado" : "")) +
+    '</dl>';
+  /* evolucion: se llena aparte, desde la foto diaria */
+  h += '<div class="chips u-mt-12" id="ev-mon"><button aria-pressed="' + (evMon === "ars") +
+      '" data-m="ars">Pesos</button><button aria-pressed="' + (evMon === "usd") +
+      '" data-m="usd">Dólares</button></div>' +
+    '<div class="hist-lectura"><span class="f" id="ev-f"></span><span id="ev-v"></span></div>' +
+    '<div class="u-graf" id="ev-g"></div>' +
+    '<div class="chips u-mt-8" id="ev-per">' + EV_PER.map(([k]) => '<button aria-pressed="' +
+      (k === evPer) + '" data-p="' + k + '">' + k + '</button>').join("") + '</div>';
   h += '</div>';
 
-  /* barra apilada por moneda de rendimiento */
-  const ex = d.por_exposicion || [];
-  if(ex.length){
-    /* La barra es el filtro: tocar un tramo deja solo esa exposicion.
-       Ahorra una fila de chips y convierte un adorno en un control. */
-    h += '<div class="expo">' + ex.map(e =>
-      '<span data-expo="' + esc(e.nombre) + '" style="width:' +
-      e.pct.toFixed(2) + '%;background:' + colorExpo(e.nombre) +
-      '" title="' + esc(e.nombre) + '"></span>'
-    ).join("") + '</div><div class="expo-ley">' + ex.map(e =>
-      '<div data-expo="' + esc(e.nombre) + '" aria-pressed="' +
-      (tenFiltro.exposicion === e.nombre) +
-      '"><span class="u-flex u-centro-v u-gap-6">' +
-      '<i class="punto" style="background:' + colorExpo(e.nombre) +
-      '"></i>' + esc(e.nombre) + '</span><b>' + e.pct.toFixed(1) +
-      '%</b></div>').join("") + '</div>';
+  /* composicion */
+  const comp = d.composicion || {exposicion: d.por_exposicion || [], broker: d.por_broker || []};
+  const grupos = (compModo === "broker" ? comp.broker : comp.exposicion) || [];
+  if(grupos.length){
+    const sel = compModo === "broker" ? tenFiltro.broker : tenFiltro.exposicion;
+    h += '<div class="cart-bloque"><div class="cart-tit">Composición</div>' +
+      '<div class="chips" id="comp-modo"><button aria-pressed="' + (compModo === "exposicion") +
+      '" data-c="exposicion">Por moneda de rendimiento</button><button aria-pressed="' +
+      (compModo === "broker") + '" data-c="broker">Por broker</button></div>' +
+      '<div class="comp">' + dona(grupos, sel) + '<div class="ley">' +
+      grupos.slice().sort((a, b) => b.valor - a.valor).map(g =>
+        '<button data-g="' + esc(g.nombre) + '" aria-pressed="' + (sel === g.nombre) + '">' +
+        '<b style="background:' + colorGrupo(g.nombre) + '"></b><span>' + esc(g.nombre) +
+        '</span><span class="p">' + (cartTotal ? "$ " + dec(g.valor / 1e6, 1) + " M · " : "") +
+        dec(g.pct, 1) + '%</span></button>').join("") + '</div></div>';
+    const top = d.concentracion || [];
+    if(top.length){
+      const t5 = top.reduce((a, x) => a + x.pct, 0);
+      h += '<div class="conc">Las ' + top.length + ' mayores posiciones son el <b>' +
+        t5.toFixed(0) + '%</b> de la cartera.<div class="barra">' + top.map((x, i) =>
+          '<i style="width:' + x.pct + '%;background:' + PALETA_COMP[i % PALETA_COMP.length] +
+          '" title="' + esc(x.simbolo) + '"></i>').join("") + '</div>' +
+        top.map(x => esc(x.simbolo) + " " + x.pct.toFixed(0) + "%").join(" · ") +
+        (top[0].pct > 40 ? '<div class="u-amber u-mt-6">⚠ ' + esc(top[0].simbolo) +
+          ' pesa ' + top[0].pct.toFixed(0) + '%: más de 40% en una especie.</div>' : "") + '</div>';
+    }
+    h += '</div>';
   }
-
+  /* cobros a 30 dias: se llenan aparte */
+  h += '<div class="cart-bloque" id="cart-cobros" hidden></div>';
   if((d.sin_precio || []).length)
     h += '<div class="u-mt-10 aviso">Sin precio en caché: ' +
       d.sin_precio.map(esc).join(", ") + '. No entran en el total, pero ' +
       'siguen en la lista.</div>';
   out.innerHTML = h;
+  cargarEvolucion();
+  cargarCobrosCartera();
 }
+
+/* ---------- cartera: composicion, evolucion y cobros (0.59.0) ---------- */
+let compModo = "exposicion", evMon = "ars", evPer = "6M", evU = null, evPts = [];
+const EV_PER = [["1M", 22], ["3M", 66], ["6M", 132], ["1A", 260], ["Todo", 0]];
+const PALETA_COMP = ["#62B6F2", "#5FC48A", "#E0B45A", "#B48EF0", "#E07A6F", "#4FC3B8", "#8D9BB0"];
+const colorGrupo = n => compModo === "broker"
+  ? PALETA_COMP[Math.abs([...n].reduce((a, c) => a * 31 + c.charCodeAt(0), 7)) % PALETA_COMP.length]
+  : colorExpo(n);
+function dona(grupos, sel){
+  const tot = grupos.reduce((a, g) => a + g.valor, 0) || 1;
+  let ang = -Math.PI / 2, h = "";
+  const R = 70, r = 46, cx = 75, cy = 75;
+  const P = (rr, a) => (cx + rr * Math.cos(a)).toFixed(2) + "," + (cy + rr * Math.sin(a)).toFixed(2);
+  for(const g of grupos.slice().sort((a, b) => b.valor - a.valor)){
+    const a2 = ang + g.valor / tot * Math.PI * 2, gr = a2 - ang > Math.PI ? 1 : 0;
+    h += '<path d="M' + P(R, ang) + ' A' + R + ',' + R + ' 0 ' + gr + ' 1 ' + P(R, a2) +
+      ' L' + P(r, a2) + ' A' + r + ',' + r + ' 0 ' + gr + ' 0 ' + P(r, ang) + 'Z" fill="' +
+      colorGrupo(g.nombre) + '" opacity="' + (sel && sel !== g.nombre ? .25 : 1) +
+      '" data-g="' + esc(g.nombre) + '"><title>' + esc(g.nombre) + ' ' + dec(g.pct, 1) + '%</title></path>';
+    ang = a2;
+  }
+  const gs = sel ? grupos.find(g => g.nombre === sel) : null;
+  h += '<text x="75" y="72" text-anchor="middle" class="dona-n">' +
+    (gs ? dec(gs.pct, 0) + "%" : grupos.length) + '</text><text x="75" y="90" text-anchor="middle" class="dona-e">' +
+    esc(gs ? gs.nombre.split(" ")[0] : (compModo === "broker" ? "brokers" : "grupos")) + '</text>';
+  return '<svg class="dona" viewBox="0 0 150 150" role="img" aria-label="Composición">' + h + '</svg>';
+}
+function filtrarComposicion(nombre){
+  if(compModo === "broker"){
+    tenFiltro.broker = tenFiltro.broker === nombre ? "" : nombre; tenFiltro.exposicion = "";
+  } else {
+    tenFiltro.exposicion = tenFiltro.exposicion === nombre ? "" : nombre; tenFiltro.broker = "";
+  }
+  tenAbierta = "";
+  expoChips(); resumenFiltros(); tenPintar(); cargarCartera();
+}
+async function cargarEvolucion(){
+  const g = $("#ev-g"); if(!g) return;
+  const q = new URLSearchParams();
+  if(tenFiltro.broker) q.set("broker", tenFiltro.broker);
+  if(tenFiltro.exposicion) q.set("exposicion", tenFiltro.exposicion);
+  try{ evPts = (await (await fetch(base + "api/cartera/evolucion?" + q)).json()).puntos || []; }
+  catch(e){ evPts = []; }
+  if(evU){ try{ evU.destroy(); }catch(e){} evU = null; }
+  if(evPts.length < 2 || !window.uPlot){
+    g.innerHTML = '<div class="hist-ayuda">' + (window.uPlot
+      ? "La evolución se arma con una foto diaria de la cartera, después del cierre. " +
+        (evPts.length ? "Hay " + evPts.length + " día guardado." : "Todavía no hay días guardados.")
+      : "Falta uplot.min.js para el gráfico.") + '</div>';
+    $("#ev-f").textContent = ""; $("#ev-v").textContent = "";
+    return;
+  }
+  const t = evPts.map(p => new Date(p.fecha + "T12:00:00").getTime() / 1000);
+  const v = evPts.map(p => evMon === "usd" ? p.valor_usd : p.valor);
+  const cs = getComputedStyle(document.documentElement), cv = n => cs.getPropertyValue(n).trim();
+  evU = new uPlot({
+    width: Math.max(260, g.clientWidth || 300), height: 170, legend: {show: false},
+    fmtDate: tpl => uPlot.fmtDate(tpl, {MMMM: MESL, MMM: MESC, WWWW: DIAL, WWW: DIAC}),
+    cursor: {drag: {x: false, y: false}, y: false, points: {size: 8, width: 2, fill: cv("--ink")}},
+    scales: {x: {time: true}},
+    axes: [{stroke: cv("--muted"), grid: {show: false}, ticks: {show: false}, size: 24, font: "11px " + cv("--sans")}, {show: false}],
+    series: [{}, {stroke: "#62B6F2", width: 2, fill: "rgba(98,182,242,.10)", points: {show: false}}],
+    hooks: {setCursor: [u => leerEv(u.cursor.idx)]},
+  }, [t, v], g);
+  periodoEv();
+}
+function leerEv(idx){
+  if(!evU || !evPts.length) return;
+  const vals = evU.data[1], i = idx == null ? vals.length - 1 : idx, f = new Date(evU.data[0][i] * 1000);
+  const i0 = Math.max(0, evU.valToIdx(evU.scales.x.min)), ini = vals[i0];
+  $("#ev-f").textContent = (idx == null ? "Último · " : "") + DIAC[f.getDay()] + " " + f.getDate() + " " + MESC[f.getMonth()];
+  const varp = ini ? (vals[i] / ini - 1) * 100 : null;
+  $("#ev-v").innerHTML = (cartTotal && vals[i] != null ? (evMon === "usd" ? "US$ " : "$ ") + ent(vals[i]) + " · " : "") +
+    (varp == null ? "" : '<span class="' + (varp >= 0 ? "u-sage" : "u-coral") + '">' +
+      (varp >= 0 ? "+" : "−") + dec(Math.abs(varp), 2) + '% en el período</span>');
+}
+function periodoEv(){
+  if(!evU) return;
+  const n = (EV_PER.find(x => x[0] === evPer) || [0, 0])[1], t = evU.data[0];
+  evU.setScale("x", {min: n ? t[Math.max(0, t.length - n)] : t[0], max: t[t.length - 1]});
+  leerEv(null);
+}
+async function cargarCobrosCartera(){
+  const cont = $("#cart-cobros"); if(!cont) return;
+  let c = [];
+  try{ c = (await (await fetch(base + "api/cobros?dias=30")).json()).cobros || []; }catch(e){}
+  if(tenFiltro.broker) c = c.filter(x => (x.brokers || []).includes(tenFiltro.broker));
+  if(!c.length){ cont.hidden = true; return; }
+  const MESES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+  cont.hidden = false;
+  cont.innerHTML = '<div class="cart-tit">Próximos cobros <span class="u-muted">· 30 días</span></div>' +
+    c.map(x => {
+      const [y, m, dd] = x.fecha.split("-");
+      const que = x.amortizacion && x.renta ? "Renta y amortización" : x.amortizacion ? "Amortización" : "Renta";
+      return '<div class="cobro"><span class="f"><b>' + (+dd) + ' ' + MESES[+m - 1] + '</b>en ' + x.dias + ' días</span>' +
+        '<span>' + esc(x.simbolo) + '<br><span class="f">' + que + (x.estimado ? " · estimado" : "") + '</span></span>' +
+        '<span class="q">' + (x.importe == null ? "—" : (cartTotal ? (x.moneda === "USD" ? "US$ " : "$ ") + ent(x.importe) : "••••")) +
+        '</span></div>';
+    }).join("");
+}
+$("#cart-out").addEventListener("click", e => {
+  const g = e.target.closest("[data-g]");
+  if(g){ filtrarComposicion(g.dataset.g); return; }
+  const c = e.target.closest("[data-c]");
+  if(c){ compModo = c.dataset.c; if(cartUlt) pintarCartera(cartUlt); return; }
+  if(e.target.closest("[data-quitar]")){
+    tenFiltro.broker = ""; tenFiltro.exposicion = ""; tenAbierta = "";
+    expoChips(); resumenFiltros(); tenPintar(); cargarCartera(); return;
+  }
+  const m = e.target.closest("#ev-mon [data-m]");
+  if(m){ evMon = m.dataset.m; $("#ev-mon").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === m)); cargarEvolucion(); return; }
+  const p = e.target.closest("#ev-per [data-p]");
+  if(p){ evPer = p.dataset.p; $("#ev-per").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === p)); periodoEv(); }
+});
 
 /* Los dos botones se redibujan en cada pintada, asi que el listener va
    en el contenedor y no en cada boton. */
@@ -6608,6 +6803,11 @@ async function cargarCartera(){
     console.error(e);
   }
 }
+
+$("#mov-aviso").addEventListener("click", () => {
+  const caja = $("#prop-caja"); caja.open = true;
+  caja.scrollIntoView({behavior: "smooth", block: "start"});
+});
 
 /* ---------- tenencias ---------- */
 const TIPOS_TEN = [["", "Todos"], ["moneda", "Efectivo"], ["bonos", "Bonos"],

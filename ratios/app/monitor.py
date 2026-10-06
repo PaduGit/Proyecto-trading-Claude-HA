@@ -2458,6 +2458,15 @@ class Monitor:
                         log.warning("calendario: %s", e)
                     self.backfill()
                     self.medir_senales()
+                    # Foto diaria de la cartera, solo en dia de rueda: los
+                    # precios de un sabado son los del viernes.
+                    try:
+                        import calendario as CAL
+                        if CAL.hay_rueda(date.today()) and \
+                                getattr(self, "foto_cartera", None):
+                            self.foto_cartera()
+                    except Exception as e:
+                        log.warning("foto de cartera: %s", e)
                     self.cerrar_dia_bonos()
                     db.purgar()
                     db.purgar_api_log()

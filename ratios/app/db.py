@@ -568,6 +568,37 @@ def pares_guardados(solo_completos=True):
     return out
 
 
+def serie_tir_detalle(num, den, desde):
+    """Lo mismo que `serie_tir_diaria`, con la TIR y el precio de cada
+    punta: es lo que muestra la lectura del grafico al tocar un dia."""
+    filas = conn().execute(
+        "SELECT a.fecha f, a.tir tn, b.tir td, a.precio pn, b.precio pd "
+        "FROM bono_hist a JOIN bono_hist b ON b.fecha = a.fecha AND "
+        "b.simbolo = ? WHERE a.simbolo = ? AND a.fecha >= ? AND a.tir IS "
+        "NOT NULL AND b.tir IS NOT NULL ORDER BY a.fecha",
+        (den, num, desde)).fetchall()
+    return [{"f": r["f"], "v": (r["td"] - r["tn"]) * 100, "tir_num": r["tn"],
+             "tir_den": r["td"], "p_num": r["pn"], "p_den": r["pd"]}
+            for r in filas]
+
+
+def precios_propios_diarios(alias, desde=None, horario=None):
+    """{fecha: (precio num, precio den)} de la ultima lectura propia de
+    cada dia. Las del relleno nocturno no traen precios y se saltean."""
+    q = ("SELECT substr(ts,1,10) f, p_num, p_den FROM lecturas WHERE "
+         "alias=? AND p_num > 0")
+    args = [alias]
+    if desde:
+        q += " AND ts >= ?"
+        args.append(desde)
+    cond, extra = filtro_horario(horario)
+    q += cond + " ORDER BY ts"
+    out = {}
+    for r in conn().execute(q, args + extra):
+        out[r["f"]] = (r["p_num"], r["p_den"])
+    return out
+
+
 def serie_tir_diaria(num, den, desde):
     """Diferencial diario TIR(den) − TIR(num), en pb, desde `bono_hist`.
 
@@ -2957,3 +2988,58 @@ def migrar_pares(pares_cfg):
     set_estado("pares_migrados", datetime.now().isoformat(timespec="seconds"))
     return {"creados": creados, "completados": completados,
             "migrados": len(creados) + len(completados)}
+
+
+# -- foto diaria de la cartera (0.59.0) --------------------------------
+
+ESQUEMA_CARTERA_HIST = """
+CREATE TABLE IF NOT EXISTS cartera_hist (
+  fecha      TEXT NOT NULL,
+  broker     TEXT NOT NULL,
+  simbolo    TEXT NOT NULL,
+  exposicion TEXT,
+  valor      REAL,
+  valor_usd  REAL,
+  PRIMARY KEY (fecha, broker, simbolo)
+);
+"""
+
+
+def init_cartera_hist():
+    c = conn()
+    c.executescript(ESQUEMA_CARTERA_HIST)
+    c.commit()
+
+
+def guardar_cartera_hist(fecha, posiciones, mep=None):
+    """Una fila por broker y especie, con su valor de ese dia. Es lo que
+    permite la evolucion de la cartera, filtrada por broker o por
+    exposicion: la valuacion de un solo total no se puede partir despues."""
+    c = conn()
+    c.execute("DELETE FROM cartera_hist WHERE fecha=?", (fecha,))
+    c.executemany(
+        "INSERT OR REPLACE INTO cartera_hist (fecha, broker, simbolo, "
+        "exposicion, valor, valor_usd) VALUES (?,?,?,?,?,?)",
+        [(fecha, p.get("broker"), p.get("simbolo"), p.get("exposicion"),
+          p.get("valor"), (p["valor"] / mep) if (mep and p.get("valor")) else None)
+         for p in posiciones if p.get("valor")])
+    c.commit()
+    return c.total_changes
+
+
+def evolucion_cartera(broker=None, exposicion=None, desde=None):
+    q = ("SELECT fecha, SUM(valor) v, SUM(valor_usd) u FROM cartera_hist "
+         "WHERE 1=1")
+    args = []
+    if broker:
+        q += " AND broker=?"
+        args.append(broker)
+    if exposicion:
+        q += " AND exposicion=?"
+        args.append(exposicion)
+    if desde:
+        q += " AND fecha>=?"
+        args.append(desde)
+    q += " GROUP BY fecha ORDER BY fecha"
+    return [{"fecha": r["fecha"], "valor": r["v"], "valor_usd": r["u"]}
+            for r in conn().execute(q, args)]

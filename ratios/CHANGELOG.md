@@ -1,5 +1,29 @@
 # Registro de cambios
 
+## 0.59.0
+
+**TENENCIAS renovada.**
+- Aviso arriba de todo cuando hay movimientos detectados para confirmar;
+  tocarlo abre el desplegable.
+- Resumen de la cartera: total (oculto por defecto), resultado en pesos y
+  en dolares MEP lado a lado.
+- Evolucion de la cartera, en pesos o en dolares, con periodos y lectura
+  al deslizar. Sale de una foto diaria nueva (`cartera_hist`: valor por
+  broker y especie), que se guarda despues del cierre en dias de rueda.
+  La serie arranca con el despliegue: la primera vez se toma la foto de
+  ese dia.
+- Composicion en dona, por moneda de rendimiento o por broker. Tocar un
+  tramo filtra la lista y recalcula total, resultados, evolucion y
+  cobros para esa seleccion; un chip junto al titulo la quita.
+- Concentracion: cuanto pesan las 5 mayores especies, con aviso si una
+  supera el 40%.
+- Proximos cobros a 30 dias, filtrados por broker si hay uno elegido.
+
+**Lectura de los graficos con mas datos.** Al tocar un dia: en un par
+por TIR, la TIR y el precio de cada bono; en un par por precio, el
+precio de cada punta; en la historia de un bono, precio, duration y
+desvio contra la curva.
+
 ## 0.58.0
 
 **Pares por diferencial de TIR.** En el alta y la edicion de un par, el
