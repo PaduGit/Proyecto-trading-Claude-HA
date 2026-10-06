@@ -487,6 +487,19 @@ details.par-menu .menu{top:24px}
 .hist-tit{ display:flex; justify-content:space-between; font-size:11px; color:var(--muted); padding:4px 2px 0; }
 .hist-ayuda{ font-size:11px; color:var(--muted); padding:6px 2px 0; }
 .u-graf{ touch-action:pan-y; }
+.curva-lista{ margin-top:10px; }
+.curva-lista .cab, .curva-lista .fila{ display:grid; grid-template-columns:70px 1fr 64px 56px; gap:8px; align-items:center; }
+.curva-lista .cab{ font-size:11px; color:var(--muted); padding:0 8px 4px; }
+.curva-lista .fila{ width:100%; min-height:44px; padding:6px 8px; border:0; background:none; color:var(--bone); text-align:left; cursor:pointer; border-top:1px solid var(--rule); font:inherit; font-size:13px; }
+.curva-lista .fila[aria-selected="true"]{ background:var(--panel-2); border-radius:8px; border-top-color:transparent; }
+.curva-lista .tk{ font-weight:700; }
+.curva-lista .fila.tenue{ opacity:.4; }
+.curva-lista .num, .curva-lista .cab .num{ text-align:right; }
+.curva-lista .dato{ color:var(--muted); }
+.zbar{ position:relative; height:6px; background:var(--panel-2); border-radius:3px; }
+.zbar i{ position:absolute; top:0; bottom:0; border-radius:3px; }
+.zbar::after{ content:""; position:absolute; left:50%; top:-3px; bottom:-3px; width:1px; background:var(--muted); }
+#curva-svg .banda{ fill:var(--bone); opacity:.06; }
 .pagos{ display:grid; gap:6px; margin:8px 0 4px; }
 .pago{ display:grid; grid-template-columns:96px 1fr 72px; align-items:center; gap:10px; font-size:13px; }
 .pago .f{ color:var(--muted); }
@@ -628,6 +641,11 @@ details.par-menu .menu{top:24px}
         <span><b style="background:var(--caro)"></b>caro (z ≤ −umbral)</span>
         <span><b style="background:var(--neutro)"></b>dentro del rango</span>
       </div>
+      <div id="curva-lista" class="curva-lista" role="listbox" aria-label="Bonos de la familia"></div>
+      <details id="curva-det-caja" class="u-mt-12" hidden>
+        <summary id="curva-det-tit"></summary>
+        <div id="curva-det" class="u-mt-8"></div>
+      </details>
     </details>
     <details class="u-mt-12" id="canje-caja">
       <summary id="canje-tit">Canjes convenientes</summary>
@@ -3756,25 +3774,34 @@ function dualHtml(x){
     '</p></div>';
 }
 
-async function verBono(sim){
-  $("#bono-titulo").textContent = sim;
-  $("#bono-cuerpo").innerHTML = '<div class="vacio">Cargando…</div>';
-  $("#dlg-bono").showModal();
+/* `inline`: el detalle se abre debajo de la curva en vez de en el dialogo.
+   Los dos usan los mismos ids adentro (bono-hist): al pintar uno se vacia
+   el otro. */
+async function verBono(sim, inline){
+  const tit = inline ? $("#curva-det-tit") : $("#bono-titulo");
+  const cuerpo = inline ? $("#curva-det") : $("#bono-cuerpo");
+  (inline ? $("#bono-cuerpo") : $("#curva-det")).innerHTML = "";
+  tit.textContent = sim;
+  cuerpo.innerHTML = '<div class="vacio">Cargando…</div>';
+  if(inline){
+    $("#curva-det-caja").hidden = false;
+    $("#curva-det-caja").open = true;
+  } else $("#dlg-bono").showModal();
   try{
     const r = await fetch(base + "api/bonos/" + encodeURIComponent(sim));
     const d = await r.json();
     if(!r.ok){
-      $("#bono-cuerpo").innerHTML = '<div class="msg error">' +
+      cuerpo.innerHTML = '<div class="msg error">' +
         esc(d.error) + '</div>';
       return;
     }
-    $("#bono-titulo").textContent = sim + " · " + (d.nombre || "");
+    tit.textContent = sim + " · " + (d.nombre || "");
     const pp = d.proximo_pago;
     const val = (v, s, dec) => v == null ? "—" :
       (dec === 0 ? ent(v) : num(v, dec === undefined ? 2 : dec)) + (s || "");
 
     const esDual = !!(d.fila && d.fila.dual);
-    $("#bono-cuerpo").innerHTML =
+    cuerpo.innerHTML =
       (d.aviso ? '<div class="aviso">' + esc(d.aviso) + '</div>' : "") +
       dualHtml(d.fila && d.fila.dual) +
       (d.cartera ? '<div class="hallazgo"><h3>En cartera · ' +
@@ -3836,7 +3863,7 @@ async function verBono(sim){
       '</tbody></table></div></details>';
     if(window.uPlot) graficarHist(sim); else graficarTir(sim);
   }catch(e){
-    $("#bono-cuerpo").innerHTML = '<div class="msg error">No se pudo cargar.</div>';
+    cuerpo.innerHTML = '<div class="msg error">No se pudo cargar.</div>';
   }
 }
 $("#bono-cerrar").addEventListener("click", () => $("#dlg-bono").close());
@@ -3878,7 +3905,7 @@ const fx = (v, n) => (v == null || !isFinite(v)) ? "—" : dec(v, n);
 /* SVG propio: son pocos puntos y lo que importa es tocar el mas cercano.
    La linea es el valor de curva que calcula el servidor para cada bono,
    unido por duration. */
-let curvaFam = null;
+let curvaFam = null, curvaSel = null;
 const curvaUmbral = () => 2.5;
 function colorZ(z){
   const u = curvaUmbral(), cs = getComputedStyle(document.documentElement);
@@ -3899,6 +3926,7 @@ function pintarCurvaBonos(){
     .sort((a, b) => porFam[b].length - porFam[a].length);
   const svg = $("#curva-svg");
   if(!fams.length){ svg.innerHTML = ""; $("#curva-fam").innerHTML = ""; return; }
+  if(filtro.familia !== "todas" && fams.includes(filtro.familia)) curvaFam = filtro.familia;
   if(!fams.includes(curvaFam)) curvaFam = fams.includes("CER") ? "CER" : fams[0];
   $("#curva-fam").innerHTML = fams.map(k => '<button aria-pressed="' +
     (k === curvaFam) + '" data-fam="' + esc(k) + '">' + esc(k) + '</button>').join("");
@@ -3915,22 +3943,41 @@ function pintarCurvaBonos(){
   const py = pasoLindo((yMax - yMin) / 4);
   for(let v = Math.ceil(yMin / py) * py; v <= yMax; v += py)
     h += '<line class="grid" x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(v) + '" y2="' + Y(v) + '"/>' +
-         '<text x="' + (L - 6) + '" y="' + (Y(v) + 4) + '" text-anchor="end">' + fx(v, py < 1 ? 1 : 0) + '</text>';
+         '<text x="' + (L - 6) + '" y="' + (Y(v) + 4) + '" text-anchor="end">' + fx(Math.abs(v) < py / 1e6 ? 0 : v, py < 1 ? 1 : 0) + '</text>';
   const px = pasoLindo(mdMax / 5);
   for(let v = 0; v <= mdMax; v += px)
     h += '<text x="' + X(v) + '" y="' + (H - B + 16) + '" text-anchor="middle">' + fx(v, px < 1 ? 1 : 0) + '</text>';
   h += '<text x="' + (W - R) + '" y="' + (H - 4) + '" text-anchor="end">duration modificada</text>' +
        '<text x="' + (L - 6) + '" y="' + (T - 4) + '" text-anchor="end">TIR %</text>';
-  const conCurva = bs.filter(b => b.curva != null).sort((a, b) => a.md - b.md);
-  if(conCurva.length > 1)
-    h += '<path class="ajuste" d="' + conCurva.map((b, i) =>
-      (i ? "L" : "M") + X(b.md) + "," + Y(b.curva)).join("") + '"/>';
+  /* La linea: el mismo modelo que el servidor (recta sobre el log de la
+     duration) ajustado con todos los bonos de la familia y dibujado
+     continuo. El z de cada bono sale de un ajuste sin ese bono, asi que
+     la linea es la referencia visual, no la medida exacta. */
+  const fit = ajusteLog(bs);
+  if(fit){
+    const mdMin = Math.max(.05, Math.min(...bs.map(b => b.md)) * .8);
+    let p = "", up = "", dn = "";
+    for(let i = 0; i <= 80; i++){
+      const md = mdMin + (mdMax - mdMin) * i / 80, y = fit.f(md);
+      p += (i ? "L" : "M") + X(md) + "," + Y(y);
+      up += (i ? "L" : "M") + X(md) + "," + Y(y + fit.sd);
+      dn = "L" + X(md) + "," + Y(y - fit.sd) + dn;
+    }
+    h += '<path class="banda" d="' + up + dn + 'Z"/><path class="ajuste" d="' + p + '"/>';
+  }
   const u = curvaUmbral();
   for(const b of bs){
-    const c = colorZ(b.z), fuera = b.z != null && Math.abs(b.z) >= u;
-    h += '<circle class="pt" cx="' + X(b.md) + '" cy="' + Y(b.tir_last) + '" r="5.5" fill="' + c + '" data-sim="' + esc(b.simbolo) + '"><title>' +
+    const c = colorZ(b.z), fuera = b.z != null && Math.abs(b.z) >= u, sel = b.simbolo === curvaSel;
+    const tenue = !pasaOtrosFiltros(b) && !sel;
+    if(tenue){
+      h += '<circle class="pt" cx="' + X(b.md) + '" cy="' + Y(b.tir_last) + '" r="4.5" fill="' + c +
+        '" opacity=".22" data-sim="' + esc(b.simbolo) + '"><title>' + esc(b.simbolo) + '</title></circle>';
+      continue;
+    }
+    if(sel) h += '<circle cx="' + X(b.md) + '" cy="' + Y(b.tir_last) + '" r="10.5" fill="none" stroke="' + c + '" stroke-width="2"/>';
+    h += '<circle class="pt" cx="' + X(b.md) + '" cy="' + Y(b.tir_last) + '" r="' + (sel ? 6.5 : 5.5) + '" fill="' + c + '" data-sim="' + esc(b.simbolo) + '"><title>' +
       esc(b.simbolo) + ' · TIR ' + fx(b.tir_last, 2) + '% · z ' + (b.z == null ? "—" : fx(b.z, 2)) + '</title></circle>';
-    if(fuera){
+    if(fuera || sel){
       const der = X(b.md) < W * .75;
       h += '<text class="etq" x="' + (X(b.md) + (der ? 10 : -10)) + '" y="' + (Y(b.tir_last) - 8) +
         '" text-anchor="' + (der ? "start" : "end") + '">' + esc(b.simbolo) + '</text>';
@@ -3938,10 +3985,54 @@ function pintarCurvaBonos(){
   }
   svg.innerHTML = h;
   svg._pts = bs.map(b => ({sim: b.simbolo, x: X(b.md), y: Y(b.tir_last)}));
+  pintarListaCurva(bs);
 }
+function cerrarDetCurva(){
+  curvaSel = null;
+  $("#curva-det-caja").hidden = true; $("#curva-det").innerHTML = "";
+}
+function ajusteLog(bs){
+  const pts = bs.map(b => [Math.log(Math.max(b.md, .05)), b.tir_last]);
+  const n = pts.length;
+  if(n < 3) return null;
+  const mx = pts.reduce((a, p) => a + p[0], 0) / n, my = pts.reduce((a, p) => a + p[1], 0) / n;
+  const sxx = pts.reduce((a, p) => a + (p[0] - mx) ** 2, 0);
+  if(sxx < 1e-12) return null;
+  const b = pts.reduce((a, p) => a + (p[0] - mx) * (p[1] - my), 0) / sxx, a = my - b * mx;
+  const f = md => a + b * Math.log(Math.max(md, .05));
+  const sd = Math.sqrt(pts.reduce((s_, p) => s_ + (p[1] - (a + b * p[0])) ** 2, 0) / n);
+  return {f, sd};
+}
+function pintarListaCurva(bs){
+  const orden = bs.slice().sort((a, b) => (b.z ?? -99) - (a.z ?? -99));
+  $("#curva-lista").innerHTML = '<div class="cab" aria-hidden="true"><span>Bono</span><span>z</span>' +
+    '<span class="num">TIR</span><span class="num">MD</span></div>' +
+    orden.map(b => {
+      const z = b.z, w = z == null ? 0 : Math.min(Math.abs(z) / 4, 1) * 50;
+      return '<button class="fila' + (pasaOtrosFiltros(b) ? "" : " tenue") +
+        '" role="option" aria-selected="' + (b.simbolo === curvaSel) +
+        '" data-sim="' + esc(b.simbolo) + '"><span class="tk">' + esc(b.simbolo) + '</span>' +
+        '<span class="zbar" title="z ' + (z == null ? "—" : fx(z, 2)) + '"><i style="left:' +
+        (z != null && z < 0 ? 50 - w : 50) + '%;width:' + w + '%;background:' + colorZ(z) + '"></i></span>' +
+        '<span class="num">' + fx(b.tir_last, 2) + '%</span><span class="num dato">' + fx(b.md, 2) + '</span></button>';
+    }).join("");
+}
+function elegirCurva(sim){
+  curvaSel = sim;
+  pintarCurvaBonos();
+  verBono(sim, true);
+  const caja = $("#curva-det-caja");
+  caja.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start"});
+}
+$("#curva-lista").addEventListener("click", e => {
+  const b = e.target.closest("[data-sim]"); if(b) elegirCurva(b.dataset.sim);
+});
 $("#curva-fam").addEventListener("click", e => {
   const b = e.target.closest("[data-fam]"); if(!b) return;
-  curvaFam = b.dataset.fam; pintarCurvaBonos();
+  curvaFam = b.dataset.fam; cerrarDetCurva();
+  /* la familia de la curva filtra tambien la tabla */
+  filtro.familia = curvaFam;
+  cargarBonos();
 });
 $("#curva-svg").addEventListener("click", e => {
   const svg = e.currentTarget, rc = svg.getBoundingClientRect();
@@ -3952,7 +4043,7 @@ $("#curva-svg").addEventListener("click", e => {
     const d = Math.hypot(p.x - x, p.y - y);
     if(d < dist){ dist = d; mejor = p.sim; }
   }
-  if(mejor) verBono(mejor);
+  if(mejor) elegirCurva(mejor);
 });
 $("#curva-caja").addEventListener("toggle", () => {
   if($("#curva-caja").open) pintarCurvaBonos();
@@ -4128,7 +4219,7 @@ addEventListener("resize", () => {
 
 /* ---------- filtros ---------- */
 const filtro = {ley: "todas", tipo: "todos", moneda: "todas",
-                emisor: "todos"};
+                emisor: "todos", familia: "todas"};
 
 const LEYES = [["todas","Todas"],["AR","Argentina"],["NY","Nueva York"]];
 const TIPOS = [["todos","Todos"],["hard_dollar","Hard dollar"],["cer","CER"],
@@ -4172,7 +4263,17 @@ function selectorFamilias(filas){
         '" onclick="elegirFiltro(\'cartera\',\'' + k + '\')">' + t +
         '</button>').join("") + '</div></div>'
     : "";
-  return cartera +
+  /* familia: la misma que elige la curva, sincronizada en los dos sentidos */
+  const fams = [...new Set(filas.map(f => f.familia).filter(Boolean))].sort();
+  const familia = fams.length > 1
+    ? '<div class="filtro-fila"><span class="filtro-etq">Familia</span>' +
+      '<div class="u-m-0 periodos">' +
+      [["todas", "Todas"]].concat(fams.map(k => [k, k])).map(([k, t]) =>
+        '<button aria-pressed="' + (filtro.familia === k) +
+        '" onclick="elegirFiltro(\'familia\',\'' + esc(k) + '\')">' + esc(t) +
+        '</button>').join("") + '</div></div>'
+    : "";
+  return cartera + familia +
          fila("Ley", LEYES, "ley") +
          fila("Tipo", TIPOS, "tipo") +
          fila("Moneda", MONEDAS, "moneda") +
@@ -4183,7 +4284,7 @@ function selectorFamilias(filas){
    de la primera fila. El resumen dice cuantos hay puestos. */
 let bFiltrosAbierto = false;
 function filtrosActivos(){
-  return ["ley","tipo","moneda","emisor"].filter(k =>
+  return ["ley","tipo","moneda","emisor","familia"].filter(k =>
       !["todas","todos"].includes(filtro[k])).length +
     ((filtro.cartera || "todas") !== "todas" ? 1 : 0);
 }
@@ -4200,11 +4301,24 @@ function alternarPuntas(){
 
 function elegirFiltro(clave, valor){
   filtro[clave] = valor;
+  if(clave === "familia" && valor !== "todas" && valor !== curvaFam){
+    curvaFam = valor; cerrarDetCurva();
+  }
   cargarBonos();
 }
 
+/* Los filtros menos la familia: en la curva no esconden puntos (el ajuste
+   necesita la familia entera), los atenuan. */
+function pasaOtrosFiltros(f){
+  return (filtro.ley === "todas" || f.ley_cod === filtro.ley) &&
+    (filtro.tipo === "todos" || f.tipo === filtro.tipo) &&
+    (filtro.moneda === "todas" || f.moneda_cotiza === filtro.moneda) &&
+    (filtro.emisor === "todos" || (f.emisor || "nacion") === filtro.emisor) &&
+    ((filtro.cartera || "todas") === "todas" || !!f.en_cartera);
+}
 function filtrarFamilia(filas){
   return filas.filter(f =>
+    (filtro.familia === "todas" || f.familia === filtro.familia) &&
     (filtro.ley === "todas" || f.ley_cod === filtro.ley) &&
     (filtro.tipo === "todos" || f.tipo === filtro.tipo) &&
     (filtro.moneda === "todas" || f.moneda_cotiza === filtro.moneda) &&

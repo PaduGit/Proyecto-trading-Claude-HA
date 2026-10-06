@@ -1,5 +1,22 @@
 # Registro de cambios
 
+## 0.57.0
+
+**Curva en BONOS, segunda vuelta.**
+- La linea es continua: el mismo modelo del servidor (recta sobre el log
+  de la duration) ajustado con toda la familia, con una banda de ±1
+  desvio. Antes unia el valor de curva de cada bono, que sale de un
+  ajuste sin ese bono, y quedaba quebrada.
+- Debajo del grafico, la lista de la familia ordenada por z, con TIR y
+  duration. El bono elegido queda marcado con anillo y nombre.
+- Tocar un punto o una fila abre el detalle en un desplegable debajo, no
+  en una ventana. Desde la tabla sigue abriendo la ventana.
+- La familia de la curva y la de la tabla estan sincronizadas: hay un
+  filtro nuevo, Familia. Los otros filtros (ley, tipo, moneda, emisor,
+  en cartera) atenuan los puntos en vez de sacarlos: el ajuste necesita
+  la familia entera. Con "En cartera" se ven tus bonos sobre la curva.
+- El eje ya no muestra "-0".
+
 ## 0.56.0
 
 **Antes de desplegar, una sola vez:** copiar uPlot al repositorio
