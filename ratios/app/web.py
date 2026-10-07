@@ -688,6 +688,19 @@ def crear_app(monitor):
             r["sin_puntas"] = diag["con_puntas"] == 0
             r["nunca_hubo"] = viejo is False and diag["con_puntas"] == 0
             r["hay_rueda"] = monitor.hay_rueda
+            # La cadena para el desplegable: por subyacente y vencimiento,
+            # una fila por base con las puntas de la call y de la put.
+            cad = {}
+            for sr in series or []:
+                if not sr.get("base") or sr.get("tipo") not in ("CALL", "PUT"):
+                    continue
+                k = "%s|%s" % (sr.get("subyacente"), sr.get("vencimiento"))
+                fila = cad.setdefault(k, {}).setdefault(sr["base"], {"base": sr["base"]})
+                pre = "c" if sr["tipo"] == "CALL" else "p"
+                fila[pre + "_compra"] = sr.get("compra")
+                fila[pre + "_venta"] = sr.get("venta")
+            r["cadena"] = {k: sorted(v.values(), key=lambda x: x["base"])
+                           for k, v in cad.items()}
             return jsonify(r)
         except Exception as e:
             log.exception("opciones")

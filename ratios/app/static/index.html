@@ -514,6 +514,29 @@ details.par-menu .menu{top:24px}
 .pago .barra .amort{ background:var(--neutro); opacity:.5; }
 .pago .num{ text-align:right; font-weight:600; }
 .pago.prox .f b::after{ content:" · próximo"; color:var(--barato); font-weight:500; }
+/* opciones 0.61.0 */
+.suby-opc{ display:flex; align-items:baseline; gap:10px; }
+.suby-opc .tk{ font-size:15px; font-weight:600; color:var(--muted); }
+.suby-opc .px{ font-size:28px; font-weight:700; letter-spacing:-.02em; }
+.rank-opc{ display:grid; gap:2px; margin-top:6px; }
+.rank-opc .rk{ display:grid; grid-template-columns:8px 1fr auto; gap:10px; align-items:center; width:100%; border:0;
+  background:none; color:var(--bone); text-align:left; padding:10px 8px; min-height:52px; border-top:1px solid var(--rule);
+  font-size:14px; cursor:pointer; }
+.rank-opc .rk:first-child{ border-top:0; }
+.rank-opc .rk[aria-selected="true"]{ background:var(--panel-2); border-radius:8px; }
+.rank-opc .rk i{ width:8px; height:30px; border-radius:4px; display:block; }
+.rank-opc .r{ text-align:right; font-weight:600; }
+.rank-opc .r small{ display:block; color:var(--muted); font-weight:400; font-size:12px; }
+#op-payoff{ display:block; width:100%; height:220px; touch-action:pan-y; cursor:crosshair; }
+.lotes-opc{ display:flex; align-items:center; gap:10px; margin-top:12px; }
+.lotes-opc button{ width:44px; height:40px; border-radius:8px; border:1px solid var(--rule); background:transparent; color:var(--bone); font-size:18px; cursor:pointer; }
+.lotes-opc b{ min-width:30px; text-align:center; font-size:17px; }
+.cad-opc th, .cad-opc td{ text-align:right; padding:6px 4px; }
+.cad-opc .k{ text-align:center; font-weight:700; background:var(--panel-2); }
+.cad-opc tr.atm td{ background:rgba(98,182,242,.08); }
+.cad-opc tr.atm .k{ color:#62B6F2; }
+.barra-dias{ height:6px; border-radius:3px; background:var(--panel-2); overflow:hidden; margin:8px 0 4px; }
+.barra-dias i{ display:block; height:100%; background:var(--amber); }
 /* inicio 0.60.0 */
 .ini-estado{ display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); margin:0 0 12px; flex-wrap:wrap; }
 .ini-estado i{ width:8px; height:8px; border-radius:50%; display:block; }
@@ -820,6 +843,10 @@ input, select, textarea{ border-radius:8px; }
     <button class="u-mt-12 primario" id="op-btn">
       Buscar spreads</button>
     <div id="op-mapa" class="u-mt-12"></div>
+    <details id="op-cad" class="cart-bloque" hidden>
+      <summary>Cadena de opciones</summary>
+      <div class="u-scroll-x" id="op-cad-out"></div>
+    </details>
     <div id="op-out" class="u-mt-12"></div>
     <h3 class="u-m-20-0-6">Posiciones armadas</h3>
     <div id="op-pos"></div>
@@ -5211,6 +5238,20 @@ function sprFila(f){
 }
 
 
+/* Cuanto del maximo posible se captura desarmando hoy, y cuanto tiempo
+   queda: el dilema de una posicion armada. */
+function capturaOpc(p, v){
+  if(!v || v.salida == null || p.base_compra == null || p.base_venta == null) return "";
+  const ancho = Math.abs(p.base_venta - p.base_compra);
+  if(!ancho) return "";
+  const cap = v.salida / ancho * 100;
+  const dias = Math.max(0, Math.round((new Date(p.vencimiento + "T17:00:00") - new Date()) / 86400000));
+  const total = p.creada ? Math.max(dias, Math.round((new Date(p.vencimiento + "T17:00:00") - new Date(p.creada)) / 86400000)) : null;
+  return '<div class="barra-dias"><i style="width:' + (total ? (1 - dias / total) * 100 : 0) + '%"></i></div>' +
+    '<div class="nota">Desarmar hoy captura ' + dec(Math.max(0, cap), 0) + '% del máximo · quedan ' + dias +
+    ' día' + (dias === 1 ? "" : "s") + (total ? ' de ' + total : "") + '.</div>';
+}
+
 async function cargarOpcPosiciones(){
   const out = $("#op-pos");
   try{
@@ -5236,7 +5277,7 @@ async function cargarOpcPosiciones(){
         '<div class="ruta">' + esc(p.vencimiento) +
           (v ? ' · vale ' + precio(v.salida) + ' por lote, $' +
                ent(v.ganancia_total) + ' en total' : ' · sin puntas') +
-        '</div>' +
+        '</div>' + capturaOpc(p, v) +
         (motivos.length
           ? '<div class="ej"><b>Desarmar:</b> ' + esc(motivos.join("; ")) +
             '</div>'
@@ -5380,8 +5421,10 @@ async function cargarOpciones(){
                umbral: d.umbral_alarma, venc: null,
                estr: "todas", eje: "base", sel: null};
     const t = d.tendencias || {};
+    opcCadena = d.cadena || {};
     $("#op-cab").innerHTML = Object.keys(d.spots || {}).map(k =>
-      '<div class="hallazgo"><h3>' + esc(k) + ' ' + precio(d.spots[k]) + '</h3>' +
+      '<div class="hallazgo"><div class="suby-opc"><span class="tk">' + esc(k) + '</span><span class="px">$ ' +
+        precio(d.spots[k]) + '</span></div>' +
       '<div class="datos">' +
         (t[k] ? '<span>media 9 <b>' + precio(t[k].m9) + '</b></span>' +
                 '<span>media 21 <b>' + precio(t[k].m21) + '</b></span>' +
@@ -5492,11 +5535,14 @@ function pintarMapaOpc(){
   const py = v => mA + (v - y0) / (y1 - y0) * (H - mA - mB);
 
   const color = f => alcista(f.estructura) ? "var(--sage)" : "var(--coral)";
+  /* Tamaño por lotes en las puntas; tenues los que estan sobre el umbral:
+     no avisarian. */
+  const bajo = f => opcMapa.umbral == null || f.riesgo_pct <= opcMapa.umbral;
   const puntos = filas.map((f, i) =>
     '<circle data-punto="' + esc(f.id) + '" cx="' + px(xs[i]).toFixed(1) +
     '" cy="' + py(ys[i]).toFixed(1) + '" r="' +
-    (opcMapa.sel === f.id ? 7 : 4.5) + '" fill="' + color(f) +
-    '" fill-opacity="' + (opcMapa.sel === f.id ? 1 : .6) +
+    (opcMapa.sel === f.id ? 7 : (3 + Math.min(4, (f.lotes || 1) / 3)).toFixed(1)) + '" fill="' + color(f) +
+    '" fill-opacity="' + (opcMapa.sel === f.id ? 1 : bajo(f) ? .9 : .3) +
     '" stroke="' + (opcMapa.sel === f.id ? "var(--txt)" : "none") +
     '" stroke-width="1.5" class="u-ptr"></circle>').join("");
 
@@ -5505,6 +5551,8 @@ function pintarMapaOpc(){
     '<line x1="' + px(refX).toFixed(1) + '" y1="' + mA + '" x2="' +
       px(refX).toFixed(1) + '" y2="' + (H - mB) +
       '" stroke="var(--muted)" stroke-dasharray="3 3"></line>' +
+    (yU == null ? "" : '<rect x="' + mI + '" y="' + mA + '" width="' + (W - mI - mD) +
+      '" height="' + Math.max(0, yU - mA).toFixed(1) + '" fill="var(--amber)" opacity=".06"></rect>') +
     (yU == null ? "" : '<line x1="' + mI + '" y1="' + yU.toFixed(1) +
       '" x2="' + (W - mD) + '" y2="' + yU.toFixed(1) +
       '" stroke="var(--amber)" stroke-dasharray="4 3"></line>') +
@@ -5518,18 +5566,140 @@ function pintarMapaOpc(){
       (esBase ? "spot " + ent(spot) : "empata acá") + '</text>' +
     '</svg>' +
     '<div class="nota">' + filas.length + ' combinaciones · verde alcista, ' +
-    'rojo bajista · eje vertical: riesgo, más arriba es mejor · punteada ' +
-    'ámbar: el umbral de alarma. Tocá un punto.</div>' +
+    'rojo bajista · eje vertical: riesgo, más arriba es mejor · franja ' +
+    'ámbar: bajo el umbral de alarma · tamaño: lotes en las puntas. Tocá un punto.</div>' +
+    rankingOpc(filas) +
     '<div id="op-punto"></div>';
   cont.innerHTML = h;
   if(opcMapa.sel) pintarPuntoOpc();
+  pintarCadenaOpc();
+}
+
+/* ---------- opciones 0.61.0: ranking, resultado al vencimiento, cadena ---------- */
+let opcCadena = {}, opcLotes = 1;
+/* Los cinco que piden menos movimiento entre los que estan bajo el
+   umbral. El de menor riesgo suele ser el mas lejano al spot: una
+   loteria. */
+function rankingOpc(filas){
+  const u = opcMapa.umbral;
+  const bajo = filas.filter(f => u == null || f.riesgo_pct <= u)
+    .sort((a, b) => Math.abs(a.var_equilibrio_pct) - Math.abs(b.var_equilibrio_pct)).slice(0, 5);
+  if(!bajo.length) return '<div class="nota">Ninguna bajo el umbral con estos filtros.</div>';
+  const alc = e => e === "BULL_CALL" || e === "BULL_PUT";
+  const b = v => v == null ? "—" : v.toLocaleString("es-AR", {maximumFractionDigits: 2});
+  return '<div class="cart-tit u-mt-12">Bajo el umbral, por cercanía</div><div class="rank-opc">' +
+    bajo.map(f => '<button class="rk" data-punto="' + esc(f.id) + '" aria-selected="' + (opcMapa.sel === f.id) + '">' +
+      '<i style="background:var(--' + (alc(f.estructura) ? "sage" : "coral") + ')"></i>' +
+      '<span><b>' + esc(sprNombre(f.estructura)) + ' ' + b(f.base_compra) + ' / ' + b(f.base_venta) + '</b><br>' +
+      '<span class="u-muted">empata en ' + (f.var_equilibrio_pct >= 0 ? "+" : "−") + dec(Math.abs(f.var_equilibrio_pct), 1) +
+      '% · 1 a ' + dec(f.ratio || 0, 1) + ' · ' + ent(f.lotes) + ' lotes</span></span>' +
+      '<span class="r">' + dec(f.riesgo_pct, 1) + '%<small>riesgo</small></span></button>').join("") + '</div>';
+}
+/* Resultado al vencimiento de cualquier vertical: el valor intrinseco de
+   las patas (comprada menos vendida), corrido para que el minimo sea
+   -riesgo. Asi vale igual para los de debito y los de credito. */
+function valorPatas(f, S){
+  let v = 0;
+  for(const p of f.patas || []){
+    const intr = p.tipo === "CALL" ? Math.max(S - p.base, 0) : Math.max(p.base - S, 0);
+    v += (p.accion === "Comprar" ? 1 : -1) * intr;
+  }
+  return v;
+}
+function resultadoOpc(f, S){
+  const lo = Math.min(f.base_compra, f.base_venta), hi = Math.max(f.base_compra, f.base_venta);
+  const vmin = Math.min(valorPatas(f, lo - 1), valorPatas(f, hi + 1), valorPatas(f, (lo + hi) / 2));
+  return valorPatas(f, S) - vmin - f.riesgo;
+}
+function payoffOpcHtml(f){
+  opcLotes = Math.max(1, Math.min(f.lotes || 1, opcLotes));
+  const alc = f.estructura === "BULL_CALL" || f.estructura === "BULL_PUT";
+  const n = opcLotes * 100, maxB = alc ? Math.max(f.base_compra, f.base_venta) : Math.min(f.base_compra, f.base_venta);
+  return '<div class="cart-bloque op-det">' +
+    '<div class="hist-lectura" id="opp-lect" aria-live="polite"></div>' +
+    '<svg id="op-payoff" role="img" aria-label="Resultado al vencimiento según el precio del subyacente"></svg>' +
+    '<dl class="ini-grid">' +
+      '<div><dt>Ponés (riesgo máx.)</dt><dd>$ ' + ent(f.riesgo * n) + '<small>' + dec(f.riesgo_pct, 1) + '% del ancho</small></dd></div>' +
+      '<div><dt>Ganancia máxima</dt><dd class="u-sage">$ ' + ent(f.ganancia * n) + '<small>1 a ' + dec(f.ratio || 0, 1) + '</small></dd></div>' +
+      '<div><dt>Empatás en</dt><dd>$ ' + ent(f.equilibrio) + '<small>' + (f.var_equilibrio_pct >= 0 ? "+" : "−") +
+        dec(Math.abs(f.var_equilibrio_pct), 1) + '% desde hoy</small></dd></div>' +
+      '<div><dt>Máximo desde</dt><dd>$ ' + ent(maxB) + '<small>' + (f.var_max_pct >= 0 ? "+" : "−") + dec(Math.abs(f.var_max_pct), 1) + '%</small></dd></div>' +
+      '<div><dt>Comisiones</dt><dd>$ ' + ent((f.comision || 0) * n) + '<small>incluidas</small></dd></div>' +
+      '<div><dt>Disponible</dt><dd>' + ent(f.lotes) + ' lotes<small>en las puntas</small></dd></div>' +
+    '</dl>' +
+    '<div class="lotes-opc"><span class="u-muted">Lotes</span><button data-lotes="-1" aria-label="Menos">−</button><b>' + opcLotes +
+      '</b><button data-lotes="1" aria-label="Más">+</button><span class="u-muted">de 100</span></div>' +
+    '<div class="hist-ayuda">' + (f.riesgo_pct <= (opcMapa.umbral || 33)
+      ? "Aparece porque el riesgo está bajo el umbral de " + dec(opcMapa.umbral || 33, 0) + "% y hay lotes en las dos puntas. Se avisa una vez al cruzar."
+      : "Está sobre el umbral: no avisaría.") + ' Deslizá sobre el gráfico para ver el resultado a cada precio.</div></div>';
+}
+function pintarPayoffOpc(Sx){
+  const svg = document.getElementById("op-payoff"); if(!svg || !opcMapa) return;
+  const f = opcMapa.filas.find(x => x.id === opcMapa.sel); if(!f) return;
+  const cs = getComputedStyle(document.documentElement), cv = n => cs.getPropertyValue(n).trim();
+  const n = opcLotes * 100, W = svg.clientWidth || 340, H = 220, L = 52, R = 12, T = 14, B = 30;
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  const spot = f.spot, lo = Math.min(f.base_compra, f.base_venta), hi = Math.max(f.base_compra, f.base_venta);
+  const sMin = Math.min(spot * .85, lo * .95), sMax = Math.max(spot * 1.15, hi * 1.05);
+  const yMax = f.ganancia * n * 1.25, yMin = -f.riesgo * n * 1.25;
+  const X = v => L + (v - sMin) / (sMax - sMin) * (W - L - R), Y = v => T + (yMax - v) / (yMax - yMin) * (H - T - B);
+  const pts = []; for(let i = 0; i <= 120; i++){ const S = sMin + (sMax - sMin) * i / 120; pts.push([S, resultadoOpc(f, S) * n]); }
+  const area = sg => "M" + X(sMin) + "," + Y(0) + pts.map(([S, v]) => "L" + X(S) + "," + Y(sg > 0 ? Math.max(v, 0) : Math.min(v, 0))).join("") + "L" + X(sMax) + "," + Y(0) + "Z";
+  let h = '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(0) + '" y2="' + Y(0) + '" stroke="' + cv("--muted") + '"/>';
+  for(const v of [-f.riesgo * n, f.ganancia * n])
+    h += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(v) + '" y2="' + Y(v) + '" stroke="' + cv("--rule") + '" stroke-dasharray="2 4"/>' +
+      '<text x="' + (L - 6) + '" y="' + (Y(v) + 4) + '" text-anchor="end" fill="' + cv("--muted") + '" font-size="11">' + (v >= 0 ? "+" : "−") + ent(Math.abs(v) / 1000) + 'k</text>';
+  const paso = pasoLindo((sMax - sMin) / 4);
+  for(let S = Math.ceil(sMin / paso) * paso; S <= sMax; S += paso)
+    h += '<text x="' + X(S) + '" y="' + (H - B + 16) + '" text-anchor="middle" fill="' + cv("--muted") + '" font-size="11">' + ent(S) + '</text>';
+  h += '<path d="' + area(1) + '" fill="rgba(95,196,138,.16)"/><path d="' + area(-1) + '" fill="rgba(224,122,111,.16)"/>' +
+    '<path d="' + pts.map(([S, v], i) => (i ? "L" : "M") + X(S) + "," + Y(v)).join("") + '" fill="none" stroke="' + cv("--bone") + '" stroke-width="2"/>' +
+    '<line x1="' + X(spot) + '" x2="' + X(spot) + '" y1="' + T + '" y2="' + (H - B) + '" stroke="#62B6F2" stroke-dasharray="3 4"/>' +
+    '<text x="' + (X(spot) + 4) + '" y="' + (T + 10) + '" fill="#62B6F2" font-size="11">hoy</text>' +
+    '<circle cx="' + X(f.equilibrio) + '" cy="' + Y(0) + '" r="4" fill="' + cv("--amber") + '"/>';
+  const S = Sx == null ? spot : Sx, v = resultadoOpc(f, S) * n;
+  h += '<line x1="' + X(S) + '" x2="' + X(S) + '" y1="' + T + '" y2="' + (H - B) + '" stroke="' + cv("--muted") + '" stroke-dasharray="2 3"/>' +
+    '<circle cx="' + X(S) + '" cy="' + Y(v) + '" r="6" fill="' + (v >= 0 ? cv("--sage") : cv("--coral")) + '" stroke="' + cv("--panel") + '" stroke-width="2"/>';
+  svg.innerHTML = h;
+  svg._d = {sMin, sMax, W, L, R};
+  const lect = document.getElementById("opp-lect");
+  if(lect) lect.innerHTML = '<span class="f">' + (Sx == null ? "Si cierra el vencimiento donde está hoy" : "Si cierra el vencimiento en") +
+    '</span><span>$ ' + ent(S) + ' (' + (S >= spot ? "+" : "−") + dec(Math.abs(S / spot - 1) * 100, 1) + '%) → <b class="' +
+    (v >= 0 ? "u-sage" : "u-coral") + '">' + (v >= 0 ? "ganás" : "perdés") + ' $ ' + ent(Math.abs(v)) + '</b></span>';
+}
+["pointerdown", "pointermove"].forEach(ev => document.addEventListener(ev, e => {
+  const svg = e.target.closest && e.target.closest("#op-payoff"); if(!svg || !svg._d) return;
+  if(ev === "pointermove" && e.pointerType === "mouse" && !e.buttons) return;
+  const d = svg._d, rc = svg.getBoundingClientRect(), x = (e.clientX - rc.left) * (d.W / rc.width);
+  pintarPayoffOpc(Math.max(d.sMin, Math.min(d.sMax, d.sMin + (x - d.L) / (d.W - d.L - d.R) * (d.sMax - d.sMin))));
+}));
+document.addEventListener("click", e => {
+  const b = e.target.closest && e.target.closest("[data-lotes]"); if(!b || !opcMapa) return;
+  opcLotes += +b.dataset.lotes; pintarPuntoOpc();
+});
+function pintarCadenaOpc(){
+  const caja = $("#op-cad"), out = $("#op-cad-out");
+  if(!opcMapa || !opcMapa.filas.length){ caja.hidden = true; return; }
+  const f0 = opcMapa.filas.find(f => f.vencimiento === opcMapa.venc) || opcMapa.filas[0];
+  const filas = opcCadena[f0.subyacente + "|" + opcMapa.venc] || [];
+  caja.hidden = !filas.length;
+  if(!filas.length) return;
+  const spot = f0.spot, atm = filas.reduce((a, r) => Math.abs(r.base - spot) < Math.abs(a.base - spot) ? r : a);
+  const c = v => v == null ? '<span class="u-muted">—</span>' : precio(v);
+  out.innerHTML = '<table class="tabla cad-opc"><thead><tr><th colspan="2">Calls</th><th></th><th colspan="2">Puts</th></tr>' +
+    '<tr><th>compra</th><th>venta</th><th>Base</th><th>compra</th><th>venta</th></tr></thead><tbody>' +
+    filas.map(r => '<tr class="' + (r === atm ? "atm" : "") + '"><td>' + c(r.c_compra) + '</td><td>' + c(r.c_venta) +
+      '</td><td class="k">' + r.base.toLocaleString("es-AR", {maximumFractionDigits: 2}) + '</td><td>' + c(r.p_compra) +
+      '</td><td>' + c(r.p_venta) + '</td></tr>').join("") + '</tbody></table>' +
+    '<div class="nota">' + esc(f0.subyacente) + ' · vencimiento ' + esc(opcMapa.venc) + ' · resaltada la base más cercana al spot.</div>';
 }
 
 function pintarPuntoOpc(){
   const cont = document.getElementById("op-punto");
   if(!cont) return;
   const f = opcMapa.filas.find(x => x.id === opcMapa.sel);
-  cont.innerHTML = f ? sprFila(f) : "";
+  cont.innerHTML = f ? payoffOpcHtml(f) + sprFila(f) : "";
+  if(f) pintarPayoffOpc(null);
 }
 
 $("#op-mapa").addEventListener("click", ev => {

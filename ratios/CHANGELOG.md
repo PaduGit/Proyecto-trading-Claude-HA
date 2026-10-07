@@ -1,5 +1,24 @@
 # Registro de cambios
 
+## 0.61.0
+
+**OPCIONES renovada.**
+- Subyacente con el precio grande arriba.
+- Mapa de combinaciones: franja del umbral sombreada, tamaño de cada punto
+  por lotes en las puntas, tenues las que estan sobre el umbral.
+- **Bajo el umbral, por cercanía**: las cinco que piden menos movimiento
+  para empatar entre las que estan bajo el umbral. Antes la mas visible
+  era la de menor riesgo, que suele ser la mas lejana al spot.
+- Detalle de cada combinacion con el **resultado al vencimiento
+  interactivo**: al deslizar dice cuanto se gana o pierde a cada precio
+  del subyacente. Vale para los cuatro verticales (debito y credito).
+  Ponés, ganancia maxima, empate, desde donde se gana el maximo,
+  comisiones y lotes disponibles; selector de lotes.
+- **Cadena de opciones** desplegable del vencimiento elegido, con la base
+  mas cercana al spot resaltada (`/api/opciones` devuelve `cadena`).
+- Posiciones armadas: cuanto del maximo se captura desarmando hoy y
+  cuantos dias quedan.
+
 ## 0.60.0
 
 **Solapa Inicio**, la primera al abrir la app. Responde "¿hay algo que
