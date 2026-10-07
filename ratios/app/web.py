@@ -1641,6 +1641,83 @@ def crear_app(monitor):
     # El monitor la llama a diario, despues del cierre.
     monitor.foto_cartera = _foto_cartera
 
+    @app.get("/api/inicio")
+    def inicio():
+        """Todo lo que la solapa de Inicio muestra, en un pedido. Cada parte
+        falla por separado: sin MEP o sin cartera, el resto sale igual."""
+        import bonos as BO
+        from datetime import date as _d
+        out = {"en_rueda": monitor._en_horario(),
+               "hace_seg": monitor.segundos_desde_ciclo(),
+               "fallas": list(getattr(monitor, "orleans_fallas", []) or [])}
+        c = db.conn()
+        # mercado
+        merc = {}
+        try:
+            cache = monitor.cotizaciones_vigentes()
+            m = BO.calcular_mep(cache, monitor.cfg.get("mep_par_pesos") or "AL30",
+                                monitor.cfg.get("mep_par_usd") or "AL30D")
+            merc["mep"] = m.get("medio")
+            ccl = BO.calcular_mep(cache, monitor.cfg.get("mep_par_pesos") or "AL30",
+                                  "AL30C").get("medio") if "AL30C" in cache else None
+            merc["ccl"] = ccl
+            if ccl and merc["mep"]:
+                merc["canje_pct"] = (ccl / merc["mep"] - 1) * 100
+            ayer = (_d.today() - timedelta(days=1))
+            mep_ayer = BO.mep_al(ayer.isoformat())
+            if mep_ayer and merc.get("mep"):
+                merc["mep_var_pct"] = (merc["mep"] / mep_ayer - 1) * 100
+        except Exception as e:
+            log.debug("inicio mercado: %s", e)
+        for t in ("cer", "tamar", "badlar", "a3500"):
+            try:
+                r = c.execute("SELECT fecha, valor FROM %s ORDER BY fecha DESC "
+                              "LIMIT 2" % t).fetchall()
+                if r:
+                    merc[t] = {"fecha": r[0]["fecha"], "valor": r[0]["valor"],
+                               "anterior": r[1]["valor"] if len(r) > 1 else None}
+            except Exception:
+                pass
+        out["mercado"] = merc
+        # cartera: total y variacion contra la ultima foto anterior a hoy
+        try:
+            r, mep = _valuar_completa()
+            hoy = _d.today().isoformat()
+            prev = c.execute("SELECT fecha, SUM(valor) v, SUM(valor_usd) u FROM "
+                             "cartera_hist WHERE fecha < ? GROUP BY fecha ORDER BY "
+                             "fecha DESC LIMIT 1", (hoy,)).fetchone()
+            tot = r.get("total")
+            out["cartera"] = {
+                "total": tot, "total_usd": (tot / mep) if (tot and mep) else None,
+                "resultado_pct": r.get("resultado_pct"),
+                "resultado_usd_pct": r.get("resultado_usd_pct"),
+                "desde": prev["fecha"] if prev else None,
+                "var_pct": ((tot / prev["v"] - 1) * 100) if (prev and prev["v"] and tot) else None,
+                "var_usd_pct": (((tot / mep) / prev["u"] - 1) * 100)
+                if (prev and prev["u"] and tot and mep) else None,
+            }
+        except Exception as e:
+            log.debug("inicio cartera: %s", e)
+            out["cartera"] = None
+        # movimientos para confirmar
+        try:
+            props = db.movimientos_propuestos()
+            out["movimientos"] = [{"tipo": m["tipo"], "sale": m.get("sale"),
+                                   "entra": m.get("entra"), "broker": m.get("broker")}
+                                  for m in props]
+        except Exception:
+            out["movimientos"] = []
+        # cobros de la semana
+        try:
+            import cobros as CO
+            out["cobros"] = CO.proximos(
+                dias=7, cer_actual=float(monitor.cfg.get("cer_actual") or 0),
+                brokers_fuera=monitor.brokers_extranjeros())
+        except Exception as e:
+            log.debug("inicio cobros: %s", e)
+            out["cobros"] = []
+        return jsonify(out)
+
     @app.get("/api/cartera/evolucion")
     def cartera_evolucion():
         # La primera vez, una foto de hoy para que la serie arranque.
@@ -2003,6 +2080,50 @@ def crear_app(monitor):
         d = request.get_json(silent=True) or {}
         n = monitor.medir_senales(reconstruir=bool(d.get("reconstruir")))
         return jsonify({"medidas": n})
+
+    @app.get("/api/curva/antes")
+    def curva_antes():
+        """Los bonos de una familia como estaban hace `dias` dias: TIR y
+        duration de bono_hist en la ultima rueda guardada hasta esa fecha.
+        El ajuste lo hace el front, con el mismo modelo que la curva de
+        hoy, para dibujar las dos juntas."""
+        import bonos as BO
+        from datetime import date as _d
+        fam = (request.args.get("familia") or "").strip()
+        try:
+            dias = max(1, min(400, int(request.args.get("dias") or 30)))
+        except ValueError:
+            dias = 30
+        hasta = (_d.today() - timedelta(days=dias)).isoformat()
+        c = db.conn()
+        # La ultima rueda con la serie completa: un dia a medio cargar
+        # (solo el punto de hoy de algunas especies) no arma una curva.
+        r = c.execute("SELECT fecha f FROM bono_hist WHERE fecha<=? AND "
+                      "tir IS NOT NULL GROUP BY fecha HAVING COUNT(*) >= 10 "
+                      "ORDER BY fecha DESC LIMIT 1", (hasta,)).fetchone()
+        fecha = r["f"] if r else None
+        if not fecha:
+            return jsonify({"fecha": None, "puntos": []})
+        try:
+            cfg, _ = BO.cargar()
+            esp = BO.especies()
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        puntos = []
+        for row in c.execute("SELECT simbolo, tir, md FROM bono_hist WHERE "
+                             "fecha=? AND tir IS NOT NULL AND md > 0", (fecha,)):
+            info = esp.get(row["simbolo"])
+            cr = cfg.get((info or {}).get("cronograma"))
+            if not cr:
+                continue
+            try:
+                f = BO._familia(cr, info, row["simbolo"])
+            except Exception:
+                continue
+            if f == fam:
+                puntos.append({"simbolo": row["simbolo"], "tir": row["tir"],
+                               "md": row["md"]})
+        return jsonify({"fecha": fecha, "puntos": puntos})
 
     @app.get("/api/calendario")
     def calendario_listar():

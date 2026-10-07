@@ -502,6 +502,8 @@ details.par-menu .menu{top:24px}
 .zbar i{ position:absolute; top:0; bottom:0; border-radius:3px; }
 .zbar::after{ content:""; position:absolute; left:50%; top:-3px; bottom:-3px; width:1px; background:var(--muted); }
 #curva-svg .banda{ fill:var(--bone); opacity:.06; }
+#curva-svg .antes{ fill:none; stroke:var(--muted); stroke-width:1.5; stroke-dasharray:5 5; }
+#curva-comp .etq{ font-size:12px; color:var(--muted); align-self:center; margin-right:2px; }
 .pagos{ display:grid; gap:6px; margin:8px 0 4px; }
 .pago{ display:grid; grid-template-columns:96px 1fr 72px; align-items:center; gap:10px; font-size:13px; }
 .pago .f{ color:var(--muted); }
@@ -512,6 +514,19 @@ details.par-menu .menu{top:24px}
 .pago .barra .amort{ background:var(--neutro); opacity:.5; }
 .pago .num{ text-align:right; font-weight:600; }
 .pago.prox .f b::after{ content:" · próximo"; color:var(--barato); font-weight:500; }
+/* inicio 0.60.0 */
+.ini-estado{ display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); margin:0 0 12px; flex-wrap:wrap; }
+.ini-estado i{ width:8px; height:8px; border-radius:50%; display:block; }
+.ini-bloque{ background:var(--panel); border-radius:12px; padding:14px; margin-top:12px; }
+.ini-linea{ display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+.ini-linea .cifra{ font-size:26px; font-weight:700; letter-spacing:-.02em; }
+.ini-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:10px; }
+.ini-grid div{ background:var(--panel-2); border-radius:8px; padding:8px 10px; }
+.ini-grid dt{ font-size:11px; color:var(--muted); }
+.ini-grid dd{ margin:2px 0 0; font-size:16px; font-weight:600; }
+.ini-grid small{ display:block; font-size:11px; font-weight:400; color:var(--muted); }
+.ini-ir{ border:0; background:none; color:var(--barato); font-size:13px; padding:8px 0 0; cursor:pointer; min-height:36px; }
+@media (max-width:520px){ .ini-grid{ grid-template-columns:repeat(2,1fr); } }
 /* tenencias 0.59.0 */
 .aviso-mov{ display:flex; align-items:center; gap:10px; width:100%; margin:0 0 12px; padding:12px 14px;
   border-radius:12px; background:rgba(224,180,90,.12); color:var(--amber); border:0; text-align:left;
@@ -670,8 +685,9 @@ input, select, textarea{ border-radius:8px; }
     </div>
   </div>
   <nav role="tablist">
+    <button role="tab" aria-selected="true" data-vista="inicio">Inicio</button>
     <button role="tab" aria-selected="false" data-vista="pos">Tenencias</button>
-    <button role="tab" aria-selected="true" data-vista="panel">Ratios</button>
+    <button role="tab" aria-selected="false" data-vista="panel">Ratios</button>
     <button role="tab" aria-selected="false" data-vista="bonos">Bonos</button>
     <button role="tab" aria-selected="false" data-vista="rulo">Rulo</button>
     <button role="tab" aria-selected="false" data-vista="opc">Opciones</button>
@@ -681,12 +697,20 @@ input, select, textarea{ border-radius:8px; }
 </header>
 
 <main>
-  <section id="v-panel">
-    <details id="opor-caja" open>
-      <summary id="opor-tit">Oportunidades vigentes</summary>
+  <section id="v-inicio">
+    <div id="ini-estado" class="ini-estado"></div>
+    <button class="aviso-mov" id="ini-mov" hidden></button>
+    <div class="ini-bloque">
+      <div class="cart-tit" id="opor-tit">Oportunidades vigentes</div>
       <div id="opor-out"></div>
-    </details>
-    <details id="calc-caja" class="u-mt-12">
+    </div>
+    <div class="ini-bloque" id="ini-cartera"></div>
+    <div class="ini-bloque" id="ini-cobros" hidden></div>
+    <div class="ini-bloque" id="ini-mercado"></div>
+  </section>
+
+  <section id="v-panel" hidden>
+    <details id="calc-caja">
       <summary>Calcular un ratio</summary>
       <div class="chips" id="c-chips"></div>
       <div class="form">
@@ -746,12 +770,15 @@ input, select, textarea{ border-radius:8px; }
         rinde más que sus pares de la misma duration: está barato. Tocá uno
         para abrir su detalle.</div>
       <div class="chips" id="curva-fam" role="group" aria-label="Familia"></div>
+      <div class="chips" id="curva-comp" role="group" aria-label="Comparar con"></div>
       <svg id="curva-svg" role="img" aria-label="TIR contra duration de la familia"></svg>
       <div class="curva-ley">
         <span><b style="background:var(--barato)"></b>barato (z ≥ umbral)</span>
         <span><b style="background:var(--caro)"></b>caro (z ≤ −umbral)</span>
         <span><b style="background:var(--neutro)"></b>dentro del rango</span>
+        <span id="curva-ley-antes" hidden><b style="background:none;border:1.5px dashed var(--muted);border-radius:2px"></b><span></span></span>
       </div>
+      <div class="hist-ayuda" id="curva-comp-txt"></div>
       <div id="curva-lista" class="curva-lista" role="listbox" aria-label="Bonos de la familia"></div>
       <details id="curva-det-caja" class="u-mt-12" hidden>
         <summary id="curva-det-tit"></summary>
@@ -1325,7 +1352,7 @@ input, select, textarea{ border-radius:8px; }
 <script>
 const $ = s => document.querySelector(s);
 const base = "";
-let vista = "panel";
+let vista = "inicio";
 let abierto = {};
 let ultimoEstado = null;
 /* Las estrategias de familia par, con su posicion adentro. La tarjeta
@@ -1368,8 +1395,9 @@ function irA(v){
   vista = v;
   document.querySelectorAll("nav button").forEach(x =>
     x.setAttribute("aria-selected", x.dataset.vista === v));
-  ["panel","bonos","rulo","opc","plazos","pos","alertas","reg","expl"]
+  ["inicio","panel","bonos","rulo","opc","plazos","pos","alertas","reg","expl"]
     .forEach(x => $("#v-"+x).hidden = (x !== v));
+  if(v === "inicio") cargarInicio();
   if(v === "pos"){ cargarTenencias(); cargarCobros(); }
   /* Los pares se administran desde Ratios: la lista de grupos tiene que
      estar cargada ahi, no en Tenencias. */
@@ -1465,6 +1493,90 @@ function cartelFuente(d){
   }
 }
 
+/* ---------- inicio (0.60.0) ---------- */
+/* La primera pantalla responde "¿hay algo que hacer?": oportunidades,
+   movimientos para confirmar, la cartera en una linea, los cobros de la
+   semana, el mercado y el estado de la app. Sin graficos: tiene que
+   cargar rapido y leerse de un vistazo. */
+const signoPct = (v, n) => v == null ? "—" : (v >= 0 ? "+" : "−") + dec(Math.abs(v), n == null ? 2 : n) + "%";
+const claseSigno = v => v == null ? "" : v >= 0 ? "u-sage" : "u-coral";
+async function cargarInicio(){
+  cargarOportunidades();
+  let d;
+  try{ d = await (await fetch(base + "api/inicio")).json(); }
+  catch(e){ $("#ini-estado").innerHTML = '<span class="u-coral">No se pudo consultar la app.</span>'; return; }
+  // estado
+  const min = d.hace_seg == null ? null : Math.round(d.hace_seg / 60);
+  $("#ini-estado").innerHTML = '<i style="background:var(--' + (d.en_rueda ? "sage" : "muted") + ')"></i>' +
+    (d.en_rueda ? "En rueda" : "Fuera de rueda") +
+    (min == null ? "" : " · actualizado hace " + (min < 1 ? "menos de un minuto" : min + " min")) +
+    ((d.fallas || []).length ? ' · <span class="u-amber">sin datos de: ' + d.fallas.map(esc).join(", ") + '</span>' : "");
+  // movimientos
+  const mv = d.movimientos || [], av = $("#ini-mov");
+  av.hidden = !mv.length;
+  if(mv.length) av.innerHTML = '<span>●</span><span><b>' + mv.length + ' movimiento' + (mv.length === 1 ? "" : "s") +
+    '</b> para confirmar: ' + mv.slice(0, 2).map(m => m.tipo === "rotacion" ? esc(m.sale) + " → " + esc(m.entra)
+      : (m.tipo === "aporte" ? "aporte de " + esc(m.entra) : "retiro de " + esc(m.sale)) +
+        (m.broker ? " en " + esc(m.broker) : "")).join(", ") + (mv.length > 2 ? "…" : "") + '</span><span>›</span>';
+  // cartera
+  const c = d.cartera;
+  $("#ini-cartera").innerHTML = !c || !c.total ? '<div class="cart-tit">Cartera</div><div class="vacio">Sin valuación todavía.</div>' :
+    '<div class="cart-tit">Cartera</div><div class="ini-linea"><span class="cifra">' +
+      (cartTotal ? plata(c.total) : "••••••") + '</span>' +
+      (c.var_pct != null ? '<span class="' + claseSigno(c.var_pct) + '">' + signoPct(c.var_pct) + ' desde el ' +
+        esc(c.desde.slice(8, 10) + "/" + c.desde.slice(5, 7)) + '</span>' : '<span class="u-muted">la variación diaria arranca con la foto de mañana</span>') +
+    '</div><dl class="ini-grid">' +
+      '<div><dt>En dólares</dt><dd class="' + claseSigno(c.var_usd_pct) + '">' + signoPct(c.var_usd_pct) +
+        '<small>' + (cartTotal && c.total_usd ? "US$ " + ent(c.total_usd) : "en el día") + '</small></dd></div>' +
+      '<div><dt>Resultado en pesos</dt><dd class="' + claseSigno(c.resultado_pct) + '">' + signoPct(c.resultado_pct, 1) +
+        '<small>contra el PPC</small></dd></div>' +
+      '<div><dt>Resultado en dólares</dt><dd class="' + claseSigno(c.resultado_usd_pct) + '">' + signoPct(c.resultado_usd_pct, 1) +
+        '<small>al MEP de cada compra</small></dd></div>' +
+    '</dl><button class="ini-ir" data-ir-vista="pos">Ver tenencias ›</button>';
+  // cobros de la semana
+  const cb = d.cobros || [], cc = $("#ini-cobros");
+  cc.hidden = !cb.length;
+  if(cb.length){
+    const MESES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+    cc.innerHTML = '<div class="cart-tit">Cobros de la semana</div>' + cb.map(x => {
+      const [y, m, dd] = x.fecha.split("-");
+      const que = x.amortizacion && x.renta ? "Renta y amortización" : x.amortizacion ? "Amortización" : "Renta";
+      return '<div class="cobro"><span class="f"><b>' + (+dd) + ' ' + MESES[+m - 1] + '</b>' +
+        (x.dias === 0 ? "hoy" : "en " + x.dias + " día" + (x.dias === 1 ? "" : "s")) + '</span><span>' + esc(x.simbolo) +
+        '<br><span class="f">' + que + '</span></span><span class="q">' + (x.importe == null ? "—" :
+          (cartTotal ? (x.moneda === "USD" ? "US$ " : "$ ") + ent(x.importe) : "••••")) + '</span></div>';
+    }).join("");
+  }
+  // mercado
+  const mk = d.mercado || {};
+  const indice = (k, nombre, n, unidad, nota) => {
+    const x = mk[k]; if(!x) return "";
+    const var_ = x.anterior ? (x.valor / x.anterior - 1) * 100 : null;
+    return '<div><dt>' + nombre + '</dt><dd>' + dec(x.valor, n) + (unidad || "") + '<small>' + (nota ? nota + " · " : "") +
+      esc(x.fecha.slice(8, 10) + "/" + x.fecha.slice(5, 7)) +
+      (var_ != null && unidad !== "%" ? ' · ' + signoPct(var_) : "") + '</small></dd></div>';
+  };
+  $("#ini-mercado").innerHTML = '<div class="cart-tit">Mercado</div><dl class="ini-grid">' +
+    (mk.mep ? '<div><dt>Dólar MEP</dt><dd>' + dec(mk.mep, 2) + '<small>' +
+      (mk.mep_var_pct != null ? '<span class="' + claseSigno(mk.mep_var_pct) + '">' + signoPct(mk.mep_var_pct) + '</span> en el día' : "AL30 / AL30D") +
+      '</small></dd></div>' : "") +
+    (mk.canje_pct != null ? '<div><dt>Canje</dt><dd>' + signoPct(mk.canje_pct) + '<small>cable contra MEP</small></dd></div>' : "") +
+    indice("a3500", "A3500", 2, "", "mayorista") +
+    indice("cer", "CER", 4, "", "") +
+    indice("tamar", "TAMAR", 2, "%", "TNA") +
+    indice("badlar", "BADLAR", 2, "%", "TNA") +
+    '</dl>';
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-ir-vista]");
+  if(b) irA(b.dataset.irVista);
+});
+$("#ini-mov").addEventListener("click", () => {
+  irA("pos");
+  setTimeout(() => { const caja = $("#prop-caja"); caja.open = true;
+    caja.scrollIntoView({behavior: "smooth", block: "start"}); }, 300);
+});
+
 /* ---------- oportunidades vigentes ---------- */
 /* Lo que esta vigente ahora, por prioridad: lo que ya tenes primero.
    Una señal que sigue vigente es una linea que se queda, no un aviso
@@ -1507,7 +1619,6 @@ async function cargarOportunidades(){
 
 /* ---------- panel ---------- */
 async function cargarPanel(){
-  cargarOportunidades();
   let d;
   try{ d = await (await fetch(base + "api/estado")).json(); }
   catch(e){ $("#hace").innerHTML = "<b>—</b>sin conexión"; return; }
@@ -4161,6 +4272,10 @@ const fx = (v, n) => (v == null || !isFinite(v)) ? "—" : dec(v, n);
    La linea es el valor de curva que calcula el servidor para cada bono,
    unido por duration. */
 let curvaFam = null, curvaSel = null;
+/* La curva de hace un tiempo, para ver si se movio la familia entera o
+   solo un bono. Se pide al servidor una vez por familia y periodo. */
+const CURVA_COMP = [["", "—"], ["7", "1 semana"], ["30", "1 mes"], ["91", "3 meses"]];
+let curvaComp = "30", curvaAntes = {};
 const curvaUmbral = () => 2.5;
 function colorZ(z){
   const u = curvaUmbral(), cs = getComputedStyle(document.documentElement);
@@ -4220,6 +4335,18 @@ function pintarCurvaBonos(){
     }
     h += '<path class="banda" d="' + up + dn + 'Z"/><path class="ajuste" d="' + p + '"/>';
   }
+  const antes = curvaComp ? curvaAntes[curvaFam + "|" + curvaComp] : null;
+  const fitA = antes && antes.puntos.length >= 3 ? ajusteLog(antes.puntos.map(x => ({md: x.md, tir_last: x.tir}))) : null;
+  if(fitA){
+    const mdMin = Math.max(.05, Math.min(...bs.map(b => b.md)) * .8);
+    let pa = "";
+    for(let i = 0; i <= 80; i++){
+      const md = mdMin + (mdMax - mdMin) * i / 80;
+      pa += (i ? "L" : "M") + X(md) + "," + Y(fitA.f(md));
+    }
+    h += '<path class="antes" d="' + pa + '"/>';
+  }
+  lecturaCompCurva(fit, fitA, antes, bs);
   const u = curvaUmbral();
   for(const b of bs){
     const c = colorZ(b.z), fuera = b.z != null && Math.abs(b.z) >= u, sel = b.simbolo === curvaSel;
@@ -4242,6 +4369,50 @@ function pintarCurvaBonos(){
   svg._pts = bs.map(b => ({sim: b.simbolo, x: X(b.md), y: Y(b.tir_last)}));
   pintarListaCurva(bs);
 }
+function pintarCompCurva(){
+  $("#curva-comp").innerHTML = '<span class="etq">Comparar con</span>' + CURVA_COMP.map(([k, t]) =>
+    '<button aria-pressed="' + (k === curvaComp) + '" data-comp="' + k + '">' + t + '</button>').join("");
+}
+async function pedirCurvaAntes(){
+  const k = curvaFam + "|" + curvaComp;
+  if(!curvaComp || curvaAntes[k]) return;
+  try{
+    curvaAntes[k] = await (await fetch(base + "api/curva/antes?familia=" +
+      encodeURIComponent(curvaFam) + "&dias=" + curvaComp)).json();
+  }catch(e){ curvaAntes[k] = {puntos: []}; }
+  pintarCurvaBonos();
+}
+/* Cuanto se movio la familia: nivel (promedio en el rango de duration
+   de hoy) y pendiente (largo contra corto). */
+function lecturaCompCurva(fit, fitA, antes, bs){
+  const ley = $("#curva-ley-antes"), txt = $("#curva-comp-txt");
+  ley.hidden = !fitA;
+  if(!curvaComp){ txt.textContent = ""; return; }
+  if(!antes){ txt.textContent = "Buscando la curva de entonces…"; pedirCurvaAntes(); return; }
+  if(!fitA || !fit){
+    txt.textContent = "No hay historia suficiente de esta familia para esa fecha.";
+    return;
+  }
+  const [y, m, d] = antes.fecha.split("-");
+  ley.querySelector("span").textContent = "curva del " + (+d) + "/" + (+m);
+  const mds = bs.map(b => b.md), lo = Math.min(...mds), hi = Math.max(...mds);
+  let suma = 0;
+  for(let i = 0; i <= 20; i++){ const md = lo + (hi - lo) * i / 20; suma += fit.f(md) - fitA.f(md); }
+  const nivel = suma / 21 * 100;
+  const corto = (fit.f(lo) - fitA.f(lo)) * 100, largo = (fit.f(hi) - fitA.f(hi)) * 100;
+  const que = Math.abs(largo - corto) < 25 ? "se movió en paralelo"
+    : (largo > corto ? "se empinó: los largos subieron más que los cortos"
+                     : "se aplanó: los cortos subieron más que los largos");
+  txt.textContent = "Desde el " + (+d) + "/" + (+m) + " la curva " + (nivel >= 0 ? "subió " : "bajó ") +
+    fx(Math.abs(nivel), 0) + " pb en promedio y " + que +
+    ". Un z alto pesa distinto si se movió toda la familia o solo ese bono.";
+}
+$("#curva-comp").addEventListener("click", e => {
+  const b = e.target.closest("[data-comp]"); if(!b) return;
+  curvaComp = b.dataset.comp; pintarCompCurva(); pintarCurvaBonos();
+});
+pintarCompCurva();
+
 function cerrarDetCurva(){
   curvaSel = null;
   $("#curva-det-caja").hidden = true; $("#curva-det").innerHTML = "";
@@ -4349,13 +4520,20 @@ async function graficarHist(sim){
       'El histórico se reconstruye la primera vez que arranca la app.</div>';
     return;
   }
-  if(hist){ try{ hist.uTir.destroy(); hist.uZ && hist.uZ.destroy(); }catch(e){} }
+  if(hist){ try{ hist.uTir.destroy(); hist.uZ && hist.uZ.destroy(); hist.uP && hist.uP.destroy(); }catch(e){} }
   const t = pts.map(p => new Date(p.fecha + "T12:00:00").getTime() / 1000);
   const tir = pts.map(p => p.tir), z = pts.map(p => p.z == null ? null : p.z);
   const precios = pts.map(p => p.precio), mds = pts.map(p => p.md), desv = pts.map(p => p.residuo);
+  /* Precio teorico: el que tendria si su TIR estuviera sobre la curva.
+     Aproximado por duration: precio x (1 + MD x desvio). Para los
+     desvios de la curva (decenas o pocos cientos de pb) la diferencia
+     con descontar los flujos es chica. */
+  const teo = pts.map(p => (p.precio != null && p.md != null && p.residuo != null)
+    ? p.precio * (1 + p.md * p.residuo / 10000) : null);
+  const conTeo = teo.some(v => v != null);
   const conZ = z.some(v => v != null);
   const u = curvaUmbral(), rea = u - 0.5;
-  hist = {sim, t, tir, z, precios, mds, desv, periodo: (hist && hist.periodo) || "6M"};
+  hist = {sim, t, tir, z, precios, mds, desv, teo, periodo: (hist && hist.periodo) || "6M"};
   cont.innerHTML =
     '<div class="chips" id="hist-per" role="group" aria-label="Período">' + HIST_PER.map(([k]) =>
       '<button aria-pressed="' + (k === hist.periodo) + '" data-per="' + k + '">' + k + '</button>').join("") + '</div>' +
@@ -4364,6 +4542,8 @@ async function graficarHist(sim){
     '<div class="hist-tit"><span>TIR</span><span id="hl-rango"></span></div><div class="u-graf" id="hg-tir"></div>' +
     (conZ ? '<div class="hist-tit"><span>z del desvío contra la curva</span><span>umbral ±' + fx(u, 1) +
       ' · rearme ±' + fx(rea, 1) + '</span></div><div class="u-graf" id="hg-z"></div>' : "") +
+    (conTeo ? '<div class="hist-tit"><span>Precio real y teórico (sobre la curva)</span>' +
+      '<span>punteada arriba: barato</span></div><div class="u-graf" id="hg-p"></div>' : "") +
     '<div class="hist-ayuda">Deslizá un dedo para leer cada día. Con dos dedos, acercá o alejá. Doble toque vuelve al período.</div>';
   const cs = getComputedStyle(document.documentElement), v = n => cs.getPropertyValue(n).trim();
   const W = Math.max(260, cont.clientWidth || 300);
@@ -4399,7 +4579,11 @@ async function graficarHist(sim){
         }],
       }}), [t, z], $("#hg-z"));
   } else hist.uZ = null;
-  [hist.uTir, hist.uZ].filter(Boolean).forEach(gestosHist);
+  hist.uP = conTeo ? new uPlot(Object.assign(base_(150, {values: (uu, vs) => vs.map(x => fx(x, 0))}), {
+    series: [{}, {stroke: v("--bone"), width: 1.5, points: {show: false}},
+             {stroke: v("--barato"), width: 1.4, dash: [5, 4], points: {show: false}}],
+  }), [t, precios, teo], $("#hg-p")) : null;
+  [hist.uTir, hist.uZ, hist.uP].filter(Boolean).forEach(gestosHist);
   $("#hist-per").addEventListener("click", e => {
     const b = e.target.closest("[data-per]"); if(!b) return;
     hist.periodo = b.dataset.per;
@@ -4414,7 +4598,7 @@ function periodoHist(){
   leerHist(null);
 }
 function rangoHist(min, max){
-  [hist.uTir, hist.uZ].filter(Boolean).forEach(uu => uu.setScale("x", {min, max}));
+  [hist.uTir, hist.uZ, hist.uP].filter(Boolean).forEach(uu => uu.setScale("x", {min, max}));
   const r = $("#hl-rango"); if(r) r.textContent = fechaLarga(min).slice(4) + " – " + fechaLarga(max).slice(4);
 }
 function leerHist(idx){
@@ -4427,8 +4611,12 @@ function leerHist(idx){
   vv.textContent = "TIR " + fx(hist.tir[i], 2) + "%" + (z == null ? "" : " · z " + (z >= 0 ? "+" : "−") + fx(Math.abs(z), 2));
   const l2 = $("#hl-2");
   if(l2){
-    const pr = hist.precios[i], md = hist.mds[i], dv = hist.desv[i];
+    const pr = hist.precios[i], md = hist.mds[i], dv = hist.desv[i], te = hist.teo[i];
+    const gap = (te != null && pr) ? (te / pr - 1) * 100 : null;
     l2.innerHTML = [pr != null ? 'precio <b>$' + precio(pr) + '</b>' : "",
+                    te != null ? 'teórico <b>$' + precio(te) + '</b>' : "",
+                    gap != null ? '<b style="color:var(--' + (gap >= 0 ? "barato" : "caro") + ')">' +
+                      fx(Math.abs(gap), 1) + '% ' + (gap >= 0 ? "barato" : "caro") + '</b>' : "",
                     md != null ? 'MD <b>' + fx(md, 2) + '</b>' : "",
                     dv != null ? 'desvío <b>' + conSigno(dv, 0) + ' pb</b>' : ""]
       .filter(Boolean).join(" · ");
@@ -4478,6 +4666,7 @@ addEventListener("resize", () => {
     if(hist && g && g.clientWidth){
       hist.uTir.setSize({width: g.clientWidth, height: 170});
       if(hist.uZ) hist.uZ.setSize({width: g.clientWidth, height: 140});
+      if(hist.uP) hist.uP.setSize({width: g.clientWidth, height: 150});
     }
   }, 150);
 });
@@ -7788,7 +7977,11 @@ $("#ten-cargar").addEventListener("click", async e => {
 });
 
 cargarPanel();
-setInterval(() => { if(vista === "panel") cargarPanel(); }, 30000);
+cargarInicio();
+/* El estado de los pares alimenta el reloj del encabezado: se refresca
+   tambien desde Inicio. */
+setInterval(() => { if(vista === "panel" || vista === "inicio") cargarPanel(); }, 30000);
+setInterval(() => { if(vista === "inicio") cargarInicio(); }, 60000);
 setInterval(() => {
   if(ultimoEstado && ultimoEstado.hace_seg != null){
     ultimoEstado.hace_seg += 1;

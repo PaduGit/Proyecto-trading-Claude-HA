@@ -1,5 +1,30 @@
 # Registro de cambios
 
+## 0.60.0
+
+**Solapa Inicio**, la primera al abrir la app. Responde "¿hay algo que
+hacer?" sin recorrer pestañas:
+- estado (en rueda o no, hace cuanto fue el ultimo ciclo, fuentes caidas);
+- movimientos para confirmar, que llevan a Tenencias;
+- oportunidades vigentes (se mudaron desde RATIOS);
+- la cartera en una linea: total oculto, variacion contra la ultima foto
+  diaria, en pesos y en dolares, y el resultado contra el PPC;
+- los cobros de la semana;
+- mercado: MEP, canje (cable contra MEP), A3500, CER, TAMAR y BADLAR.
+Todo sale de un solo pedido, `/api/inicio`; cada parte falla por
+separado. Sin graficos: tiene que cargar rapido.
+
+**Curva contra la de antes** (BONOS → Curva). Comparar con 1 semana, 1
+mes o 3 meses: la curva de entonces punteada sobre la de hoy, con el
+mismo modelo, y una lectura de cuanto se movio la familia y si se empino
+o se aplano. Sale de `bono_hist`, de la ultima rueda con la serie
+completa hasta esa fecha (`/api/curva/antes`).
+
+**Precio real y teorico** en la historia de cada bono: el precio que
+tendria si su TIR estuviera sobre la curva, aproximado por duration
+(precio x (1 + MD x desvio)). La lectura dice cuanto esta barato o caro
+en %.
+
 ## 0.59.0
 
 **TENENCIAS renovada.**
