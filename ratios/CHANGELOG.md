@@ -1,5 +1,30 @@
 # Registro de cambios
 
+## 0.62.0
+
+**Solapa Gestión** (entre Tenencias y Ratios), para mirar la cartera como
+un todo, en dolares y a un año:
+- **Riesgo y beneficio**: si sale mal, si sale bien y la relacion, contra
+  la regla de 2 a 1. Avisa si el escenario malo pasa el 20%, si hay renta
+  variable sin stop o posiciones con menos de 2 a 1.
+- **Asignacion objetivo** por bloque (dolar de baja duration, hard dollar,
+  renta variable, pesos tacticos, otros), con bandas editables.
+- **Por bloque**: burbujas de caida contra ganancia y tabla.
+- **Posiciones** de peor a mejor relacion; cada una con stop y objetivo
+  por precio o por TIR.
+- **Rebalanceo sugerido** y como quedaria la cartera en el objetivo.
+- **Supuestos** editables (escenarios, inflacion, suba del MEP).
+Todo se guarda en `estado` (clave `gestion`). Criterios: la renta fija
+rinde su TIR (CER: TIR real + inflacion − MEP; tasa en pesos: tasa − MEP);
+un stop por TIR en un bono en pesos no cubre la devaluacion y se suma al
+riesgo; al stop de renta variable se le suma 2% de deslizamiento; una TIR
+fuera de −10%..40% no se usa como retorno esperado.
+
+**Avisos de stop y objetivo** (pendiente 50). En cada ciclo de rueda se
+revisan los niveles cargados en Gestion, por precio o por TIR. Avisa una
+vez al tocarse y se rearma recien cuando vuelve adentro del rango. Lo
+tocado aparece arriba en Inicio. Es un aviso, no una orden en el broker.
+
 ## 0.61.0
 
 **OPCIONES renovada.**

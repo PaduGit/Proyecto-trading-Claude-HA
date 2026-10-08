@@ -1216,6 +1216,35 @@ class Monitor:
         self._guardar_canjes()
         return nuevos
 
+    def revisar_niveles(self, cot):
+        """Stop y objetivo de cada especie, cargados en Gestion (pendiente 50).
+
+        Avisa una vez al tocarse; se rearma recien cuando el precio (o la
+        TIR) vuelve adentro del rango. Solo en rueda: fuera de horario
+        nada es dato. El stop de la app es un aviso, no una orden.
+        """
+        import gestion as GE
+        if getattr(self, "_silencio", False):
+            return 0
+        precios = {k: (v or {}).get("ref") for k, v in (cot or {}).items()}
+        tir_md = {}
+        fn = getattr(self, "tir_md_bonos", None)
+        if fn and any(n.get("modo") == "tir" for n in GE.config()["niveles"].values()):
+            tir_md = fn()
+        n = 0
+        for sim, que, nivel, actual, modo in GE.cruces(precios, tir_md):
+            tir = modo == "tir"
+            fmt = (lambda v: "%.2f%%" % v) if tir else (lambda v: _n(v))
+            titulo = "%s %s: %s" % ("🛑" if que == "stop" else "🎯", sim,
+                                    "tocó el stop" if que == "stop" else "llegó al objetivo")
+            msg = "%s %s <b>%s</b> (nivel %s)\n\n<i>Cargado en Gestión. Es un aviso: " \
+                  "si no hay orden en el broker, no se ejecuta nada.</i>" % (
+                      "TIR" if tir else "Precio", sim, fmt(actual), fmt(nivel))
+            self.notif.enviar(titulo, msg)
+            db.registrar_alerta(sim, "nivel_" + que, actual, nivel, msg)
+            n += 1
+        return n
+
     def revisar_canjes(self, cot=None):
         """Avisa cuando aparece un canje que antes no estaba."""
         if not float(self.cfg.get("canje_min_pct") or 0):
@@ -1528,6 +1557,11 @@ class Monitor:
                 self.revisar_canjes(mapa)
             except Exception as e:
                 log.debug("revisar canjes: %s", e)
+            try:
+                if en_rueda:
+                    self.revisar_niveles(mapa)
+            except Exception as e:
+                log.debug("revisar niveles: %s", e)
             try:
                 self.revisar_plazos(mapa)
             except Exception as e:

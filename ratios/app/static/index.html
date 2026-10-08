@@ -514,6 +514,42 @@ details.par-menu .menu{top:24px}
 .pago .barra .amort{ background:var(--neutro); opacity:.5; }
 .pago .num{ text-align:right; font-weight:600; }
 .pago.prox .f b::after{ content:" · próximo"; color:var(--barato); font-weight:500; }
+/* gestion 0.62.0 */
+.medidor{ position:relative; height:10px; border-radius:5px; margin:18px 4px 6px;
+  background:linear-gradient(90deg, rgba(224,122,111,.5) 0%, rgba(224,180,90,.5) 33%, rgba(95,196,138,.5) 66%, rgba(95,196,138,.7) 100%); }
+.medidor i{ position:absolute; top:-5px; width:20px; height:20px; margin-left:-10px; border-radius:50%; background:var(--bone); border:4px solid var(--panel); }
+.medidor b{ position:absolute; top:-8px; bottom:-8px; width:2px; background:var(--bone); opacity:.6; }
+.medidor-et{ display:flex; justify-content:space-between; font-size:11px; color:var(--muted); padding:0 4px; }
+.g-aviso{ font-size:13px; padding:8px 10px; border-radius:8px; background:rgba(224,180,90,.10); color:var(--amber); margin-top:6px; }
+.g-bl{ margin-top:12px; }
+.g-bl .cab{ display:flex; align-items:center; gap:8px; font-size:14px; }
+.g-bl .cab b{ width:10px; height:10px; border-radius:3px; display:block; }
+.g-bl .cab .st{ margin-left:auto; font-size:12px; }
+.g-barra{ position:relative; height:22px; margin-top:6px; }
+.g-barra .riel{ position:absolute; left:0; right:0; top:8px; height:6px; border-radius:3px; background:var(--panel-2); }
+.g-barra .banda{ position:absolute; top:4px; height:14px; border-radius:4px; background:rgba(231,236,242,.08); border:1px dashed var(--muted); }
+.g-barra .act{ position:absolute; top:8px; height:6px; border-radius:3px; left:0; }
+.g-barra .obj{ position:absolute; top:1px; width:2px; height:20px; background:var(--bone); }
+.g-bl .num{ display:flex; gap:10px; align-items:center; font-size:13px; color:var(--muted); flex-wrap:wrap; }
+.g-paso{ display:inline-flex; align-items:center; gap:6px; margin-left:auto; }
+.g-paso button{ width:36px; height:32px; border-radius:8px; border:1px solid var(--rule); background:transparent; color:var(--bone); cursor:pointer; }
+.g-paso span{ min-width:44px; text-align:center; color:var(--bone); font-weight:600; }
+#g-rb{ display:block; width:100%; height:250px; }
+.g-it{ background:var(--panel-2); border-radius:10px; margin-top:8px; overflow:hidden; }
+.g-it > button{ width:100%; border:0; background:none; color:var(--bone); text-align:left; display:grid;
+  grid-template-columns:1fr auto; gap:3px 12px; padding:10px 12px; min-height:56px; cursor:pointer; font-size:14px; }
+.g-it .r{ text-align:right; font-weight:700; }
+.g-it .m{ font-size:12px; color:var(--muted); }
+.g-it .flag{ font-size:12px; text-align:right; }
+.g-det{ padding:0 12px 12px; border-top:1px solid var(--rule); }
+.g-edit{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; }
+.g-edit label{ font-size:12px; color:var(--muted); display:block; margin-bottom:4px; }
+.g-edit input{ width:100%; }
+.g-mov{ display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:center; padding:10px 0;
+  border-top:1px solid var(--rule); font-size:14px; }
+.g-sup-f{ margin-top:12px; }
+.g-sup-f label{ display:flex; justify-content:space-between; font-size:13px; color:var(--muted); }
+.g-sup-f input{ width:100%; accent-color:#62B6F2; }
 /* opciones 0.61.0 */
 .suby-opc{ display:flex; align-items:baseline; gap:10px; }
 .suby-opc .tk{ font-size:15px; font-weight:600; color:var(--muted); }
@@ -710,6 +746,7 @@ input, select, textarea{ border-radius:8px; }
   <nav role="tablist">
     <button role="tab" aria-selected="true" data-vista="inicio">Inicio</button>
     <button role="tab" aria-selected="false" data-vista="pos">Tenencias</button>
+    <button role="tab" aria-selected="false" data-vista="gest">Gestión</button>
     <button role="tab" aria-selected="false" data-vista="panel">Ratios</button>
     <button role="tab" aria-selected="false" data-vista="bonos">Bonos</button>
     <button role="tab" aria-selected="false" data-vista="rulo">Rulo</button>
@@ -730,6 +767,42 @@ input, select, textarea{ border-radius:8px; }
     <div class="ini-bloque" id="ini-cartera"></div>
     <div class="ini-bloque" id="ini-cobros" hidden></div>
     <div class="ini-bloque" id="ini-mercado"></div>
+  </section>
+
+  <section id="v-gest" hidden>
+    <div class="ini-bloque">
+      <div class="cart-tit">Riesgo y beneficio <span class="u-muted">· a un año, en dólares</span></div>
+      <dl class="ini-grid" id="g-rr"></dl>
+      <div class="medidor" id="g-medidor"></div>
+      <div class="medidor-et"><span>0 a 1</span><span>1 a 1</span><span>2 a 1</span><span>3 a 1</span></div>
+      <div id="g-avisos"></div>
+    </div>
+    <div class="ini-bloque">
+      <div class="cart-tit">Asignación <span class="u-muted">· actual contra objetivo</span></div>
+      <div class="hist-ayuda">La línea blanca es el objetivo; el recuadro punteado, la banda.</div>
+      <div id="g-asig"></div>
+    </div>
+    <div class="ini-bloque">
+      <div class="cart-tit">Por bloque</div>
+      <div class="hist-ayuda">Tamaño según el peso. Arriba de la línea punteada verde se cumple 2 a 1.</div>
+      <svg id="g-rb" role="img" aria-label="Riesgo y beneficio por bloque"></svg>
+      <div class="u-scroll-x"><table class="tabla" id="g-tbl"></table></div>
+    </div>
+    <div class="ini-bloque">
+      <div class="cart-tit">Posiciones</div>
+      <div class="chips" id="g-filtros"></div>
+      <div id="g-pos"></div>
+    </div>
+    <div class="ini-bloque">
+      <div class="cart-tit">Rebalanceo sugerido</div>
+      <div class="hist-ayuda">Para volver a las bandas. Reduce primero lo de peor relación dentro de cada bloque sobreponderado.</div>
+      <div id="g-rebal"></div>
+    </div>
+    <details class="ini-bloque" id="g-sup-caja">
+      <summary>Supuestos</summary>
+      <div id="g-sup"></div>
+      <div class="hist-ayuda">La renta fija en dólares rinde su TIR. Los CER, TIR real más inflación menos la suba del MEP; las tasas en pesos, tasa menos MEP. Un stop por TIR en un bono en pesos no cubre la devaluación: se suma al riesgo. Son opiniones, no datos.</div>
+    </details>
   </section>
 
   <section id="v-panel" hidden>
@@ -1422,9 +1495,10 @@ function irA(v){
   vista = v;
   document.querySelectorAll("nav button").forEach(x =>
     x.setAttribute("aria-selected", x.dataset.vista === v));
-  ["inicio","panel","bonos","rulo","opc","plazos","pos","alertas","reg","expl"]
+  ["inicio","gest","panel","bonos","rulo","opc","plazos","pos","alertas","reg","expl"]
     .forEach(x => $("#v-"+x).hidden = (x !== v));
   if(v === "inicio") cargarInicio();
+  if(v === "gest") cargarGestion();
   if(v === "pos"){ cargarTenencias(); cargarCobros(); }
   /* Los pares se administran desde Ratios: la lista de grupos tiene que
      estar cargada ahi, no en Tenencias. */
@@ -1520,6 +1594,156 @@ function cartelFuente(d){
   }
 }
 
+/* ---------- gestion de cartera (0.62.0) ---------- */
+/* Asignacion objetivo, riesgo y beneficio por especie y por bloque, y
+   rebalanceo. Los calculos los hace el servidor (gestion.py); aca se
+   dibujan y se editan objetivo, niveles y supuestos. */
+let gest = null, gFiltro = "todas", gAbierta = null;
+const G_COL = {dcorto: "#62B6F2", hd: "#4FC3B8", rv: "#E0B45A", pesos: "#B48EF0", otros: "#E07A6F"};
+const G_SUP = [["mal_hd", "Caída hard dollar en el escenario malo", 5, 35], ["mal_rv", "Caída de renta variable", 10, 50],
+  ["mal_pesos", "Caída de los pesos (devaluación)", 5, 40], ["esp_rv", "Retorno esperado de renta variable", 0, 30],
+  ["deval", "Suba del MEP en un año", 0, 60], ["infl", "Inflación en un año", 0, 60]];
+const gPct = (v, n) => v == null ? "—" : dec(v, n == null ? 1 : n) + "%";
+const gRelCls = r => r == null ? "" : r >= 2 ? "u-sage" : r >= 1 ? "u-amber" : "u-coral";
+async function cargarGestion(cambios){
+  try{
+    gest = await (await fetch(base + "api/gestion", cambios ? {method: "POST",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify(cambios)} : {})).json();
+  }catch(e){ $("#g-rr").innerHTML = '<div class="msg error">No se pudo consultar.</div>'; return; }
+  if(gest.error){ $("#g-rr").innerHTML = '<div class="msg error">' + esc(gest.error) + '</div>'; return; }
+  pintarGestion();
+}
+function pintarGestion(){
+  const g = gest, c = g.cartera;
+  $("#g-rr").innerHTML =
+    '<div><dt>Si sale mal</dt><dd class="u-coral">−' + gPct(c.mal) + '<small>stops en ' + dec(g.con_stop_pct, 0) + '% de la cartera; el resto, escenario</small></dd></div>' +
+    '<div><dt>Si sale bien</dt><dd class="u-sage">+' + gPct(c.bien) + '<small>objetivos o retorno esperado</small></dd></div>' +
+    '<div><dt>Relación</dt><dd class="' + gRelCls(c.relacion) + '">' + (c.relacion == null ? "—" : dec(c.relacion, 2) + " a 1") +
+      '<small>tu regla: ' + dec(g.regla, 0) + ' a 1</small></dd></div>';
+  const x = v => Math.min(100, Math.max(0, v / 3 * 100));
+  $("#g-medidor").innerHTML = '<b style="left:' + x(g.regla) + '%"></b><i style="left:' + x(c.relacion || 0) + '%"></i>';
+  $("#g-avisos").innerHTML = (g.avisos || []).map(a => '<div class="g-aviso">⚠ ' + esc(a) + '</div>').join("");
+  const X = v => Math.min(100, Math.max(0, v / 60 * 100));
+  $("#g-asig").innerHTML = g.bloques.map(b => {
+    const st = !b.fuera ? '<span class="st u-sage">en banda</span>' :
+      '<span class="st ' + (b.dif > 0 ? "u-coral" : "u-amber") + '">' + (b.dif > 0 ? "sobra " : "falta ") +
+      dec(Math.abs(b.dif) - b.banda, 1) + ' pp</span>';
+    return '<div class="g-bl"><div class="cab"><b style="background:' + G_COL[b.k] + '"></b><span>' + esc(b.nombre) + '</span>' + st + '</div>' +
+      '<div class="g-barra"><div class="riel"></div><div class="banda" style="left:' + X(b.obj - b.banda) + '%;width:' + X(b.banda * 2) + '%"></div>' +
+      '<div class="act" style="width:' + X(b.peso) + '%;background:' + G_COL[b.k] + '"></div><div class="obj" style="left:' + X(b.obj) + '%"></div></div>' +
+      '<div class="num">hoy <b style="color:var(--bone)">' + gPct(b.peso) + '</b> · objetivo ' + dec(b.obj, 0) + '% ±' + dec(b.banda, 0) +
+      '<span class="g-paso"><button data-gobj="' + b.k + '" data-d="-5" aria-label="Bajar objetivo">−</button><span>' + dec(b.obj, 0) +
+      '%</span><button data-gobj="' + b.k + '" data-d="5" aria-label="Subir objetivo">+</button></span></div></div>';
+  }).join("") + '<div class="hist-ayuda ' + (g.suma_objetivo === 100 ? "u-sage" : "u-coral") + '">El objetivo suma ' +
+    dec(g.suma_objetivo, 0) + '%' + (g.suma_objetivo === 100 ? "." : ": ajustalo a 100.") + '</div>';
+  pintarRbGestion();
+  const ops = [["todas", "Todas"], ["sin", "Sin stop"], ["malas", "Menos de 2 a 1"], ["rv", "Renta variable"]];
+  $("#g-filtros").innerHTML = ops.map(([k, t]) => '<button aria-pressed="' + (k === gFiltro) + '" data-gf="' + k + '">' + t + '</button>').join("");
+  let l = g.especies.slice();
+  if(gFiltro === "sin") l = l.filter(e => e.sin_stop);
+  if(gFiltro === "malas") l = l.filter(e => (e.relacion || 0) < g.regla);
+  if(gFiltro === "rv") l = l.filter(e => e.bloque === "rv");
+  $("#g-pos").innerHTML = l.map(e => {
+    const flag = e.fuente === "sin dato" ? '<span class="u-muted">sin dato</span>' : e.sin_stop ? '<span class="u-amber">sin stop</span>' :
+      (e.relacion || 0) < g.regla ? '<span class="u-amber">menos de 2 a 1</span>' : '<span class="u-sage">cumple</span>';
+    return '<div class="g-it"><button data-gesp="' + esc(e.simbolo) + '" aria-expanded="' + (gAbierta === e.simbolo) + '">' +
+      '<span><b>' + esc(e.simbolo) + '</b> <span class="u-muted">' + esc((g.bloques.find(b => b.k === e.bloque) || {}).nombre || "") + '</span></span>' +
+      '<span class="r ' + gRelCls(e.relacion) + '">' + (e.relacion == null ? "—" : dec(e.relacion, 2) + " a 1") + '</span>' +
+      '<span class="m">' + gPct(e.peso) + ' · −' + gPct(e.mal) + ' / ' + (e.bien >= 0 ? "+" : "−") + gPct(Math.abs(e.bien)) + ' · ' + esc(e.fuente) + '</span>' +
+      '<span class="flag">' + flag + '</span></button>' + (gAbierta === e.simbolo ? detGestion(e) : "") + '</div>';
+  }).join("") || '<div class="vacio">Ninguna posición con ese filtro.</div>';
+  const eo = g.en_objetivo;
+  $("#g-rebal").innerHTML = g.suma_objetivo !== 100 ? '<div class="vacio">El objetivo no suma 100%.</div>' :
+    (g.rebalanceo.length ? g.rebalanceo.map(m => '<div class="g-mov"><b class="' + (m.accion === "reducir" ? "u-coral" : "u-sage") + '">' +
+      (m.accion === "reducir" ? "Reducir" : "Aumentar") + '</b><span>' + esc(m.bloque) +
+      (m.especies.length ? '<br><span class="u-muted">empezando por ' + m.especies.map(esc).join(" y ") + '</span>' : "") +
+      '</span><b>' + dec(m.pp, 1) + ' pp</b></div>').join("") : '<div class="vacio">Todo dentro de las bandas.</div>') +
+    '<div class="hist-ayuda">Con el objetivo: si sale mal −' + gPct(eo.mal) + ' · si sale bien +' + gPct(eo.bien) +
+      ' · ' + (eo.relacion == null ? "—" : dec(eo.relacion, 2) + " a 1") + '.</div>';
+  const sp = g.supuestos;
+  $("#g-sup").innerHTML = G_SUP.map(([k, t, mn, mx]) => '<div class="g-sup-f"><label><span>' + t + '</span><b id="gsv-' + k + '">' +
+    dec(sp[k], 0) + '%</b></label><input type="range" min="' + mn + '" max="' + mx + '" step="1" value="' + sp[k] + '" data-gsup="' + k + '"></div>').join("");
+}
+function detGestion(e){
+  const bono = e.tir != null && e.md > .05;
+  const n = e.niveles || {}, modo = n.modo || (bono ? "tir" : "precio");
+  const ph = modo === "tir" ? [dec((e.tir || 0) + 1.5, 1), dec(Math.max(1, (e.tir || 0) - 2), 1)]
+    : [e.precio ? ent(e.precio * .9) : "", e.precio ? ent(e.precio * 1.2) : ""];
+  return '<div class="g-det">' +
+    (bono ? '<div class="chips u-mt-8"><button aria-pressed="' + (modo === "tir") + '" data-gmodo="tir" data-gs="' + esc(e.simbolo) +
+      '">Por TIR</button><button aria-pressed="' + (modo === "precio") + '" data-gmodo="precio" data-gs="' + esc(e.simbolo) + '">Por precio</button></div>' : "") +
+    '<div class="g-edit"><div><label>Stop ' + (modo === "tir" ? "(TIR %)" : "(precio)") + '</label><input inputmode="decimal" data-gniv="stop" data-gs="' +
+      esc(e.simbolo) + '" data-gm="' + modo + '" value="' + (n.modo === modo && n.stop != null ? n.stop : "") + '" placeholder="' + ph[0] + '"></div>' +
+    '<div><label>Objetivo ' + (modo === "tir" ? "(TIR %)" : "(precio)") + '</label><input inputmode="decimal" data-gniv="obj" data-gs="' +
+      esc(e.simbolo) + '" data-gm="' + modo + '" value="' + (n.modo === modo && n.obj != null ? n.obj : "") + '" placeholder="' + ph[1] + '"></div></div>' +
+    '<div class="hist-ayuda">' + (modo === "tir" ? "Hoy rinde " + dec(e.tir || 0, 2) + "% con duration " + dec(e.md || 0, 2) +
+      ". El stop salta si rinde más que eso." : "Hoy " + (e.precio ? precio(e.precio) : "—") + "." +
+      (e.bloque === "rv" ? " Al stop se le suma " + dec(gest.supuestos.desliz, 0) + "% por si abre por debajo." : "")) +
+      ' Brokers: ' + [...new Set(e.brokers)].map(esc).join(", ") + '. Al tocarse avisa una vez; es un aviso, no una orden.' +
+      (n.stop != null ? ' <button class="ini-ir" data-gborrar="' + esc(e.simbolo) + '">Borrar niveles</button>' : "") + '</div></div>';
+}
+function pintarRbGestion(){
+  const svg = $("#g-rb"), W = svg.clientWidth || 340, H = 250, L = 40, R = 14, T = 12, B = 32;
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  const ds = gest.bloques.filter(b => b.peso > 0 && b.mal != null);
+  const xM = Math.max(35, ...ds.map(d => d.mal)) * 1.1, yM = Math.max(35, ...ds.map(d => d.bien)) * 1.1;
+  const X = v => L + v / xM * (W - L - R), Y = v => T + (yM - v) / yM * (H - T - B);
+  const mu = "var(--muted)";
+  let h = "";
+  for(let v = 0; v <= xM; v += 10) h += '<line x1="' + X(v) + '" x2="' + X(v) + '" y1="' + T + '" y2="' + (H - B) + '" stroke="var(--rule)" stroke-dasharray="2 4"/>' +
+    '<text x="' + X(v) + '" y="' + (H - B + 15) + '" text-anchor="middle" fill="' + mu + '" font-size="11">' + v + '%</text>';
+  for(let v = 0; v <= yM; v += 10) h += '<text x="' + (L - 6) + '" y="' + (Y(v) + 4) + '" text-anchor="end" fill="' + mu + '" font-size="11">' + v + '%</text>';
+  h += '<text x="' + (W - R) + '" y="' + (H - 2) + '" text-anchor="end" fill="' + mu + '" font-size="11">si sale mal (caída)</text>' +
+    '<text x="' + (L + 4) + '" y="' + (T + 10) + '" fill="' + mu + '" font-size="11">si sale bien</text>';
+  const x2 = Math.min(xM, yM / gest.regla);
+  h += '<path d="M' + X(0) + ',' + Y(0) + ' L' + X(x2) + ',' + Y(x2 * gest.regla) + ' L' + X(0) + ',' + Y(yM) + 'Z" fill="var(--sage)" opacity=".07"/>' +
+    '<line x1="' + X(0) + '" y1="' + Y(0) + '" x2="' + X(x2) + '" y2="' + Y(x2 * gest.regla) + '" stroke="var(--sage)" stroke-dasharray="5 4"/>';
+  for(const d of ds){
+    const r = 6 + Math.sqrt(d.peso) * 2.2;
+    h += '<circle cx="' + X(d.mal) + '" cy="' + Y(Math.max(0, d.bien)) + '" r="' + r + '" fill="' + G_COL[d.k] + '" opacity=".75"><title>' + esc(d.nombre) + '</title></circle>' +
+      '<text x="' + (X(d.mal) + r + 3) + '" y="' + (Y(Math.max(0, d.bien)) + 4) + '" fill="var(--bone)" font-size="11">' + esc(d.nombre.split(" ")[0]) + '</text>';
+  }
+  svg.innerHTML = h;
+  $("#g-tbl").innerHTML = '<thead><tr><th>Bloque</th><th>Peso</th><th>Si sale mal</th><th>Si sale bien</th><th>Relación</th></tr></thead><tbody>' +
+    ds.map(d => '<tr><td>' + esc(d.nombre) + '</td><td>' + gPct(d.peso) + '</td><td class="u-coral">−' + gPct(d.mal) + '</td><td class="' +
+      (d.bien >= 0 ? "u-sage" : "u-coral") + '">' + (d.bien >= 0 ? "+" : "−") + gPct(Math.abs(d.bien)) + '</td><td class="' + gRelCls(d.relacion) + '">' +
+      (d.relacion == null ? "—" : dec(d.relacion, 2)) + '</td></tr>').join("") + '</tbody>';
+}
+$("#v-gest").addEventListener("click", e => {
+  const o = e.target.closest("[data-gobj]");
+  if(o){ const b = gest.bloques.find(x => x.k === o.dataset.gobj);
+    cargarGestion({asignacion: {[b.k]: [Math.max(0, Math.min(100, b.obj + +o.dataset.d)), b.banda]}}); return; }
+  const f = e.target.closest("[data-gf]");
+  if(f){ gFiltro = f.dataset.gf; pintarGestion(); return; }
+  const m = e.target.closest("[data-gmodo]");
+  if(m){ const esp = gest.especies.find(x => x.simbolo === m.dataset.gs);
+    if(!esp.niveles || esp.niveles.modo !== m.dataset.gmodo) esp.niveles = {modo: m.dataset.gmodo};
+    pintarGestion(); return; }
+  const br = e.target.closest("[data-gborrar]");
+  if(br){ cargarGestion({niveles: {[br.dataset.gborrar]: null}}); return; }
+  const p = e.target.closest("[data-gesp]");
+  if(p){ gAbierta = gAbierta === p.dataset.gesp ? null : p.dataset.gesp; pintarGestion(); }
+});
+$("#v-gest").addEventListener("change", e => {
+  const i = e.target.closest("[data-gniv]");
+  if(i){
+    const sim = i.dataset.gs, esp = gest.especies.find(x => x.simbolo === sim);
+    const n = Object.assign({stop: null, obj: null}, esp.niveles && esp.niveles.modo === i.dataset.gm ? esp.niveles : {}, {modo: i.dataset.gm});
+    const v = parseFloat(i.value.replace(/\./g, "").replace(",", "."));
+    n[i.dataset.gniv] = isFinite(v) ? v : null;
+    esp.niveles = n;
+    // se guarda recien con los dos niveles
+    if(n.stop != null && n.obj != null) cargarGestion({niveles: {[sim]: n}});
+    return;
+  }
+  const r = e.target.closest("[data-gsup]");
+  if(r) cargarGestion({supuestos: {[r.dataset.gsup]: +r.value}});
+});
+$("#v-gest").addEventListener("input", e => {
+  const r = e.target.closest("[data-gsup]");
+  if(r) $("#gsv-" + r.dataset.gsup).textContent = r.value + "%";
+});
+
 /* ---------- inicio (0.60.0) ---------- */
 /* La primera pantalla responde "¿hay algo que hacer?": oportunidades,
    movimientos para confirmar, la cartera en una linea, los cobros de la
@@ -1560,6 +1784,13 @@ async function cargarInicio(){
       '<div><dt>Resultado en dólares</dt><dd class="' + claseSigno(c.resultado_usd_pct) + '">' + signoPct(c.resultado_usd_pct, 1) +
         '<small>al MEP de cada compra</small></dd></div>' +
     '</dl><button class="ini-ir" data-ir-vista="pos">Ver tenencias ›</button>';
+  // stops y objetivos tocados
+  const nv = Object.entries(d.niveles || {});
+  let nvc = $("#ini-niveles");
+  if(!nvc){ $("#ini-mov").insertAdjacentHTML("afterend", '<button class="aviso-mov" id="ini-niveles" data-ir-vista="gest" hidden></button>'); nvc = $("#ini-niveles"); }
+  nvc.hidden = !nv.length;
+  if(nv.length) nvc.innerHTML = '<span>●</span><span>' + nv.map(([k, q]) => '<b>' + esc(k) + '</b> ' +
+    (q === "stop" ? "en el stop" : "en el objetivo")).join(" · ") + '</span><span>›</span>';
   // cobros de la semana
   const cb = d.cobros || [], cc = $("#ini-cobros");
   cc.hidden = !cb.length;

@@ -1654,6 +1654,38 @@ def crear_app(monitor):
     # El monitor la llama a diario, despues del cierre.
     monitor.foto_cartera = _foto_cartera
 
+    def _tir_md():
+        """{simbolo: (TIR, MD)} de la tabla de BONOS con los precios en cache."""
+        import bonos as BO
+        out = {}
+        try:
+            t = BO.tabla(monitor.cotizaciones_vigentes(),
+                         cer_actual=float(monitor.cfg.get("cer_actual") or 0))
+            for f in t.get("filas") or []:
+                if f.get("tir_last") is not None:
+                    out[f["simbolo"]] = (f["tir_last"], f.get("md"))
+        except Exception as e:
+            log.debug("tabla de bonos: %s", e)
+        return out
+
+    @app.get("/api/gestion")
+    def gestion_ver():
+        import gestion as GE
+        try:
+            r, _mep = _valuar_completa()
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        return jsonify(GE.calcular(r.get("posiciones") or [], _tir_md()))
+
+    @app.post("/api/gestion")
+    def gestion_guardar():
+        import gestion as GE
+        GE.guardar(request.get_json(silent=True) or {})
+        return gestion_ver()
+
+    # El monitor revisa los niveles en cada ciclo de rueda.
+    monitor.tir_md_bonos = _tir_md
+
     @app.get("/api/inicio")
     def inicio():
         """Todo lo que la solapa de Inicio muestra, en un pedido. Cada parte
@@ -1720,6 +1752,12 @@ def crear_app(monitor):
                                   for m in props]
         except Exception:
             out["movimientos"] = []
+        # stops y objetivos tocados
+        try:
+            import gestion as GE
+            out["niveles"] = GE.tocados()
+        except Exception:
+            out["niveles"] = {}
         # cobros de la semana
         try:
             import cobros as CO
