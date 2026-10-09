@@ -11,6 +11,7 @@ import db
 import bonos as BO
 import cer as CER
 import circuitos as CI
+import cobros as COB
 import costos as CO
 import curva as CU
 import historico as H
@@ -1683,6 +1684,14 @@ def crear_app(monitor):
         GE.guardar(request.get_json(silent=True) or {})
         return gestion_ver()
 
+    @app.get("/api/gestion/niveles")
+    def gestion_niveles():
+        """Solo los niveles y cuales estan tocados: TENENCIAS los dibuja en
+        el riel de cada posicion y no necesita valuar la cartera entera."""
+        import gestion as GE
+        return jsonify({"niveles": GE.config()["niveles"],
+                        "tocados": GE.tocados()})
+
     # El monitor revisa los niveles en cada ciclo de rueda.
     monitor.tir_md_bonos = _tir_md
 
@@ -1760,8 +1769,7 @@ def crear_app(monitor):
             out["niveles"] = {}
         # cobros de la semana
         try:
-            import cobros as CO
-            out["cobros"] = CO.proximos(
+            out["cobros"] = COB.proximos(
                 dias=7, cer_actual=float(monitor.cfg.get("cer_actual") or 0),
                 brokers_fuera=monitor.brokers_extranjeros())
         except Exception as e:
@@ -1880,13 +1888,12 @@ def crear_app(monitor):
 
     @app.get("/api/cobros")
     def cobros_listar():
-        import cobros as CO
         try:
             dias = int(request.args.get("dias", 365))
         except ValueError:
             dias = 365
         try:
-            filas = CO.proximos(
+            filas = COB.proximos(
                 dias=dias,
                 cer_actual=float(monitor.cfg.get("cer_actual") or 0),
                 incluir_extranjeros=request.args.get("todos") == "1",

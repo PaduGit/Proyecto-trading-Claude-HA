@@ -625,6 +625,32 @@ details.par-menu .menu{top:24px}
 .cobro .f{ color:var(--muted); font-size:12px; }
 .cobro .f b{ display:block; color:var(--bone); font-size:15px; }
 .cobro .q{ text-align:right; font-weight:600; }
+/* estrategias en TENENCIAS e Inicio, y riel de stop */
+.estr-grilla{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+.estr-t{ border:0; background:var(--panel-2); border-radius:10px; padding:12px; text-align:left; min-height:84px;
+  color:var(--bone); cursor:pointer; font:inherit; }
+.estr-t .n{ font-weight:600; font-size:14px; }
+.estr-t .x{ font-size:12px; color:var(--muted); }
+.estr-t .v{ font-size:20px; font-weight:700; margin-top:4px; font-variant-numeric:tabular-nums; }
+.estr-t .v.sin{ font-size:13px; font-weight:400; color:var(--muted); margin-top:8px; }
+.estr-t[aria-pressed="true"]{ outline:2px solid var(--bone); outline-offset:-2px; }
+@media (max-width:360px){ .estr-grilla{ grid-template-columns:1fr; } }
+.ini-estr{ display:grid; grid-template-columns:1fr auto; gap:2px 10px; width:100%; border:0; border-bottom:1px solid var(--rule);
+  background:none; color:var(--bone); padding:9px 0; text-align:left; font:inherit; font-size:14px; cursor:pointer;
+  min-height:44px; align-items:center; }
+.ini-estr:last-child{ border-bottom:0; }
+.ini-estr .x{ grid-column:1; font-size:12px; color:var(--muted); }
+.ini-estr .v{ grid-row:1 / span 2; grid-column:2; font-weight:600; font-variant-numeric:tabular-nums; text-align:right; }
+.nivel{ margin-top:10px; padding:10px 12px; border-radius:8px; background:var(--panel-2); font-size:13px; color:var(--muted); }
+.nivel-barra{ position:relative; height:8px; border-radius:4px; margin:12px 8px 6px;
+  background:linear-gradient(90deg, rgba(224,122,111,.45), var(--panel) 35%, var(--panel) 65%, rgba(95,196,138,.45)); }
+.nivel-barra i{ position:absolute; top:-4px; width:16px; height:16px; margin-left:-8px; border-radius:50%;
+  background:var(--bone); border:3px solid var(--panel-2); }
+.nivel-et{ display:grid; grid-template-columns:1fr auto 1fr; gap:8px; font-size:12px; }
+.nivel-et span:nth-child(2){ color:var(--bone); text-align:center; }
+.nivel-et span:last-child{ text-align:right; }
+.nivel-et small{ display:block; color:var(--muted); }
+.destello{ outline:2px solid var(--barato); outline-offset:3px; }
 @media (max-width:520px){ .comp{ grid-template-columns:1fr; justify-items:center; } .ley{ width:100%; } }
 /* uPlot, lo minimo: su hoja de estilos no viene en el .js */
 .uplot{ font-family:var(--sans); line-height:1.2; position:relative; }
@@ -765,6 +791,7 @@ input, select, textarea{ border-radius:8px; }
       <div id="opor-out"></div>
     </div>
     <div class="ini-bloque" id="ini-cartera"></div>
+    <div class="ini-bloque" id="ini-estr" hidden></div>
     <div class="ini-bloque" id="ini-cobros" hidden></div>
     <div class="ini-bloque" id="ini-mercado"></div>
   </section>
@@ -928,6 +955,7 @@ input, select, textarea{ border-radius:8px; }
   <section id="v-pos" hidden>
     <button class="aviso-mov" id="mov-aviso" hidden></button>
     <div id="cart-out"></div>
+    <div id="estr-tarjetas" class="cart-bloque" hidden></div>
     <div id="filtro-resumen" class="u-mb-10 u-ptr filtro-fila">
       <span class="filtro-etq">Filtros</span>
       <div class="u-m-0 periodos">
@@ -942,9 +970,6 @@ input, select, textarea{ border-radius:8px; }
     <div class="u-mb-10 filtro-fila">
       <span class="filtro-etq">Exposición</span>
       <div class="u-m-0 periodos" id="ten-expo"></div></div>
-    <div class="u-mb-10 filtro-fila">
-      <span class="filtro-etq">Estrategia</span>
-      <div class="u-m-0 periodos" id="ten-fam"></div></div>
     </div>
     <div class="u-m-14-0-10 filtro-fila">
       <span class="filtro-etq">Orden</span>
@@ -1751,8 +1776,35 @@ $("#v-gest").addEventListener("input", e => {
    cargar rapido y leerse de un vistazo. */
 const signoPct = (v, n) => v == null ? "—" : (v >= 0 ? "+" : "−") + dec(Math.abs(v), n == null ? 2 : n) + "%";
 const claseSigno = v => v == null ? "" : v >= 0 ? "u-sage" : "u-coral";
+/* Una linea por estrategia abierta, con la misma cifra que su tarjeta.
+   Tocarla lleva a su solapa. */
+let iniEstr = [];
+async function cargarIniEstr(){
+  const cont = $("#ini-estr");
+  if(!cont) return;
+  let d;
+  try{ d = await (await fetch(base + "api/estrategias")).json(); }
+  catch(e){ cont.hidden = true; return; }
+  if(!estrFamilias.length) estrFamilias = d.familias || [];
+  iniEstr = estrAbiertas(d.estrategias);
+  cont.hidden = !iniEstr.length;
+  if(!iniEstr.length){ cont.innerHTML = ""; return; }
+  cont.innerHTML = '<div class="cart-tit">Estrategias</div>' + iniEstr.map(e => {
+    const c = cifraEstr(e);
+    return '<button class="ini-estr" data-ir-estr="' + e.id + '"><span>' + esc(e.nombre) +
+      '</span><span class="v ' + (c.v == null ? "u-muted" : c.v >= 0 ? "u-sage" : "u-coral") + '">' +
+      (c.v == null ? "—" : conSigno(c.v, 1) + "%") + '</span><span class="x">' +
+      esc(subEstr(e) + " · " + c.nota) + '</span></button>';
+  }).join("");
+}
+$("#ini-estr").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-ir-estr]");
+  if(b) irAEstrategia(+b.dataset.irEstr, iniEstr);
+});
+
 async function cargarInicio(){
   cargarOportunidades();
+  cargarIniEstr();
   let d;
   try{ d = await (await fetch(base + "api/inicio")).json(); }
   catch(e){ $("#ini-estado").innerHTML = '<span class="u-coral">No se pudo consultar la app.</span>'; return; }
@@ -2096,12 +2148,7 @@ function medicion(e, r){
     return '<div class="u-mono u-fs-12" style="color:' + t +
       '">' + (r.resultado_pct >= 0 ? "+" : "") + num(r.resultado_pct, 2) +
       '% <span class="u-op-60">sobre lo que costó · $' + ent(r.valor) +
-      '</span></div>' +
-      ((e.stop || e.objetivo)
-        ? '<div class="u-block pos-pie">' +
-          (e.stop ? 'stop ' + num(e.stop, 2) + " " : "") +
-          (e.objetivo ? '· objetivo ' + num(e.objetivo, 2) : "") + '</div>'
-        : "");
+      '</span></div>';
   }
 
   /* Reserva de valor: la estrategia es una etiqueta que agrupa y cada
@@ -2172,7 +2219,7 @@ function bloquePosicion(e){
   const r = e.posicion || {};
   const base_ = r.ticker_base || e.ticker_base || "";
   const esp = Object.keys(r.tenencia || {}).sort();
-  let h = '<div class="pos-bloque">' +
+  let h = '<div class="pos-bloque" data-estr-id="' + e.id + '">' +
     '<div class="u-block u-mt-12 pos-pie">' +
     esc(e.nombre) + (base_ ? ' <span class="tocar">medida en ' + esc(base_) +
     '</span>' : "") + '</div>';
@@ -6924,6 +6971,93 @@ const NOM_PATRON = {dolar:"Dólar MEP", cer:"CER", badlar:"BADLAR",
                     spy:"S&P", tc_entrada:"Tipo de cambio de entrada"};
 const famNombre = f => (estrFamilias.find(x => x.id === f) || {}).nombre || f;
 
+/* La cifra de una estrategia es la misma que muestra su tarjeta en su
+   solapa (ver `medicion`): si TENENCIAS o Inicio midieran distinto, una
+   de las dos pantallas mentiria y no se sabria cual. */
+const FAM_CORTO = {par: "par", curva: "curva", reserva_renta_fija: "reserva",
+                   tecnica: "técnica", opciones: "opciones"};
+const FAM_ORDEN = ["par", "curva", "reserva_renta_fija", "tecnica", "opciones"];
+const VISTA_DE_PESTANA = {ratios: "panel", bonos: "bonos", tecnica: "alertas", opc: "opc"};
+function cifraEstr(e){
+  const r = e.posicion || {};
+  const vara = r.vara || "nominales";
+  const base_ = r.ticker_base || e.ticker_base || "";
+  /* Mismo orden que la tarjeta: sin punto de partida no se mide nada. */
+  if(r.sin_punto_de_partida) return {v: null, nota: "sin punto de partida"};
+  if(vara === "ppc")
+    return r.resultado_pct == null ? {v: null, nota: "sin PPC cargado"}
+      : {v: r.resultado_pct, nota: "sobre lo que costó"};
+  if(vara === "indice")
+    return r.contra_patron_pct == null ? {v: null, nota: r.nota_patron || "sin patrón"}
+      : {v: r.contra_patron_pct, nota: "ponderado por costo"};
+  if(!base_) return {v: null, nota: "sin ticker base"};
+  if(r.rendimiento_pct == null) return {v: null, nota: "sin medir"};
+  return {v: r.rendimiento_pct, nota: "en nominales de " + base_};
+}
+const subEstr = e => (FAM_CORTO[e.familia] || famNombre(e.familia)) +
+  (e.patron ? " · contra " + (NOM_PATRON[e.patron] || e.patron) : "");
+function estrAbiertas(lista){
+  return (lista || []).filter(e => !e.cierre).sort((a, b) =>
+    (FAM_ORDEN.indexOf(a.familia) - FAM_ORDEN.indexOf(b.familia)) ||
+    String(a.nombre).localeCompare(String(b.nombre)));
+}
+
+/* Tocar una estrategia lleva a su solapa y la marca. La solapa se dibuja
+   al abrirse, asi que se la busca un rato; si vive en un desplegable
+   cerrado (las de BONOS), se lo abre. */
+function irAEstrategia(id, lista){
+  const e = (lista || estrDatos).find(x => x.id === id) || estrDatos.find(x => x.id === id);
+  if(!e) return;
+  const fam = estrFamilias.find(f => f.id === e.familia) || {};
+  const v = VISTA_DE_PESTANA[fam.pestana] ||
+    ({par: "panel", curva: "bonos", reserva_renta_fija: "bonos", tecnica: "alertas", opciones: "opc"})[e.familia];
+  if(!v) return;
+  irA(v);
+  let n = 0;
+  const buscar = () => {
+    const el = document.querySelector('#v-' + v + ' [data-estr-id="' + id + '"]');
+    if(!el){ if(++n < 40) setTimeout(buscar, 150); return; }
+    for(let d = el.closest("details"); d; d = d.parentElement ? d.parentElement.closest("details") : null)
+      d.open = true;
+    const caja = el.closest(".par") || el;
+    caja.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? "auto" : "smooth", block: "start"});
+    caja.classList.add("destello");
+    setTimeout(() => caja.classList.remove("destello"), 2000);
+  };
+  /* Se espera a que la solapa vuelva a dibujarse: si no, se encuentra la
+     tarjeta de la visita anterior y el redibujo pierde el scroll. */
+  setTimeout(buscar, 400);
+}
+
+/* Las tarjetas de TENENCIAS: como va cada estrategia abierta, de un
+   vistazo, y la ultima con lo que no tiene estrategia. Esa filtra la
+   lista; las demas llevan a su solapa. */
+function pintarTarjetasEstr(){
+  const cont = $("#estr-tarjetas");
+  if(!cont) return;
+  const abiertas = estrAbiertas(estrDatos);
+  const sin = [...new Set((tenDatos || []).filter(t => !t.estrategia_id &&
+    Number(t.cantidad || 0) !== 0 && (t.tipo || "").toLowerCase() !== "moneda")
+    .map(t => t.simbolo))].sort();
+  if(!abiertas.length && !sin.length){ cont.hidden = true; cont.innerHTML = ""; return; }
+  cont.hidden = false;
+  cont.innerHTML = '<div class="cart-tit">Estrategias</div><div class="estr-grilla">' +
+    abiertas.map(e => {
+      const c = cifraEstr(e);
+      return '<button class="estr-t" data-ir-estr="' + e.id + '"><div class="n">' + esc(e.nombre) +
+        '</div><div class="x">' + esc(subEstr(e)) + '</div>' +
+        (c.v == null ? '<div class="v sin">' + esc(c.nota) + '</div>'
+          : '<div class="v ' + (c.v >= 0 ? "u-sage" : "u-coral") + '">' + conSigno(c.v, 1) +
+            '%</div><div class="x">' + esc(c.nota) + '</div>') + '</button>';
+    }).join("") +
+    (sin.length ? '<button class="estr-t" data-estr-sin aria-pressed="' + (tenFiltro.familia === "_sin") +
+      '"><div class="n">Sin estrategia</div><div class="x">' + sin.length +
+      (sin.length === 1 ? " especie" : " especies") + '</div><div class="v sin">' +
+      esc(sin.slice(0, 4).join(", ") + (sin.length > 4 ? "…" : "")) + '</div></button>' : "") +
+    '</div>';
+}
+
 async function cargarEstrategias(){
   try{
     /* Siempre se traen las cerradas: van al archivo, que es donde se
@@ -6934,8 +7068,8 @@ async function cargarEstrategias(){
     estrPatrones = d.patrones || [];
     estrGrupos = d.grupos || [];
     if(!grupos || !grupos.length) await cargarPosicion();
-    famChips();
     pintarArchivoPar();
+    pintarTarjetasEstr();
     /* El editor de tenencia arma su selector con esta lista; si estaba
        abierto cuando llego, hay que repintarlo. */
     if(tenAbierta) tenPintar();
@@ -7094,18 +7228,6 @@ function expoChips(){
       (k ? '<i class="u-inline-block u-mr-5 punto" style="background:' + colorExpo(k) +
            '"></i>' : "") +
       esc(t) + '</button>').join("");
-}
-
-function famChips(){
-  const cont = $("#ten-fam");
-  if(!cont) return;
-  const usadas = [...new Set(estrDatos.map(e => e.familia))];
-  const opc = [["", "Todas"]].concat(
-    estrFamilias.filter(f => usadas.includes(f.id)).map(f => [f.id, f.nombre]),
-    [["_sin", "Sin asignar"]]);
-  cont.innerHTML = opc.map(o => '<button aria-pressed="' +
-    (tenFiltro.familia === o[0]) + '" data-fam="' + o[0] + '">' +
-    esc(o[1]) + '</button>').join("");
 }
 
 /* ---------- cartera valuada ---------- */
@@ -7519,12 +7641,12 @@ function tenPintar(){
        : ' de ' + tenDatos.length + ' posiciones.') + '</div>';
 }
 
-/* Lo que hay que ver sin abrir nada: el stop y el objetivo de trading,
-   la otra punta y el rango en rotacion. */
+/* Lo que hay que ver sin abrir nada: la otra punta y el rango en
+   rotacion. El stop y el objetivo son los de Gestion y van en el riel:
+   los SL/TP viejos de la tenencia no disparaban nada y quedan en la
+   base sin mostrarse. */
 function paramsPos(t){
   const p = [];
-  if(t.stop != null) p.push("SL " + num(t.stop, 6));
-  if(t.objetivo != null) p.push("TP " + num(t.objetivo, 6));
   if(t.par_ticker) p.push("↔ " + esc(t.par_ticker) +
     (t.ratio_min != null || t.ratio_max != null
       ? " " + (t.ratio_min == null ? "" : num(t.ratio_min, 4)) + "–" +
@@ -7583,8 +7705,6 @@ function agrupar(filas, val){
 /* Que campos pide cada familia. El stop es del titulo y no de la
    estrategia: por eso se cargan aca y no en otra pantalla. */
 const CAMPO_POS = {
-  stop:       {etq: "Stop loss", tipo: "number"},
-  objetivo:   {etq: "Take profit", tipo: "number"},
   par_ticker: {etq: "Rota contra", tipo: "text", ph: "la otra punta"},
   ratio_min:  {etq: "Ratio mínimo", tipo: "number"},
   ratio_max:  {etq: "Ratio máximo", tipo: "number"},
@@ -7706,7 +7826,13 @@ function tenFicha(t, p){
         'en Explorar, que lo calcula compra por compra al MEP de cada ' +
         'día.</div>'
       : "") +
-    '</div><div class="u-mt-8 acciones">' +
+    '</div>' +
+    /* El riel de stop y objetivo: los niveles de Gestion, que son los que
+       disparan los avisos. Se rellena solo cuando llegan los niveles o la
+       TIR, sin redibujar la ficha. */
+    '<div id="niv-' + css(t.simbolo) + '" data-precio="' + (p.precio == null ? "" : p.precio) + '">' +
+      nivelHTML(t.simbolo, p.precio) + '</div>' +
+    '<div class="u-mt-8 acciones">' +
     '<button data-editar-ten>Editar datos</button></div>';
 
   const e = estrDatos.find(x => x.id === t.estrategia_id);
@@ -7715,8 +7841,6 @@ function tenFicha(t, p){
     h += '<div class="u-mt-12 ficha">' +
       '<div class="pos-pie"><span><b>' + esc(e.nombre) + '</b></span>' +
       '<span>' + esc(famNombre(e.familia)) + '</span></div>' +
-      dato("Stop loss", t.stop == null ? null : num(t.stop, 6)) +
-      dato("Take profit", t.objetivo == null ? null : num(t.objetivo, 6)) +
       dato("Rota contra", t.par_ticker ? esc(t.par_ticker) : null) +
       dato("Rango de ratio", (t.ratio_min == null && t.ratio_max == null)
         ? null : (t.ratio_min == null ? "" : num(t.ratio_min, 4)) + " – " +
@@ -7752,8 +7876,9 @@ function tenEditor(t){
     '<option value="' + p + '"' + ((t.precision || "") === p ? " selected" : "") +
     '>' + (p ? {exacta:"Exacta", mes:"Solo el mes", antes:"Antes de"}[p]
              : "Sin precisar") + '</option>').join("");
-  /* Depende de la familia de la estrategia asignada: trading pide stop y
-     objetivo, rotacion pide contra que se rota y el rango de ratio. */
+  /* Depende de la familia de la estrategia asignada: rotacion pide contra
+     que se rota y el rango de ratio. El stop y el objetivo se cargan en
+     Gestion. */
   const fam = estrFamilias.find(f => f.id === t.familia) || {};
   const propios = (fam.campos || []).map(k => campoPos(k, t)).join("") +
     (t.familia ? campoPos("revisar", t) : "");
@@ -7835,6 +7960,61 @@ function tenEditor(t){
 const RF_TIPOS = ["bonos", "letras", "on", "bcra"];
 const rfCache = {};
 
+/* ---------- riel de stop y objetivo ---------- */
+/* Stop a la izquierda, objetivo a la derecha y el punto donde esta hoy.
+   Por TIR el stop es la TIR mas alta (el precio cayo), asi que la misma
+   cuenta sirve para los dos modos: (hoy - stop) / (objetivo - stop). */
+let nivTen = {niveles: {}, tocados: {}};
+async function cargarNivTen(){
+  try{ nivTen = await (await fetch(base + "api/gestion/niveles")).json(); }
+  catch(e){ return; }
+  if(tenAbierta) pintarNivel(tenAbierta.split("|").pop());
+}
+function tirDe(sim){
+  const d = rfCache[sim];
+  if(!d || d.error || !d.fila) return null;
+  return d.fila.tir_last != null ? d.fila.tir_last : d.fila.tir_bid;
+}
+function nivelHTML(sim, precio){
+  const n = (nivTen.niveles || {})[sim];
+  if(!n || (n.stop == null && n.obj == null)) return "";
+  const porTir = n.modo === "tir";
+  const actual = porTir ? tirDe(sim) : precio;
+  const tocado = (nivTen.tocados || {})[sim];
+  const fmtV = v => v == null ? "—" : porTir ? dec(v, 2) + "%" : num(v, 3);
+  /* La distancia en lo que se entiende: % de precio o puntos basicos. */
+  const dist = nivel => {
+    if(actual == null || nivel == null || (!porTir && !actual)) return "";
+    if(porTir){ const pb = Math.round((nivel - actual) * 100);
+      return (pb >= 0 ? "+" : "−") + Math.abs(pb) + " pb"; }
+    return conSigno((nivel / actual - 1) * 100, 1) + "%";
+  };
+  let h = '<div class="nivel"><div class="pos-pie"><span>' +
+    (porTir ? "Stop y objetivo por TIR" : "Stop y objetivo") + '</span>' +
+    (tocado ? '<span class="u-amber">' + (tocado === "stop" ? "en el stop" : "en el objetivo") + '</span>' : "") +
+    '</div>';
+  if(n.stop != null && n.obj != null && n.stop !== n.obj){
+    const pos = actual == null ? null
+      : Math.max(0, Math.min(100, (actual - n.stop) / (n.obj - n.stop) * 100));
+    h += '<div class="nivel-barra">' + (pos == null ? "" : '<i style="left:' + pos.toFixed(1) + '%"></i>') +
+      '</div><div class="nivel-et"><span>stop ' + fmtV(n.stop) + '<small>' + dist(n.stop) +
+      '</small></span><span>hoy ' + fmtV(actual) + '</span><span>objetivo ' + fmtV(n.obj) +
+      '<small>' + dist(n.obj) + '</small></span></div>';
+  } else {
+    const k = n.stop != null ? "stop" : "obj";
+    h += '<div class="u-mt-6">' + (k === "stop" ? "stop " : "objetivo ") + fmtV(n[k]) +
+      (dist(n[k]) ? " (" + dist(n[k]) + ")" : "") + ' · hoy ' + fmtV(actual) + '</div>';
+  }
+  if(porTir && actual == null) h += '<div class="u-mt-6">Falta la TIR de hoy.</div>';
+  return h + '<button class="ini-ir" data-ir-vista="gest">Editar en Gestión ›</button></div>';
+}
+function pintarNivel(sim){
+  const cont = document.getElementById("niv-" + css(sim));
+  if(!cont) return;
+  const pr = cont.dataset.precio;
+  cont.innerHTML = nivelHTML(sim, pr === "" ? null : Number(pr));
+}
+
 async function tenRentaFija(simbolo){
   const cont = document.getElementById("rf-" + css(simbolo));
   if(!cont) return;
@@ -7863,6 +8043,7 @@ async function tenRentaFija(simbolo){
     dato("Valor técnico", d.valor_tecnico == null ? null
       : num(d.valor_tecnico, 2)) +
     dato("Paridad", d.paridad == null ? null : num(d.paridad, 1) + "%");
+  pintarNivel(simbolo);
 }
 
 function tenOrdenar(col){
@@ -8005,6 +8186,7 @@ async function cargarTenencias(){
     cargarEventos();
     cargarCartera();
     cargarEstrategias();
+    cargarNivTen();
     cargarPropuestos();
     const r = d.en_rulo || {};
     out.insertAdjacentHTML("beforeend",
@@ -8037,7 +8219,8 @@ $("#ten-out").addEventListener("click", async ev => {
     if(tenAbierta){
       const t = (tenDatos || []).find(
         x => x.broker === fila.dataset.br && x.simbolo === fila.dataset.sim);
-      if(t && RF_TIPOS.indexOf((t.tipo || "").toLowerCase()) >= 0)
+      if(t && (RF_TIPOS.indexOf((t.tipo || "").toLowerCase()) >= 0 ||
+               ((nivTen.niveles || {})[t.simbolo] || {}).modo === "tir"))
         tenRentaFija(t.simbolo);
     }
     return;
@@ -8155,12 +8338,15 @@ $("#ten-expo").addEventListener("click", ev => {
   expoChips(); resumenFiltros(); tenPintar(); cargarCartera();
 });
 
-$("#ten-fam").addEventListener("click", ev => {
-  const b = ev.target.closest("[data-fam]");
-  if(!b) return;
-  tenFiltro.familia = b.dataset.fam;
+
+$("#estr-tarjetas").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-ir-estr]");
+  if(b){ irAEstrategia(+b.dataset.irEstr); return; }
+  if(!ev.target.closest("[data-estr-sin]")) return;
+  tenFiltro.familia = tenFiltro.familia === "_sin" ? "" : "_sin";
   tenAbierta = "";
-  famChips(); resumenFiltros(); tenPintar(); cargarCartera();
+  resumenFiltros(); tenPintar(); cargarCartera(); pintarTarjetasEstr();
+  if(tenFiltro.familia) $("#ten-out").scrollIntoView({behavior: "smooth", block: "start"});
 });
 
 /* Alta, edicion, cierre y borrado de estrategias, todo por delegacion. */

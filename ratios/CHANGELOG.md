@@ -1,5 +1,42 @@
 # Registro de cambios
 
+## 0.63.0
+
+**Estrategias en TENENCIAS.** Debajo de la cartera, una tarjeta por
+estrategia abierta con su familia, su patron y su %. La cifra es la misma
+que la de su tarjeta en la solapa de la familia (cuota en nominales,
+resultado contra el PPC o contra el patron ponderado por costo): dos
+pantallas que miden distinto no se sabe cual miente. Tocarla lleva a su
+solapa, abre el desplegable si estaba plegada y la marca. La ultima
+tarjeta, **Sin estrategia**, filtra la lista. Se saco la fila de filtro
+"Estrategia", que quedaba repetida.
+
+**Estrategias en Inicio**: una linea por estrategia abierta con el mismo
+numero; tocarla lleva a su solapa.
+
+**Riel de stop y objetivo** al abrir una posicion, con los niveles de
+Gestion (los que avisan): stop a la izquierda, objetivo a la derecha y
+donde esta hoy. Por TIR se dibuja en TIR y la distancia va en puntos
+basicos; por precio, en %. Lo tocado va en ambar. Endpoint nuevo
+`/api/gestion/niveles`. Los **SL/TP viejos de la tenencia** dejan de
+mostrarse y de editarse: no disparaban ningun aviso. Siguen en la base; si
+alguno hacia falta, se carga de nuevo en Gestion.
+
+**MR43O** con las condiciones del suplemento del 18/02/2026 (Clase XLIII,
+dolar linked 2036): cupon 2,25% hasta el 30/06/2030, 3% hasta el
+30/06/2034 y 4% hasta el vencimiento, los 30/06 y 30/12 desde el
+30/12/2026; amortiza 5, 10, 10, 10, 10 y 55% desde el 30/12/2033; base
+actual/365; devenga desde el 01/04/2026 (Fecha de Reestructuracion
+31/03/2026, confirmada en el Aviso Complementario N°3). Antes tenia un
+step-up de 7% a 9,5% y veinte cuotas desde 2026, y la TIR daba ~106%;
+ahora ronda 23%. Supone cupon en efectivo: la emisora puede capitalizar
+(PIK) hasta cuatro periodos a la tasa + 0,75%. **Despues de desplegar,
+recalcular el historico del MR43O.**
+
+**Interno**: `cobros` se importa una sola vez en `web.py` como `COB`;
+`CO` queda solo para `costos` (antes se reimportaba `cobros as CO` dentro
+de dos rutas).
+
 ## 0.62.0
 
 **Solapa Gestión** (entre Tenencias y Ratios), para mirar la cartera como
