@@ -651,6 +651,23 @@ details.par-menu .menu{top:24px}
 .nivel-et span:last-child{ text-align:right; }
 .nivel-et small{ display:block; color:var(--muted); }
 .destello{ outline:2px solid var(--barato); outline-offset:3px; }
+.esc-caja:empty{ display:none; }
+.esc-bloque{ margin-top:10px; padding:12px; border-radius:8px; background:var(--panel-2); display:grid; gap:10px; }
+.esc-tit{ display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; font-weight:600; font-size:14px; }
+.esc-tit small{ font-weight:400; color:var(--muted); font-size:12px; }
+.esc-lect{ display:flex; justify-content:space-between; gap:8px; font-size:13px; min-height:20px; flex-wrap:wrap; }
+.esc-lect .f{ color:var(--muted); }
+.esc-svg{ display:block; width:100%; height:240px; touch-action:pan-y; }
+.esc-ley{ display:flex; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--muted); }
+.esc-ley span{ display:inline-flex; align-items:center; gap:6px; }
+.esc-ley i{ width:14px; height:8px; border-radius:2px; display:inline-block; }
+.esc-tiles{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:0; }
+.esc-tiles div{ background:var(--panel); border-radius:8px; padding:8px 10px; }
+.esc-tiles dt{ font-size:11px; color:var(--muted); }
+.esc-tiles dd{ margin:2px 0 0; font-weight:600; font-size:15px; font-variant-numeric:tabular-nums; }
+.esc-tiles small{ display:block; font-weight:400; font-size:11px; color:var(--muted); }
+.esc-nota{ font-size:12px; color:var(--muted); margin:0; }
+@media (max-width:480px){ .esc-tiles{ grid-template-columns:1fr 1fr; } .esc-tiles div:last-child{ grid-column:1 / -1; } .esc-svg{ height:220px; } }
 @media (max-width:520px){ .comp{ grid-template-columns:1fr; justify-items:center; } .ley{ width:100%; } }
 /* uPlot, lo minimo: su hoja de estilos no viene en el .js */
 .uplot{ font-family:var(--sans); line-height:1.2; position:relative; }
@@ -1691,18 +1708,29 @@ function pintarGestion(){
 }
 function detGestion(e){
   const bono = e.tir != null && e.md > .05;
+  /* En NY: CEDEARs y acciones locales con ADR (o que ya lo tengan cargado). */
+  const conNy = !bono && (!!e.ticker_ny || (e.niveles || {}).modo === "ny");
   const n = e.niveles || {}, modo = n.modo || (bono ? "tir" : "precio");
+  const ny = modo === "ny";
+  const unidad = modo === "tir" ? "(TIR %)" : ny ? "(US$ en NY)" : "(precio)";
   const ph = modo === "tir" ? [dec((e.tir || 0) + 1.5, 1), dec(Math.max(1, (e.tir || 0) - 2), 1)]
+    : ny ? [e.precio_ny ? dec(e.precio_ny * .9, 2) : "", e.precio_ny ? dec(e.precio_ny * 1.2, 2) : ""]
     : [e.precio ? ent(e.precio * .9) : "", e.precio ? ent(e.precio * 1.2) : ""];
+  const chip = (k, t) => '<button aria-pressed="' + (modo === k) + '" data-gmodo="' + k + '" data-gs="' + esc(e.simbolo) + '">' + t + '</button>';
   return '<div class="g-det">' +
-    (bono ? '<div class="chips u-mt-8"><button aria-pressed="' + (modo === "tir") + '" data-gmodo="tir" data-gs="' + esc(e.simbolo) +
-      '">Por TIR</button><button aria-pressed="' + (modo === "precio") + '" data-gmodo="precio" data-gs="' + esc(e.simbolo) + '">Por precio</button></div>' : "") +
-    '<div class="g-edit"><div><label>Stop ' + (modo === "tir" ? "(TIR %)" : "(precio)") + '</label><input inputmode="decimal" data-gniv="stop" data-gs="' +
+    (bono ? '<div class="chips u-mt-8">' + chip("tir", "Por TIR") + chip("precio", "Por precio") + '</div>' : "") +
+    (conNy ? '<div class="chips u-mt-8">' + chip("precio", "Por precio") + chip("ny", "En NY (US$)") + '</div>' : "") +
+    '<div class="g-edit"><div><label>Stop ' + unidad + '</label><input inputmode="decimal" data-gniv="stop" data-gs="' +
       esc(e.simbolo) + '" data-gm="' + modo + '" value="' + (n.modo === modo && n.stop != null ? n.stop : "") + '" placeholder="' + ph[0] + '"></div>' +
-    '<div><label>Objetivo ' + (modo === "tir" ? "(TIR %)" : "(precio)") + '</label><input inputmode="decimal" data-gniv="obj" data-gs="' +
-      esc(e.simbolo) + '" data-gm="' + modo + '" value="' + (n.modo === modo && n.obj != null ? n.obj : "") + '" placeholder="' + ph[1] + '"></div></div>' +
+    '<div><label>Objetivo ' + unidad + '</label><input inputmode="decimal" data-gniv="obj" data-gs="' +
+      esc(e.simbolo) + '" data-gm="' + modo + '" value="' + (n.modo === modo && n.obj != null ? n.obj : "") + '" placeholder="' + ph[1] + '"></div>' +
+    (ny ? '<div><label>Ticker en NY</label><input data-gny data-gs="' + esc(e.simbolo) + '" value="' +
+      esc(n.ny || e.ticker_ny || e.simbolo) + '" autocapitalize="characters"></div>' : "") + '</div>' +
     '<div class="hist-ayuda">' + (modo === "tir" ? "Hoy rinde " + dec(e.tir || 0, 2) + "% con duration " + dec(e.md || 0, 2) +
-      ". El stop salta si rinde más que eso." : "Hoy " + (e.precio ? precio(e.precio) : "—") + "." +
+      ". El stop salta si rinde más que eso." : ny ? (e.precio_ny ? "En NY: US$ " + dec(e.precio_ny, 2) +
+        (e.ny_fecha ? " (del " + esc(e.ny_fecha.slice(8, 10) + "/" + e.ny_fecha.slice(5, 7)) + ")" : "") + "."
+        : "Todavía sin precio de NY: se pide al guardar los dos niveles.") +
+      " Se revisa una vez por día, a las 12." : "Hoy " + (e.precio ? precio(e.precio) : "—") + "." +
       (e.bloque === "rv" ? " Al stop se le suma " + dec(gest.supuestos.desliz, 0) + "% por si abre por debajo." : "")) +
       ' Brokers: ' + [...new Set(e.brokers)].map(esc).join(", ") + '. Al tocarse avisa una vez; es un aviso, no una orden.' +
       (n.stop != null ? ' <button class="ini-ir" data-gborrar="' + esc(e.simbolo) + '">Borrar niveles</button>' : "") + '</div></div>';
@@ -1754,11 +1782,27 @@ $("#v-gest").addEventListener("change", e => {
   if(i){
     const sim = i.dataset.gs, esp = gest.especies.find(x => x.simbolo === sim);
     const n = Object.assign({stop: null, obj: null}, esp.niveles && esp.niveles.modo === i.dataset.gm ? esp.niveles : {}, {modo: i.dataset.gm});
-    const v = parseFloat(i.value.replace(/\./g, "").replace(",", "."));
+    /* En dolares de NY el punto suele ser decimal (310.5): sin coma, se
+       lee tal cual; con coma, como siempre (1.234,5). */
+    const t = i.value.trim();
+    const v = n.modo === "ny" && t.indexOf(",") < 0 ? parseFloat(t)
+      : parseFloat(t.replace(/\./g, "").replace(",", "."));
+    if(n.modo === "ny"){
+      const tk = i.closest(".g-det").querySelector("[data-gny]");
+      if(tk) n.ny = tk.value.trim().toUpperCase();
+    }
     n[i.dataset.gniv] = isFinite(v) ? v : null;
     esp.niveles = n;
     // se guarda recien con los dos niveles
     if(n.stop != null && n.obj != null) cargarGestion({niveles: {[sim]: n}});
+    return;
+  }
+  const tk = e.target.closest("[data-gny]");
+  if(tk){
+    const esp = gest.especies.find(x => x.simbolo === tk.dataset.gs);
+    const n = Object.assign({}, esp.niveles || {}, {modo: "ny", ny: tk.value.trim().toUpperCase()});
+    esp.niveles = n;
+    if(n.stop != null && n.obj != null) cargarGestion({niveles: {[tk.dataset.gs]: n}});
     return;
   }
   const r = e.target.closest("[data-gsup]");
@@ -2228,6 +2272,14 @@ function bloquePosicion(e){
     h += '<div class="aviso">Sin punto de partida no hay contra qué medir. ' +
       '<button onclick="sembrar(' + e.id + ')">' +
       'Usar la tenencia actual</button></div>';
+  } else if((r.descuadre || []).length){
+    /* Los movimientos no son lo que hay: la cuota no mide nada y el
+       numero confunde mas de lo que informa. */
+    h += '<div class="aviso">Los movimientos no coinciden con la tenencia: ' +
+      r.descuadre.map(x => esc(x.simbolo) + ' ' + ent(x.ledger) + ' según los movimientos, ' +
+        ent(x.tenencia) + ' en la tenencia').join(" · ") +
+      '. El rendimiento no es confiable. ' +
+      '<button onclick="sembrar(' + e.id + ', true)">Rearmar con la tenencia de hoy</button></div>';
   } else {
     h += medicion(e, r);
   }
@@ -2295,16 +2347,18 @@ function bloquePosicion(e){
 /* Carga como aporte inicial lo que ya figura en la tenencia. Primero
    simula: el equivalente sale del precio de hoy y la plata pudo haber
    entrado otro dia, asi que se muestra antes de escribir nada. */
-async function sembrar(eid){
+const sembrarRearmar = {};
+async function sembrar(eid, rearmar){
   const cont = document.getElementById("mv-" + eid);
   if(!cont) return;
+  sembrarRearmar[eid] = !!rearmar;
   cont.hidden = false;
   cont.innerHTML = '<div class="u-p-12 vacio">Calculando…</div>';
   let d;
   try{
     d = await (await fetch(base + "api/estrategias/" + eid + "/sembrar", {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({simular:true})})).json();
+      body: JSON.stringify({simular:true, rearmar: !!rearmar})})).json();
   }catch(err){
     cont.innerHTML = '<div class="msg error">No se pudo calcular.</div>'; return;
   }
@@ -2322,8 +2376,10 @@ async function sembrar(eid){
     ((d.faltan_precio || []).length
       ? '<div class="aviso">Sin precio de ' +
         d.faltan_precio.map(esc).join(", ") + ': quedan afuera.</div>' : "") +
+    (rearmar ? '<div class="u-mt-8 aviso">Se borran los movimientos de esta estrategia y ' +
+      'el rendimiento arranca de nuevo en 0 con la tenencia de hoy.</div>' : "") +
     '<button class="u-mt-8 primario" onclick="sembrarConfirmar(' + eid + ')" ' +
-    '>Confirmar el punto de partida</button>';
+    '>' + (rearmar ? "Rearmar el punto de partida" : "Confirmar el punto de partida") + '</button>';
 }
 
 /* La misma tarjeta vive en RATIOS, BONOS o ANÁLISIS TÉCNICO segun la
@@ -2344,10 +2400,13 @@ async function sembrarConfirmar(eid){
     const v = parseFloat(i.value);
     if(v > 0) eq[i.dataset.siembra] = v;
   });
+  const rearmar = !!sembrarRearmar[eid];
+  if(rearmar && !confirm("¿Borrar los movimientos y arrancar de nuevo con la tenencia de hoy?"))
+    return;
   try{
     const r = await fetch(base + "api/estrategias/" + eid + "/sembrar", {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({equivalentes: eq})});
+      body: JSON.stringify({equivalentes: eq, rearmar: rearmar})});
     const d = await r.json();
     if(!r.ok){
       cont.innerHTML = '<div class="msg error">' + esc(d.error) + '</div>';
@@ -6984,6 +7043,7 @@ function cifraEstr(e){
   const base_ = r.ticker_base || e.ticker_base || "";
   /* Mismo orden que la tarjeta: sin punto de partida no se mide nada. */
   if(r.sin_punto_de_partida) return {v: null, nota: "sin punto de partida"};
+  if((r.descuadre || []).length) return {v: null, nota: "no cuadra con la tenencia"};
   if(vara === "ppc")
     return r.resultado_pct == null ? {v: null, nota: "sin PPC cargado"}
       : {v: r.resultado_pct, nota: "sobre lo que costó"};
@@ -7639,6 +7699,7 @@ function tenPintar(){
       (tenModo === "especie" ? ' especies de ' + tenDatos.length +
         ' posiciones. Para editar una, volvé a "Por broker".'
        : ' de ' + tenDatos.length + ' posiciones.') + '</div>';
+  escRefrescar();
 }
 
 /* Lo que hay que ver sin abrir nada: la otra punta y el rango en
@@ -7832,6 +7893,10 @@ function tenFicha(t, p){
        TIR, sin redibujar la ficha. */
     '<div id="niv-' + css(t.simbolo) + '" data-precio="' + (p.precio == null ? "" : p.precio) + '">' +
       nivelHTML(t.simbolo, p.precio) + '</div>' +
+    /* Precio (o TIR) y escenarios: se arma al abrir, con la historia de
+       6 meses que trae el servidor. */
+    (["moneda", "fci"].indexOf((t.tipo || "").toLowerCase()) < 0
+      ? '<div id="esc-' + css(t.simbolo) + '" class="esc-caja"></div>' : "") +
     '<div class="u-mt-8 acciones">' +
     '<button data-editar-ten>Editar datos</button></div>';
 
@@ -7978,10 +8043,11 @@ function tirDe(sim){
 function nivelHTML(sim, precio){
   const n = (nivTen.niveles || {})[sim];
   if(!n || (n.stop == null && n.obj == null)) return "";
-  const porTir = n.modo === "tir";
-  const actual = porTir ? tirDe(sim) : precio;
+  const porTir = n.modo === "tir", porNy = n.modo === "ny";
+  const pny = (nivTen.ny || {})[sim] || {};
+  const actual = porTir ? tirDe(sim) : porNy ? (pny.precio || null) : precio;
   const tocado = (nivTen.tocados || {})[sim];
-  const fmtV = v => v == null ? "—" : porTir ? dec(v, 2) + "%" : num(v, 3);
+  const fmtV = v => v == null ? "—" : porTir ? dec(v, 2) + "%" : porNy ? "US$ " + dec(v, 2) : num(v, 3);
   /* La distancia en lo que se entiende: % de precio o puntos basicos. */
   const dist = nivel => {
     if(actual == null || nivel == null || (!porTir && !actual)) return "";
@@ -7990,7 +8056,8 @@ function nivelHTML(sim, precio){
     return conSigno((nivel / actual - 1) * 100, 1) + "%";
   };
   let h = '<div class="nivel"><div class="pos-pie"><span>' +
-    (porTir ? "Stop y objetivo por TIR" : "Stop y objetivo") + '</span>' +
+    (porTir ? "Stop y objetivo por TIR" : porNy ? "Stop y objetivo en NY · " + esc(n.ny || sim) +
+      (pny.fecha ? " del " + esc(pny.fecha.slice(8, 10) + "/" + pny.fecha.slice(5, 7)) : "") : "Stop y objetivo") + '</span>' +
     (tocado ? '<span class="u-amber">' + (tocado === "stop" ? "en el stop" : "en el objetivo") + '</span>' : "") +
     '</div>';
   if(n.stop != null && n.obj != null && n.stop !== n.obj){
@@ -8006,8 +8073,181 @@ function nivelHTML(sim, precio){
       (dist(n[k]) ? " (" + dist(n[k]) + ")" : "") + ' · hoy ' + fmtV(actual) + '</div>';
   }
   if(porTir && actual == null) h += '<div class="u-mt-6">Falta la TIR de hoy.</div>';
+  if(porNy && actual == null) h += '<div class="u-mt-6">Sin precio de NY todavía' +
+    (pny.error ? ": " + esc(pny.error) : "") + '. Se revisa a las 12.</div>';
   return h + '<button class="ini-ir" data-ir-vista="gest">Editar en Gestión ›</button></div>';
 }
+/* ---------- precio (o TIR) y escenarios ---------- */
+/* Abanico sin tendencia con la volatilidad de los ultimos 6 meses: 2 de
+   cada 3 veces el precio termina en la banda oscura y 19 de cada 20 en la
+   clara. En precio es lognormal; en TIR es normal en puntos basicos y el
+   eje va invertido, para que arriba siga siendo "el precio sube". */
+let escHor = 63;
+const escCache = {};
+const ESC_MES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+function escPhi(x){ const t = 1 / (1 + .2316419 * Math.abs(x)), d = .3989423 * Math.exp(-x * x / 2);
+  const p = d * t * (.3193815 + t * (-.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return x > 0 ? 1 - p : p; }
+document.addEventListener("click", ev => {
+  const b = ev.target.closest("[data-esc-h]");
+  if(!b) return;
+  escHor = +b.dataset.escH;
+  if(tenAbierta) pintarEsc(tenAbierta.split("|").pop());
+});
+function escRefrescar(){
+  if(!tenAbierta) return;
+  const sim = tenAbierta.split("|").pop();
+  if(!document.getElementById("esc-" + css(sim))) return;
+  if(escCache[sim]) pintarEsc(sim); else cargarEsc(sim);
+}
+async function cargarEsc(sim){
+  const c = document.getElementById("esc-" + css(sim));
+  if(!c) return;
+  c.innerHTML = '<div class="esc-bloque"><div class="esc-nota">Cargando la historia de 6 meses…</div></div>';
+  let d;
+  try{ d = await (await fetch(base + "api/tenencias/" + encodeURIComponent(sim) + "/escenarios")).json(); }
+  catch(e){ d = {error: "No se pudo consultar la historia."}; }
+  escCache[sim] = d;
+  pintarEsc(sim);
+}
+function pintarEsc(sim){
+  const c = document.getElementById("esc-" + css(sim)), d = escCache[sim];
+  if(!c || !d) return;
+  if(d.error && !(d.serie || []).length){ c.innerHTML = '<div class="esc-bloque"><div class="esc-nota">' + esc(d.error) + '</div></div>'; return; }
+  const tir = d.modo === "tir", ny = d.modo === "ny";
+  const fv = v => v == null ? "—" : tir ? dec(v, 2) + "%" : ny ? "US$ " + dec(v, 2) : "$ " + dec(v, Math.abs(v) < 1000 ? 2 : 0);
+  const meses = escHor === 21 ? "1 mes" : escHor === 63 ? "3 meses" : "6 meses";
+  const volTxt = d.vol == null ? "sin volatilidad" : tir ? "volatilidad " + dec(d.vol * 100, 0) + " pb anual" : "volatilidad " + dec(d.vol * 100, 0) + "% anual";
+  c.innerHTML = '<div class="esc-bloque">' +
+    '<div class="esc-tit">' + (tir ? "TIR y escenarios" : ny ? "Precio en NY y escenarios · " + esc(d.ticker_ny || sim) : "Precio y escenarios") +
+      ' <small>a ' + meses + ' · ' + volTxt + '</small></div>' +
+    '<div class="chips" role="group" aria-label="Horizonte">' + [[21, "1 mes"], [63, "3 meses"], [126, "6 meses"]].map(([h, t]) =>
+      '<button aria-pressed="' + (h === escHor) + '" data-esc-h="' + h + '">' + t + '</button>').join("") + '</div>' +
+    '<div class="esc-lect"><span class="f" data-esc-f></span><span data-esc-v></span></div>' +
+    '<svg class="esc-svg" role="img" aria-label="Historia de 6 meses, escenarios y niveles"></svg>' +
+    '<div class="esc-ley"><span><i style="background:var(--bone)"></i>' + (tir ? "TIR" : "precio") + '</span>' +
+      '<span><i style="background:rgba(98,182,242,.35)"></i>probable (2 de cada 3)</span>' +
+      '<span><i style="background:rgba(98,182,242,.14)"></i>amplio (19 de cada 20)</span>' +
+      (d.stop != null ? '<span><i style="background:rgba(224,122,111,.4)"></i>stop</span>' : "") +
+      (d.obj != null ? '<span><i style="background:rgba(95,196,138,.4)"></i>objetivo</span>' : "") +
+      (d.ppc ? '<span><i style="background:var(--muted)"></i>PPC</span>' : "") +
+      (d.curva != null ? '<span><i style="background:var(--barato)"></i>TIR de la curva</span>' : "") + '</div>' +
+    '<dl class="esc-tiles"></dl><p class="esc-nota"></p></div>';
+  if(d.error || !d.vol || d.hoy == null){
+    c.querySelector(".esc-nota").textContent = d.error || "Sin historia suficiente para estimar escenarios.";
+  }
+  dibujarEsc(c, d, fv, meses);
+}
+function dibujarEsc(c, d, fv, meses, cursor){
+  const svg = c.querySelector("svg"); if(!svg) return;
+  const tir = d.modo === "tir", ny = d.modo === "ny";
+  const W = svg.clientWidth || 600, H = svg.clientHeight || 240, L = 6, R = 74, T = 10, B = 22;
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  const cv = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const serie = (d.serie || []).map(([f, v]) => ({t: new Date(f + "T12:00:00").getTime(), v}));
+  const v0 = d.hoy, vol = d.vol || 0;
+  // proyeccion por ruedas desde hoy
+  const pr = []; let dt = new Date(); dt.setHours(12, 0, 0, 0); let n = 0;
+  pr.push({t: dt.getTime(), n: 0});
+  while(n < escHor){ dt = new Date(dt.getTime() + 86400000); if(dt.getDay() > 0 && dt.getDay() < 6){ n++; pr.push({t: dt.getTime(), n}); } }
+  pr.forEach(p => { const s = vol * Math.sqrt(p.n / 252);
+    if(tir){ p.a1 = v0 - s; p.b1 = v0 + s; p.a2 = v0 - 2 * s; p.b2 = v0 + 2 * s; }    // a = alcista (TIR baja)
+    else { p.a1 = v0 * Math.exp(s); p.b1 = v0 * Math.exp(-s); p.a2 = v0 * Math.exp(2 * s); p.b2 = v0 * Math.exp(-2 * s); } });
+  const niveles = [];
+  if(d.obj != null) niveles.push({v: d.obj, col: cv("--sage"), txt: "objetivo"});
+  if(d.stop != null) niveles.push({v: d.stop, col: cv("--coral"), txt: "stop"});
+  if(d.ppc) niveles.push({v: d.ppc, col: cv("--muted"), txt: "PPC", dash: true});
+  if(d.curva != null) niveles.push({v: d.curva, col: cv("--barato"), txt: "curva", dash: true});
+  const vals = serie.map(x => x.v).concat(vol ? pr.map(p => p.a2).concat(pr.map(p => p.b2)) : [], niveles.map(x => x.v), v0 != null ? [v0] : []);
+  let lo = Math.min(...vals), hi = Math.max(...vals); const pad = (hi - lo) * .06 || 1; lo -= pad; hi += pad;
+  const t0 = serie.length ? serie[0].t : pr[0].t, t1 = pr[pr.length - 1].t;
+  const X = t => L + (t - t0) / (t1 - t0) * (W - L - R);
+  // En TIR el eje va al reves: TIR mas baja (precio mas alto) arriba.
+  const Y = v => tir ? T + (v - lo) / (hi - lo) * (H - T - B) : T + (hi - v) / (hi - lo) * (H - T - B);
+  let h = "";
+  const ancho = W - L - R, yTop = T, yBot = H - B;
+  const banda = (v, col, haciaArriba) => { const y = Y(v); const y1 = haciaArriba ? yTop : y, y2 = haciaArriba ? y : yBot;
+    return '<rect x="' + L + '" y="' + y1 + '" width="' + ancho + '" height="' + Math.max(0, y2 - y1) + '" fill="' + col + '" opacity=".10"/>'; };
+  if(d.stop != null) h += banda(d.stop, cv("--coral"), false);
+  if(d.obj != null) h += banda(d.obj, cv("--sage"), true);
+  for(let i = 0; i <= 4; i++){ const y = T + (H - T - B) * i / 4;
+    h += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '" stroke="' + cv("--rule") + '" stroke-dasharray="2 4"/>'; }
+  let m = new Date(t0); m = new Date(m.getFullYear(), m.getMonth() + 1, 1);
+  while(m.getTime() < t1){ h += '<text x="' + X(m.getTime()) + '" y="' + (H - 6) + '" text-anchor="middle" fill="' + cv("--muted") + '" font-size="11">' + ESC_MES[m.getMonth()] + '</text>';
+    m = new Date(m.getFullYear(), m.getMonth() + 1, 1); }
+  const xh = X(pr[0].t);
+  h += '<line x1="' + xh + '" x2="' + xh + '" y1="' + T + '" y2="' + (H - B) + '" stroke="' + cv("--muted") + '" stroke-dasharray="3 3"/>' +
+    '<text x="' + (xh - 4) + '" y="' + (T + 10) + '" text-anchor="end" fill="' + cv("--muted") + '" font-size="11">hoy</text>';
+  if(vol && v0 != null){
+    const area = (a, b) => 'M' + pr.map(p => X(p.t) + ',' + Y(p[a])).join(' L') + ' L' + pr.slice().reverse().map(p => X(p.t) + ',' + Y(p[b])).join(' L') + 'Z';
+    h += '<path d="' + area("a2", "b2") + '" fill="' + cv("--barato") + '" opacity=".14"/>' +
+      '<path d="' + area("a1", "b1") + '" fill="' + cv("--barato") + '" opacity=".28"/>' +
+      '<path d="M' + pr.map(p => X(p.t) + ',' + Y(p.a1)).join(' L') + '" fill="none" stroke="' + cv("--sage") + '" stroke-width="1.5" stroke-dasharray="5 3"/>' +
+      '<path d="M' + pr.map(p => X(p.t) + ',' + Y(p.b1)).join(' L') + '" fill="none" stroke="' + cv("--coral") + '" stroke-width="1.5" stroke-dasharray="5 3"/>';
+  }
+  // niveles, con las etiquetas sin pisarse
+  const marcas = niveles.map(k => Object.assign({y: Y(k.v)}, k)).sort((a, b) => a.y - b.y);
+  for(let i = 1; i < marcas.length; i++) if(marcas[i].y - marcas[i - 1].y < 26) marcas[i].y = marcas[i - 1].y + 26;
+  for(const k of marcas){
+    h += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(k.v) + '" y2="' + Y(k.v) + '" stroke="' + k.col + '" stroke-width="1.5"' + (k.dash ? ' stroke-dasharray="4 4"' : "") + '/>' +
+      '<text x="' + (W - R + 6) + '" y="' + (k.y - 3) + '" fill="' + k.col + '" font-size="11" font-weight="600">' + k.txt + '</text>' +
+      '<text x="' + (W - R + 6) + '" y="' + (k.y + 10) + '" fill="' + k.col + '" font-size="11">' + esc(tir ? fv(k.v) : dec(k.v, Math.abs(k.v) < 1000 ? 2 : 0)) + '</text>';
+  }
+  if(serie.length) h += '<path d="M' + serie.map(x => X(x.t) + ',' + Y(x.v)).join(' L') + (v0 != null ? ' L' + xh + ',' + Y(v0) : "") +
+    '" fill="none" stroke="' + cv("--bone") + '" stroke-width="2"/>';
+  if(v0 != null) h += '<circle cx="' + xh + '" cy="' + Y(v0) + '" r="4" fill="' + cv("--bone") + '"/>';
+  if(cursor) h += '<line x1="' + cursor.x + '" x2="' + cursor.x + '" y1="' + T + '" y2="' + (H - B) + '" stroke="' + cv("--muted") + '"/>' +
+    '<circle cx="' + cursor.x + '" cy="' + cursor.y + '" r="4" fill="' + cv("--ink") + '" stroke="' + cv("--bone") + '" stroke-width="2"/>';
+  svg.innerHTML = h;
+
+  // lectura
+  const lf = c.querySelector("[data-esc-f]"), lv = c.querySelector("[data-esc-v]");
+  const fecha = t => { const x = new Date(t); return x.getDate() + " " + ESC_MES[x.getMonth()]; };
+  const leer = sel => {
+    if(!sel){ lf.textContent = "Hoy"; lv.textContent = fv(v0); return; }
+    if(sel.s != null){ const x = serie[sel.s]; lf.textContent = fecha(x.t); lv.textContent = fv(x.v); return; }
+    const p = pr[sel.p]; lf.textContent = "En " + p.n + " ruedas · " + fecha(p.t);
+    lv.innerHTML = '<span class="u-coral">' + esc(fv(p.b1)) + '</span> a <span class="u-sage">' + esc(fv(p.a1)) + '</span>';
+  };
+  leer(cursor ? cursor.sel : null);
+  svg.onpointermove = e => {
+    const r = svg.getBoundingClientRect(), x = (e.clientX - r.left) * (W / r.width);
+    const t = t0 + (x - L) / (W - L - R) * (t1 - t0);
+    const cerca = (arr, k) => { let i = 0, b = 1e18; arr.forEach((q, j) => { const dd = Math.abs(q.t - t); if(dd < b){ b = dd; i = j; } }); return i; };
+    if(!serie.length || t > pr[0].t){ const i = cerca(pr); if(!vol) return;
+      dibujarEsc(c, d, fv, meses, {x: X(pr[i].t), y: Y(v0), sel: {p: i}}); }
+    else { const i = cerca(serie); dibujarEsc(c, d, fv, meses, {x: X(serie[i].t), y: Y(serie[i].v), sel: {s: i}}); }
+  };
+  svg.onpointerleave = () => dibujarEsc(c, d, fv, meses);
+
+  // las tres cifras y la nota
+  if(!vol || v0 == null) return;
+  const fin = pr[pr.length - 1], s = vol * Math.sqrt(escHor / 252);
+  const pct = v => (v >= 0 ? "+" : "−") + dec(Math.abs(v), 1) + "%";
+  const efecto = v => tir ? (d.md ? "precio " + pct(-d.md * (v - v0)) : "") : pct((v / v0 - 1) * 100);
+  const dist = v => tir ? (v >= v0 ? "+" : "−") + Math.round(Math.abs(v - v0) * 100) + " pb" : pct((v / v0 - 1) * 100);
+  const prob = v => { if(v == null) return null;
+    const tocado = tir ? (v === d.stop ? v0 >= v : v0 <= v) : (v === d.stop ? v0 <= v : v0 >= v);
+    if(tocado) return "ya";
+    const x = tir ? Math.abs(v - v0) / s : Math.abs(Math.log(v / v0)) / s;
+    return Math.min(1, 2 * (1 - escPhi(x))); };
+  const pS = prob(d.stop), pO = prob(d.obj);
+  const fp = q => q == null ? "—" : q === "ya" ? "tocado" : dec(q * 100, 0) + "%";
+  c.querySelector(".esc-tiles").innerHTML =
+    '<div><dt>Bajista probable</dt><dd class="u-coral">' + esc(fv(fin.b1)) + '<small>' + esc(efecto(fin.b1)) +
+      (d.stop != null ? ' · stop a ' + esc(dist(d.stop)) : "") + '</small></dd></div>' +
+    '<div><dt>Alcista probable</dt><dd class="u-sage">' + esc(fv(fin.a1)) + '<small>' + esc(efecto(fin.a1)) +
+      (d.obj != null ? ' · objetivo a ' + esc(dist(d.obj)) : "") + '</small></dd></div>' +
+    (d.stop != null || d.obj != null
+      ? '<div><dt>Tocar antes de ' + meses + '</dt><dd>' + fp(pS) + ' / ' + fp(pO) + '<small>stop / objetivo, aproximado</small></dd></div>'
+      : '<div><dt>Rango amplio</dt><dd>' + esc(fv(fin.b2)) + ' a ' + esc(fv(fin.a2)) + '<small>19 de cada 20</small></dd></div>');
+  c.querySelector(".esc-nota").textContent =
+    (tir ? "En TIR el eje va invertido: arriba es TIR más baja, o sea precio más alto. El efecto en el precio sale de la duration. " : "") +
+    "El abanico supone que " + (tir ? "la TIR" : "el precio") + " se mueve como en los últimos 6 meses, sin tendencia." +
+    (ny ? " Precio de NY de la revisión de las 12" + (d.precio_fecha ? " del " + d.precio_fecha.slice(8, 10) + "/" + d.precio_fecha.slice(5, 7) : "") + "." : "") +
+    (d.curva != null ? " La TIR de la curva es a la que volvería si su desvío vuelve al de siempre." : "") +
+    (d.stop == null && d.obj == null ? " Sin stop ni objetivo cargados en Gestión." : "");
+}
+
 function pintarNivel(sim){
   const cont = document.getElementById("niv-" + css(sim));
   if(!cont) return;
@@ -8187,6 +8427,8 @@ async function cargarTenencias(){
     cargarCartera();
     cargarEstrategias();
     cargarNivTen();
+    // la historia se vuelve a pedir al volver a la pestaña
+    Object.keys(escCache).forEach(k => delete escCache[k]);
     cargarPropuestos();
     const r = d.en_rulo || {};
     out.insertAdjacentHTML("beforeend",

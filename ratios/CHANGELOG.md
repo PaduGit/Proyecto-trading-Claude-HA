@@ -1,5 +1,60 @@
 # Registro de cambios
 
+## 0.64.0
+
+**Avisos de curva sin repetirse.** Desde el 05/10 salian unos 19 por
+rueda, casi todos las mismas especies, y la mitad entre las 10:30 y las
+11:00. Ahora:
+- **Persistencia**: la zona tiene que verse 2 ciclos seguidos antes de
+  avisar (campo nuevo `curva_persistencia`, 1 a 10; sin cargarlo, 2). Un
+  z de 7 en el primer precio del dia ya no avisa.
+- **Una vez por dia por bono y zona**, guardado en la base (un reinicio
+  a mitad de rueda no repite).
+- **GD46, GD46C y GD46D son un solo bono**: un aviso, no tres.
+
+**Cierres diarios despues de un reinicio.** Al arrancar se tomaba la
+fecha de hoy como si el cierre ya estuviera hecho: cualquier dia con un
+despliegue quedaba sin historico de bonos, sin residuos, sin foto de la
+cartera y sin medicion de señales (faltaron 29/09, 06/10 y 09/10). La
+marca del ultimo cierre vive ahora en la base (`ultimo_cierre`); si el
+add-on arranca despues de la rueda, el cierre usa las ultimas puntas
+guardadas de ese dia. Cada noche se buscan dias de rueda de los ultimos
+30 sin cierre y se completan desde IOL/BYMA, rearmando los residuos;
+cada dia se intenta una vez. La foto de la cartera de un dia perdido no
+se puede recuperar.
+
+**Estrategias que marcaban cualquier cosa.**
+- **−99% en Cer largos, Cer mediano y Bonares**: cuando el ticker base
+  ya no estaba en la tenencia (CUAP, TZX28, AO28) la base de cotizacion
+  quedaba en 1 y el equivalente salia cien veces mas chico. Ahora se
+  busca en el historial de tenencias y en el catalogo de bonos.
+- **Largo plazo (tecnica)** decia "sin punto de partida" aunque se mide
+  contra el PPC: ya no.
+- **Movimientos que no coinciden con la tenencia**: en par y curva, si lo
+  que dicen los movimientos no es lo que hay, la tarjeta lo muestra por
+  especie en vez del %, y TENENCIAS e Inicio dicen "no cuadra con la
+  tenencia". Boton **Rearmar con la tenencia de hoy**: borra los
+  movimientos de esa estrategia y la siembra de nuevo (se pierde el
+  rendimiento acumulado; pide confirmacion).
+
+**Stop y objetivo en dolares de NY** para CEDEARs y acciones con ADR. En
+Gestion, modo **En NY (US$)** con el ticker de NY (sugerido: el mismo en
+CEDEARs; YPFD→YPF, PAMP→PAM, TECO2→TEO, TGSU2→TGS, CRES→CRESY,
+IRSA→IRS…). Precio real de NY por la API de IOL, una vez por dia a las
+12 (y al guardar los niveles); el mercado (NYSE, NASDAQ, AMEX) se
+detecta la primera vez. Los avisos, el riel y el riesgo/beneficio usan
+ese precio.
+
+**Precio y escenarios en la ficha de TENENCIAS.** Historia de 6 meses y
+un abanico a 1, 3 o 6 meses con la volatilidad de esos 6 meses, sin
+tendencia (2 de cada 3 y 19 de cada 20), las zonas de stop y objetivo,
+el precio bajista y alcista probable y la probabilidad aproximada de
+tocar cada nivel. Acciones y CEDEARs en pesos con el PPC, o en US$ de NY
+si los niveles estan en ese modo; bonos en TIR con el eje invertido, la
+TIR de la curva y el efecto en el precio por duration. La historia de
+acciones y NY se baja de IOL la primera vez y queda en `cierres`
+(`NY:TICKER` para NY). Endpoint `/api/tenencias/<sim>/escenarios`.
+
 ## 0.63.0
 
 **Estrategias en TENENCIAS.** Debajo de la cartera, una tarjeta por

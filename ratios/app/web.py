@@ -870,6 +870,70 @@ def crear_app(monitor):
     def alertas_fecha_borrar(aid):
         return jsonify({"borradas": db.borrar_alerta_fecha(aid)})
 
+    @app.get("/api/tenencias/<sim>/escenarios")
+    def tenencia_escenarios(sim):
+        """Historia de 6 meses, volatilidad y niveles para el grafico de
+        escenarios de la ficha. Precio en pesos, en US$ de NY si los
+        niveles estan en ese modo, o TIR para la renta fija."""
+        import escenarios as ES
+        import gestion as GE
+        sim = (sim or "").strip().upper()
+        filas = [t for t in db.tenencias() if t["simbolo"] == sim]
+        if not filas:
+            return jsonify({"error": "no está en la tenencia"}), 404
+        tipo = (filas[0].get("tipo") or "").lower()
+        if tipo in ("moneda", "fci"):
+            return jsonify({"error": "sin gráfico para este tipo"}), 400
+        niv = GE.config()["niveles"].get(sim) or {}
+        es_rf = tipo in ("bonos", "letras", "on", "bcra")
+        modo = "ny" if niv.get("modo") == "ny" else \
+            "tir" if (es_rf and niv.get("modo") != "precio") else "precio"
+        out = {"simbolo": sim, "tipo": tipo}
+        serie, v0 = [], None
+
+        if modo == "tir":
+            st = ES.serie_tir(sim)
+            if len(st) >= 20:
+                tm = _tir_md().get(sim) or (None, None)
+                v0 = tm[0] if tm[0] is not None else st[-1][1]
+                serie = [(f, t) for f, t, _ in st]
+                out.update(md=tm[1] if tm[1] else st[-1][2],
+                           curva=ES.tir_curva(sim, v0))
+            else:
+                modo = "precio"     # sin historia de TIR: se grafica el precio
+        if modo == "ny":
+            pny = GE.precios_ny().get(sim) or {}
+            tk = (niv.get("ny") or pny.get("ticker") or sim).upper()
+            serie = ES.serie_cierres(monitor.iol, pny.get("mercado") or "nYSE",
+                                     tk, "NY:" + tk)
+            v0 = pny.get("precio") or (serie[-1][1] if serie else None)
+            out.update(ticker_ny=tk, precio_fecha=pny.get("fecha"))
+        if modo == "precio":
+            serie = ES.serie_cierres(monitor.iol, "bCBA", sim)
+            cot = monitor.cotizaciones_para_valuar().get(sim) or {}
+            v0 = cot.get("ultimo") or cot.get("ref") or (serie[-1][1] if serie else None)
+            if not es_rf:
+                # PPC en la misma unidad que el precio: el de la valuacion,
+                # ponderado por cantidad entre brokers. En bonos se omite:
+                # el PPC puede venir por lamina o por unidad.
+                try:
+                    r, _m = _valuar_completa()
+                    ps = [p for p in r.get("posiciones") or []
+                          if p.get("simbolo") == sim and p.get("ppc") and p.get("cantidad")]
+                    q = sum(p["cantidad"] for p in ps)
+                    if q:
+                        out["ppc"] = sum(p["ppc"] * p["cantidad"] for p in ps) / q
+                except Exception as e:
+                    log.debug("ppc de %s: %s", sim, e)
+
+        vol = ES.volatilidad([v for _, v in serie], modo)
+        out.update(modo=modo, serie=serie, hoy=v0, vol=vol)
+        if niv.get("modo", "precio") == modo:
+            out["stop"], out["obj"] = niv.get("stop"), niv.get("obj")
+        if not serie or not v0 or not vol:
+            out["error"] = "Sin historia suficiente para estimar escenarios."
+        return jsonify(out)
+
     @app.get("/api/tenencias")
     def tenencias_listar():
         fuera = monitor.brokers_extranjeros()
@@ -1080,10 +1144,13 @@ def crear_app(monitor):
         if not e.get("ticker_base"):
             return jsonify({"error": "la estrategia no tiene ticker base: "
                                      "sin eso no hay en qué medir"}), 400
-        if db.movimientos_estrategia(eid):
-            return jsonify({"error": "la estrategia ya tiene movimientos"}), 400
-
         d = request.get_json(silent=True) or {}
+        # `rearmar`: la estrategia ya tiene ledger pero no cuadra con la
+        # tenencia. Se borra y se vuelve a sembrar con lo de hoy; el
+        # rendimiento acumulado se pierde y arranca de nuevo en 0.
+        rearmar = bool(d.get("rearmar"))
+        if db.movimientos_estrategia(eid) and not rearmar:
+            return jsonify({"error": "la estrategia ya tiene movimientos"}), 400
         pisar = {(k or "").upper(): v
                  for k, v in (d.get("equivalentes") or {}).items()}
         precios = _precios_vigentes()
@@ -1114,8 +1181,12 @@ def crear_app(monitor):
                                      % ", ".join(faltan)}), 400
         if d.get("simular"):
             return jsonify({"propuesta": propuesta, "faltan_precio": faltan,
-                            "ticker_base": base})
+                            "ticker_base": base, "rearmar": rearmar})
 
+        if rearmar:
+            n = db.borrar_ledger(eid)
+            log.info("estrategia %s: ledger rearmado (%d movimientos borrados)",
+                     eid, n)
         for a in propuesta:
             db.registrar_mov_manual(eid, {
                 "tipo": "aporte", "ticker_a": a["simbolo"],
@@ -1681,7 +1752,17 @@ def crear_app(monitor):
     @app.post("/api/gestion")
     def gestion_guardar():
         import gestion as GE
-        GE.guardar(request.get_json(silent=True) or {})
+        d = request.get_json(silent=True) or {}
+        GE.guardar(d)
+        # Un nivel nuevo en NY se cotiza en el momento: sin precio, el riel
+        # y el riesgo quedarian vacios hasta las 12 del dia siguiente.
+        nuevos = [s for s, n in (d.get("niveles") or {}).items()
+                  if n and n.get("modo") == "ny"]
+        if nuevos:
+            try:
+                GE.actualizar_ny(monitor.iol, solo=nuevos)
+            except Exception as e:
+                log.warning("precio en NY de %s: %s", ", ".join(nuevos), e)
         return gestion_ver()
 
     @app.get("/api/gestion/niveles")
@@ -1690,7 +1771,7 @@ def crear_app(monitor):
         el riel de cada posicion y no necesita valuar la cartera entera."""
         import gestion as GE
         return jsonify({"niveles": GE.config()["niveles"],
-                        "tocados": GE.tocados()})
+                        "tocados": GE.tocados(), "ny": GE.precios_ny()})
 
     # El monitor revisa los niveles en cada ciclo de rueda.
     monitor.tir_md_bonos = _tir_md

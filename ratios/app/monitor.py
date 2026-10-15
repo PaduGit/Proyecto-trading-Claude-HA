@@ -44,6 +44,15 @@ def _zona_curva(z, umbral, h, previa):
     return None
 
 
+def _bono_base(sim, conocidos):
+    """GD46C y GD46D son el mismo bono que GD46 en otra moneda: un aviso
+    por bono y no por moneda. Solo se recorta la C o la D final si la
+    version en pesos existe entre los `conocidos`."""
+    if len(sim) >= 5 and sim[-1] in "CD" and sim[:-1] in conocidos:
+        return sim[:-1]
+    return sim
+
+
 class Monitor:
     def __init__(self, cfg, iol, notif):
         self.cfg = cfg
@@ -71,6 +80,9 @@ class Monitor:
 
         self._zona_actual = self._cargar_zonas()
         self._zonas_curva = self._cargar_zonas_curva()
+        # Cuantos ciclos seguidos lleva cada bono en una zona nueva sin
+        # avisar todavia. En memoria: un reinicio solo demora el aviso.
+        self._curva_racha = {}
         self._canjes_avisado = self._cargar_canjes()
         self._cursor_especie = 0
         self.fuente = "iol"
@@ -108,6 +120,20 @@ class Monitor:
             return json.loads(db.get_estado("zonas_curva") or "{}")
         except (ValueError, TypeError):
             return {}
+
+    def _curva_dia(self, nuevo=None):
+        """Bonos y zonas ya avisados hoy. Vive en la base: un reinicio a
+        mitad de rueda no tiene que volver a avisar lo mismo."""
+        import json
+        try:
+            if nuevo is not None:
+                db.set_estado("curva_dia", json.dumps(nuevo))
+                return nuevo
+            d = json.loads(db.get_estado("curva_dia") or "{}")
+            return d if isinstance(d, dict) else {}
+        except Exception as e:
+            log.debug("curva del dia: %s", e)
+            return nuevo or {}
 
     def _guardar_zonas_curva(self):
         import json
@@ -1234,12 +1260,14 @@ class Monitor:
         n = 0
         for sim, que, nivel, actual, modo in GE.cruces(precios, tir_md):
             tir = modo == "tir"
-            fmt = (lambda v: "%.2f%%" % v) if tir else (lambda v: _n(v))
+            fmt = (lambda v: "%.2f%%" % v) if tir else \
+                (lambda v: "US$ %s" % _n(v)) if modo == "ny" else (lambda v: _n(v))
             titulo = "%s %s: %s" % ("🛑" if que == "stop" else "🎯", sim,
                                     "tocó el stop" if que == "stop" else "llegó al objetivo")
             msg = "%s %s <b>%s</b> (nivel %s)\n\n<i>Cargado en Gestión. Es un aviso: " \
                   "si no hay orden en el broker, no se ejecuta nada.</i>" % (
-                      "TIR" if tir else "Precio", sim, fmt(actual), fmt(nivel))
+                      "TIR" if tir else "Precio en NY de" if modo == "ny" else "Precio",
+                      sim, fmt(actual), fmt(nivel))
             self.notif.enviar(titulo, msg)
             db.registrar_alerta(sim, "nivel_" + que, actual, nivel, msg)
             n += 1
@@ -1317,6 +1345,12 @@ class Monitor:
         # Sin cargar el campo, 0,5. HA no aplica defaults nuevos.
         h = self.cfg.get("curva_histeresis_z")
         h = 0.5 if h is None else max(0.0, min(float(h), umbral))
+        # Persistencia: la zona tiene que verse N ciclos seguidos antes de
+        # avisar. Los primeros precios de la rueda dan z de 7 u 8 que al
+        # rato vuelven, y un z que se va y vuelve rearmaba el aviso: el
+        # 05/10 TZXA7 aviso tres veces. Sin cargar el campo, 2.
+        n_pers = self.cfg.get("curva_persistencia")
+        n_pers = 2 if n_pers is None else max(1, int(n_pers))
 
         with self.lock:
             cot = cot or dict(self.cotizaciones)
@@ -1331,6 +1365,12 @@ class Monitor:
         avisadas = self._zonas_curva
         enviadas = 0
         vigentes = {}
+        racha = self._curva_racha
+        hoy = date.today().isoformat()
+        # Una vez por dia por bono y zona, contando C/D/pesos como uno.
+        dia = self._curva_dia()
+        if dia.get("fecha") != hoy:
+            dia = {"fecha": hoy, "claves": []}
 
         minimo = self._min_monto()
         mep = self._mep(cot)
@@ -1358,10 +1398,25 @@ class Monitor:
                     rec = fz["md"] * (d["residuo"] - d["media_hist"]) / 100.0
                 vigentes[sim] = {"zona": zona, "z": z, "residuo": d["residuo"],
                                  "recorrido": rec, "familia": fz.get("familia")}
-            if zona != previa:
-                avisadas[sim] = zona
+            if zona == previa:
+                racha.pop(sim, None)
+                continue
+            if not zona:
+                # Salio de la zona: se rearma enseguida.
+                avisadas[sim] = None
+                racha.pop(sim, None)
                 self._guardar_zonas_curva()
-            if not zona or zona == previa:
+                continue
+            r = racha.get(sim)
+            n = r[1] + 1 if (r and r[0] == zona) else 1
+            if n < n_pers:
+                racha[sim] = (zona, n)
+                continue
+            racha.pop(sim, None)
+            avisadas[sim] = zona
+            self._guardar_zonas_curva()
+            clave = _bono_base(sim, an) + "|" + zona
+            if clave in dia["claves"]:
                 continue
 
             f = por_sim.get(sim) or {}
@@ -1392,6 +1447,8 @@ class Monitor:
             msg = "\n".join(L)
             self.notif.enviar("%s %s contra su curva" % (sim, que), msg,
                               urgente=(zona == "barato"))
+            dia["claves"].append(clave)
+            self._curva_dia(dia)
             db.registrar_alerta(sim, "curva_" + zona, d["residuo"], umbral, msg)
             import senales as SE
             barato = zona == "barato"
@@ -2313,6 +2370,14 @@ class Monitor:
             with self.lock:
                 cot = dict(self.cotizaciones)
             if not cot:
+                # Recien arrancado (un despliegue a la tarde): el ciclo no
+                # corrio y no hay nada en memoria, pero las ultimas puntas
+                # de hoy quedaron guardadas. Solo las de hoy: una de otro
+                # dia no es el cierre de esta rueda.
+                hoy_s = date.today().isoformat()
+                cot = {s_: c for s_, c in self.mapa_guardado().items()
+                       if str(c.get("punta_ts") or "")[:10] == hoy_s}
+            if not cot:
                 return 0
             mep = (BO.calcular_mep(cot).get("medio") or 0) or None
             n = H.agregar_hoy(cot, mep)
@@ -2329,6 +2394,58 @@ class Monitor:
         except Exception as e:
             log.warning("no se pudo cerrar el día de bonos: %s", e)
             return 0
+
+    def completar_cierres(self, dias_atras=30):
+        """Dias de rueda recientes sin cierre en `bono_hist`: se bajan de
+        IOL/BYMA y se rearman los residuos desde el primero. Cada dia se
+        intenta una sola vez, para no repetir 70 pedidos cada noche si
+        la fuente no lo tiene."""
+        import calendario as CAL
+        import historico as H
+        import bonos as BO
+        import json
+        c = db.conn()
+        hoy = date.today()
+        tiene = {r["fecha"]: r["n"] for r in c.execute(
+            "SELECT fecha, COUNT(*) n FROM bono_hist WHERE fecha >= ? "
+            "GROUP BY fecha", ((hoy - timedelta(days=dias_atras)).isoformat(),))}
+        normal = max(tiene.values()) if tiene else 0
+        try:
+            intentados = set(json.loads(db.get_estado("cierres_intentados") or "[]"))
+        except (TypeError, ValueError):
+            intentados = set()
+        faltan = []
+        for i in range(1, dias_atras + 1):
+            d = hoy - timedelta(days=i)
+            k = d.isoformat()
+            if k in intentados or not CAL.hay_rueda(d):
+                continue
+            # Un dia con menos de la mitad de los bonos de siempre tambien
+            # cuenta como sin cierre (el 06/10 quedo con uno solo).
+            if tiene.get(k, 0) < max(5, normal // 2):
+                faltan.append(d)
+        if not faltan or not normal:
+            return 0
+        d0, d1 = min(faltan), max(faltan)
+        log.info("cierres faltantes: %s", ", ".join(d.isoformat() for d in faltan))
+        # AL30 y AL30D primero: de ellas sale el MEP de cada dia.
+        sims = sorted(BO.especies(), key=lambda s_: (s_ not in ("AL30", "AL30D"), s_))
+        total = 0
+        for sim in sims:
+            try:
+                total += H.reconstruir(self.iol, sim, desde=d0, hasta=d1,
+                                       forzar=True, marcar=False)
+            except Exception as e:
+                log.debug("cierre faltante %s: %s", sim, e)
+        try:
+            import curva as CU
+            CU.reconstruir(desde=d0)
+        except Exception as e:
+            log.warning("residuos de los cierres faltantes: %s", e)
+        intentados |= {d.isoformat() for d in faltan}
+        db.set_estado("cierres_intentados", json.dumps(sorted(intentados)[-60:]))
+        log.info("cierres faltantes: %d puntos", total)
+        return total
 
     def reconstruir_historico(self):
         """Completa el histórico de las especies a las que les falta.
@@ -2470,11 +2587,31 @@ class Monitor:
         threading.Thread(target=self.reconstruir_historico,
                          daemon=True, name="hist-bonos").start()
 
-        ultimo_backfill = datetime.now().date()
+        # La marca del ultimo cierre hecho vive en la base. Antes se
+        # arrancaba con la fecha de hoy, como si el cierre ya estuviera
+        # hecho: cualquier dia con un reinicio (un despliegue) se quedaba
+        # sin cierre de bonos, sin foto de la cartera y sin medicion de
+        # señales. Faltaron el 06/10 y el 09/10/2026.
+        try:
+            ultimo_backfill = date.fromisoformat(db.get_estado("ultimo_cierre") or "")
+        except (TypeError, ValueError):
+            ultimo_backfill = datetime.now().date() - timedelta(days=1)
         espera = int(self.cfg.get("poll_seconds", 600))
 
         while True:
             try:
+                # Niveles en dolares de NY: una revision por dia, a las 12
+                # (NY ya abrio). Los avisos salen en el ciclo siguiente.
+                ahora = datetime.now()
+                if ahora.weekday() < 5 and ahora.hour >= 12 and \
+                        db.get_estado("ny_dia") != ahora.date().isoformat():
+                    try:
+                        import gestion as GE
+                        if any(n.get("modo") == "ny" for n in GE.config()["niveles"].values()):
+                            log.info("precios de NY: %d", GE.actualizar_ny(self.iol))
+                    except Exception as e:
+                        log.warning("precios de NY: %s", e)
+                    db.set_estado("ny_dia", ahora.date().isoformat())
                 if self._en_horario():
                     self.ciclo()
                     self.ultimo_error = None
@@ -2502,9 +2639,14 @@ class Monitor:
                     except Exception as e:
                         log.warning("foto de cartera: %s", e)
                     self.cerrar_dia_bonos()
+                    try:
+                        self.completar_cierres()
+                    except Exception as e:
+                        log.warning("cierres faltantes: %s", e)
                     db.purgar()
                     db.purgar_api_log()
                     ultimo_backfill = hoy
+                    db.set_estado("ultimo_cierre", hoy.isoformat())
                     # domingos: completar los días que faltaron
                     if hoy.weekday() == 6:
                         try:

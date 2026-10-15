@@ -2720,7 +2720,23 @@ def base_cotizacion(simbolo, ts=None):
     if not r:
         r = c.execute("SELECT tipo FROM tenencia WHERE simbolo=? AND "
                       "tipo IS NOT NULL LIMIT 1", (simbolo,)).fetchone()
+    # Una especie que ya se vendio no esta en la tenencia: es el caso del
+    # ticker base despues de rotar (CUAP en Cer largos). Sin esto la base
+    # quedaba en None, se tomaba 1 y el equivalente salia cien veces mas
+    # chico: la tarjeta marcaba -99%.
     if not r:
+        r = c.execute("SELECT tipo FROM tenencia_hist WHERE simbolo=? AND "
+                      "tipo IS NOT NULL ORDER BY ts DESC LIMIT 1",
+                      (simbolo,)).fetchone()
+    if not r:
+        # Nunca estuvo en cartera: si esta en el catalogo de bonos,
+        # cotiza por lamina.
+        try:
+            import bonos as BO
+            if simbolo in BO.especies():
+                return 100.0
+        except Exception:
+            pass
         return None
     return 100.0 if (r["tipo"] or "").lower() in BASE_100 else 1.0
 
@@ -2756,6 +2772,17 @@ def borrar_mov_estrategia(mid):
     c = conn()
     c.execute("DELETE FROM estrategia_mov WHERE id=?", (mid,))
     c.commit()
+
+
+def borrar_ledger(eid):
+    """Todo el ledger de una estrategia, para rearmar el punto de partida
+    con la tenencia de hoy. Las propuestas confirmadas quedan como
+    historia; lo que se pierde es el rendimiento acumulado."""
+    c = conn()
+    n = c.execute("DELETE FROM estrategia_mov WHERE estrategia_id=?",
+                  (eid,)).rowcount
+    c.commit()
+    return n
 
 
 def fotos(limite=40):

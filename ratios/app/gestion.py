@@ -85,6 +85,8 @@ def guardar(cambios):
         else:
             niv[sim] = {"modo": n.get("modo") or "precio",
                         "stop": n.get("stop"), "obj": n.get("obj")}
+            if niv[sim]["modo"] == "ny":
+                niv[sim]["ny"] = (n.get("ny") or ticker_ny(sim) or sim).strip().upper()
         g.setdefault("avisados", {}).pop(sim, None)
     db.set_estado("gestion", json.dumps(g))
     return config()
@@ -121,7 +123,13 @@ def _rb(e, sup):
         if n.get("modo") == "tir" and md and tir is not None:
             return (md * (n["stop"] - tir) + fx, md * (tir - n["obj"]) + (carry or 0),
                     "stop y objetivo por TIR" + (" + devaluación" if fx else ""), False)
-        precio = e.get("precio")
+        if n.get("modo") == "ny":
+            p_ny = e.get("precio_ny")
+            if p_ny:
+                desl = sup["desliz"] if e["bloque"] == "rv" else 0
+                return ((p_ny - n["stop"]) / p_ny * 100 + desl,
+                        (n["obj"] - p_ny) / p_ny * 100, "stop y objetivo en NY", False)
+        precio = e.get("precio") if n.get("modo") != "ny" else None
         if precio:
             desl = sup["desliz"] if e["bloque"] == "rv" else 0
             return ((precio - n["stop"]) / precio * 100 + desl,
@@ -140,6 +148,7 @@ def calcular(posiciones, tir_md):
     de la tabla de BONOS."""
     cfg = config()
     sup, asig = cfg["supuestos"], cfg["asignacion"]
+    ny = precios_ny()
     esp = {}
     for p in posiciones:
         if not p.get("valor"):
@@ -157,7 +166,10 @@ def calcular(posiciones, tir_md):
             bl, clase = _bloque(p, md)
             e = esp[sim] = {"simbolo": sim, "descripcion": p.get("descripcion"),
                             "bloque": bl, "clase": clase, "tir": tir, "md": md,
-                            "precio": p.get("precio"), "valor": 0.0, "brokers": []}
+                            "precio": p.get("precio"), "valor": 0.0, "brokers": [],
+                            "tipo": p.get("tipo"), "ticker_ny": ticker_ny(sim, p.get("tipo")),
+                            "precio_ny": (ny.get(sim) or {}).get("precio"),
+                            "ny_fecha": (ny.get(sim) or {}).get("fecha")}
         e["valor"] += p["valor"]
         e["brokers"].append(p.get("broker"))
     total = sum(e["valor"] for e in esp.values()) or 1.0
@@ -228,9 +240,18 @@ def calcular(posiciones, tir_md):
 
 # -- avisos de stop y objetivo (pendiente 50) ---------------------------
 
-def _estado_nivel(n, precio, tir):
+def _estado_nivel(n, precio, tir, ny=None):
     """'stop', 'objetivo' o None segun donde esta hoy contra los niveles.
     Por TIR el stop se toca cuando la TIR sube (el precio cae)."""
+    if n.get("modo") == "ny":
+        precio = (ny or {}).get("precio")
+        if not precio:
+            return None
+        if n.get("stop") is not None and precio <= n["stop"]:
+            return "stop"
+        if n.get("obj") is not None and precio >= n["obj"]:
+            return "objetivo"
+        return None
     if n.get("modo") == "tir":
         if tir is None:
             return None
@@ -255,14 +276,17 @@ def cruces(precios, tir_md):
     actual, modo)] y guarda el estado."""
     g = _leer()
     niv, avisados = g.get("niveles") or {}, g.get("avisados") or {}
+    ny = precios_ny()
     nuevos, vigentes = [], {}
     for sim, n in niv.items():
         tir = (tir_md.get(sim) or (None, None))[0]
-        que = _estado_nivel(n, precios.get(sim), tir)
+        que = _estado_nivel(n, precios.get(sim), tir, ny.get(sim))
         if que:
             vigentes[sim] = que
             if avisados.get(sim) != que:
-                actual = tir if n.get("modo") == "tir" else precios.get(sim)
+                actual = tir if n.get("modo") == "tir" else \
+                    (ny.get(sim) or {}).get("precio") if n.get("modo") == "ny" \
+                    else precios.get(sim)
                 nuevos.append((sim, que, n["stop"] if que == "stop" else n["obj"],
                                actual, n.get("modo") or "precio"))
     if vigentes != avisados:
@@ -274,3 +298,74 @@ def cruces(precios, tir_md):
 def tocados():
     """Lo que esta hoy en stop u objetivo, para Inicio."""
     return dict(_leer().get("avisados") or {})
+
+
+# -- stop y objetivo en dolares de NY (CEDEARs y ADRs) ----------------
+
+# Acciones locales con ADR: el ticker en NY no siempre es el local. Las
+# que no estan aca no ofrecen el modo, salvo que se cargue a mano.
+ADR = {"YPFD": "YPF", "PAMP": "PAM", "TECO2": "TEO", "TGSU2": "TGS",
+       "CRES": "CRESY", "IRSA": "IRS", "GGAL": "GGAL", "BMA": "BMA",
+       "BBAR": "BBAR", "SUPV": "SUPV", "CEPU": "CEPU", "LOMA": "LOMA",
+       "EDN": "EDN"}
+MERCADOS_NY = ("nYSE", "nASDAQ", "aMEX")
+
+
+def ticker_ny(sim, tipo=None):
+    """Ticker en NY sugerido: el del ADR para una local, el mismo para un
+    CEDEAR, None si no hay de donde sacarlo."""
+    sim = (sim or "").upper()
+    if sim in ADR:
+        return ADR[sim]
+    if (tipo or "").lower() == "cedears":
+        return sim
+    return None
+
+
+def precios_ny():
+    """{simbolo local: {ticker, mercado, precio, fecha, ts}} de la ultima
+    revision. Se pide una vez por dia, a las 12."""
+    try:
+        d = json.loads(db.get_estado("ny_precios") or "{}")
+        return d if isinstance(d, dict) else {}
+    except (TypeError, ValueError):
+        return {}
+
+
+def actualizar_ny(iol, solo=None):
+    """Ultimo precio en NY de las especies con niveles en modo ny.
+
+    El mercado (NYSE, NASDAQ o AMEX) se descubre la primera vez y queda
+    guardado: despues es un solo pedido por especie.
+    """
+    from datetime import date as _d, datetime as _dt
+    niv = config()["niveles"]
+    previos = precios_ny()
+    out = dict(previos)
+    hechos = 0
+    for sim, n in niv.items():
+        if n.get("modo") != "ny" or (solo and sim not in solo):
+            continue
+        tk = (n.get("ny") or ticker_ny(sim) or sim).upper()
+        prev = previos.get(sim) or {}
+        orden = ([prev["mercado"]] if prev.get("ticker") == tk and prev.get("mercado")
+                 else []) + [m for m in MERCADOS_NY if m != prev.get("mercado")]
+        for mer in orden:
+            try:
+                c = iol.cotizacion(mer, tk) or {}
+            except Exception as e:
+                if getattr(e, "status", None) == 429:
+                    db.set_estado("ny_precios", json.dumps(out))
+                    return hechos
+                continue
+            p = c.get("ultimo") or c.get("ref")
+            if p:
+                out[sim] = {"ticker": tk, "mercado": mer, "precio": float(p),
+                            "fecha": _d.today().isoformat(),
+                            "ts": _dt.now().isoformat(timespec="seconds")}
+                hechos += 1
+                break
+        else:
+            out[sim] = dict(prev, ticker=tk, error="sin cotización en NY")
+    db.set_estado("ny_precios", json.dumps(out))
+    return hechos

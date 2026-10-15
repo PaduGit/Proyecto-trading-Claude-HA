@@ -203,6 +203,10 @@ def resumen(estrategia, precios):
             if p["tipo"] in ("aporte", "retiro")]
 
     valor_hoy = (eq / cuotas) if (eq is not None and cuotas > 0) else None
+    descuadre = (descuadre_ledger(eid, sal)
+                 if cuotas > 0 and VARA.get(estrategia.get("familia") or "",
+                                            "nominales") == "nominales"
+                 else [])
     vara = VARA.get(estrategia.get("familia") or "", "nominales")
     extra = {}
     if vara == "indice":
@@ -227,12 +231,44 @@ def resumen(estrategia, precios):
         # y su fecha, asi que no hay nada que sembrar. Reclamar un punto
         # de partida que la medicion no necesita era pedir trabajo al
         # pedo y dejaba la tarjeta con un cartel permanente.
-        "sin_punto_de_partida": (cuotas <= 0) and vara != "indice",
+        # Tecnica tampoco: se mide contra el PPC de cada tenencia, no
+        # contra la cuota. "Largo plazo" mostraba sin punto de partida
+        # con +132% medido contra el PPC.
+        "sin_punto_de_partida": (cuotas <= 0) and vara not in ("indice", "ppc"),
         "sin_medir": sin_medir,
         "pendientes": len(pend),
+        # Especies donde lo que dicen los movimientos no es lo que hay en
+        # la tenencia. Con alguna, la cuota no mide nada: un aporte que
+        # nunca entro al ledger se cuenta como ganancia (Cer mediano daba
+        # +240%) y una salida que falta, como perdida.
+        "descuadre": descuadre,
         "alertas": db.alertas_de_estrategia(eid),
         **extra,
     }
+
+
+def descuadre_ledger(eid, sal=None, tol=0.5):
+    """[(simbolo, segun el ledger, en la tenencia)] que no coinciden.
+
+    Solo para las familias que miden por cuotaparte: reserva y tecnica no
+    usan el ledger. Una lanzada (signo -1) cuenta en negativo, igual que
+    la tenencia la informa.
+    """
+    sal = saldos(eid) if sal is None else sal
+    led = {}
+    for m in db.movimientos_estrategia(eid):
+        sg = -1 if (m.get("signo") or 1) < 0 else 1
+        if m.get("ticker_a") and m.get("cant_a"):
+            led[m["ticker_a"]] = led.get(m["ticker_a"], 0) + sg * m["cant_a"]
+        if m.get("ticker_de") and m.get("cant_de"):
+            led[m["ticker_de"]] = led.get(m["ticker_de"], 0) - sg * m["cant_de"]
+    ten = {k: v["cantidad"] for k, v in (sal or {}).items()}
+    out = []
+    for k in sorted(set(led) | set(ten)):
+        a, b = led.get(k, 0.0), ten.get(k, 0.0)
+        if abs(a - b) > max(tol, abs(b) * 0.001):
+            out.append({"simbolo": k, "ledger": a, "tenencia": b})
+    return out
 
 
 def _contra_indice(estrategia, precios):
