@@ -671,10 +671,12 @@ def crear_app(monitor):
             series, spots, diag, viejo, desde = monitor.cadena_opciones()
             par = monitor.parametros_opciones()
             cierres = {s: _cierres_subyacente(s) for s in spots}
+            tasa, origen_tasa = monitor.tasa_caucion()
             r = OP.analizar(series, spots, par,
                             cfg.get("comisiones") or {}, cierres,
                             cfg.get("derechos_mercado") or {},
-                            cfg.get("iva_pct") or 0)
+                            cfg.get("iva_pct") or 0, tasa)
+            r["tasa_origen"] = origen_tasa
             marcas = db.opc_marcas()
             abiertas = {p["combo"] for p in db.opc_posiciones(abiertas=True)}
             for f in r["filas"]:
@@ -706,6 +708,19 @@ def crear_app(monitor):
         except Exception as e:
             log.exception("opciones")
             return jsonify({"error": str(e)}), 500
+
+    @app.get("/api/opciones/subyacente/<sim>")
+    def opciones_subyacente(sim):
+        """Un año de cierres del subyacente y su volatilidad de 6 meses,
+        para el grafico de OPCIONES. Las medias las calcula la pantalla."""
+        import escenarios as ES
+        sim = (sim or "").strip().upper()
+        serie = ES.serie_cierres(monitor.iol, "bCBA", sim)
+        vol = ES.volatilidad([v for _, v in serie], "precio")
+        out = {"simbolo": sim, "serie": serie, "vol_hist": vol}
+        if len(serie) < 21:
+            out["error"] = "Sin historia suficiente del subyacente."
+        return jsonify(out)
 
     @app.get("/api/opciones/historico/<combo>")
     def opciones_historico(combo):

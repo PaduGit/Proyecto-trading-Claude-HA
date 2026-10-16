@@ -660,6 +660,11 @@ details.par-menu .menu{top:24px}
 .esc-lect{ display:flex; justify-content:space-between; gap:8px; font-size:13px; min-height:20px; flex-wrap:wrap; }
 .esc-lect .f{ color:var(--muted); }
 .esc-svg{ display:block; width:100%; height:240px; touch-action:pan-y; }
+.mapa-opc-svg{ display:block; width:100%; height:230px; }
+.osub-sel{ display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:8px; background:var(--panel); }
+.osub-sel i{ width:6px; align-self:stretch; border-radius:3px; }
+.osub-sel div{ flex:1; } .osub-sel b{ display:block; } .osub-sel span{ font-size:13px; color:var(--muted); }
+.osub-sel em{ font-style:normal; font-weight:700; font-size:18px; }
 .esc-ley{ display:flex; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--muted); }
 .esc-ley span{ display:inline-flex; align-items:center; gap:6px; }
 .esc-ley i{ width:14px; height:8px; border-radius:2px; display:inline-block; }
@@ -691,7 +696,7 @@ details.par-menu .menu{top:24px}
    saca las mayusculas espaciadas. La estructura no se toca. */
 @layer tema{
 :root{
-  --ink:#111923; --panel:#17212D; --panel-2:#1D2937; --rule:#2A3848;
+  --ink:#111923; --panel:#17212D; --panel-2:#1D2937; --rule:#2A3848; --lila:#B48EF0;
   --bone:#E7ECF2; --muted:#97A4B5;
   --coral:#E07A6F; --sage:#5FC48A; --amber:#E0B45A;
   --mono:var(--sans);
@@ -969,6 +974,7 @@ input, select, textarea{ border-radius:8px; }
     <div id="op-cab"></div>
     <button class="u-mt-12 primario" id="op-btn">
       Buscar spreads</button>
+    <div id="op-sub" class="esc-caja"></div>
     <div id="op-mapa" class="u-mt-12"></div>
     <details id="op-cad" class="cart-bloque" hidden>
       <summary>Cadena de opciones</summary>
@@ -5830,7 +5836,8 @@ async function cargarOpciones(){
     sprDatos = {_umbral: d.umbral_alarma};
     opcMapa = {filas: d.filas || [], spots: d.spots || {},
                umbral: d.umbral_alarma, venc: null,
-               estr: "todas", eje: "base", sel: null};
+               estr: "todas", eje: "base", sel: null,
+               volImpl: d.vol_impl || {}, tasa: d.tasa_pct, tasaOrigen: d.tasa_origen};
     const t = d.tendencias || {};
     opcCadena = d.cadena || {};
     $("#op-cab").innerHTML = Object.keys(d.spots || {}).map(k =>
@@ -5931,60 +5938,276 @@ function pintarMapaOpc(){
     return;
   }
 
-  const W = 340, H = 220, mI = 38, mD = 10, mA = 12, mB = 26;
-  const spot = filas[0].spot;
-  const esBase = opcMapa.eje === "base";
-  const xs = filas.map(f => esBase ? f.base_compra : f.var_equilibrio_pct);
-  const ys = filas.map(f => f.riesgo_pct);
-  const refX = esBase ? spot : 0;
-  let x0 = Math.min(...xs, refX), x1 = Math.max(...xs, refX);
-  let y0 = Math.min(...ys), y1 = Math.max(...ys, opcMapa.umbral || 0);
-  if(x1 - x0 < 1e-9){ x0 -= 1; x1 += 1; }
-  if(y1 - y0 < 1e-9){ y0 -= 1; y1 += 1; }
-  const px = v => mI + (v - x0) / (x1 - x0) * (W - mI - mD);
-  /* El riesgo bajo es lo bueno: va arriba, que es donde se lo busca. */
-  const py = v => mA + (v - y0) / (y1 - y0) * (H - mA - mB);
-
-  const color = f => alcista(f.estructura) ? "var(--sage)" : "var(--coral)";
-  /* Tamaño por lotes en las puntas; tenues los que estan sobre el umbral:
-     no avisarian. */
-  const bajo = f => opcMapa.umbral == null || f.riesgo_pct <= opcMapa.umbral;
-  const puntos = filas.map((f, i) =>
-    '<circle data-punto="' + esc(f.id) + '" cx="' + px(xs[i]).toFixed(1) +
-    '" cy="' + py(ys[i]).toFixed(1) + '" r="' +
-    (opcMapa.sel === f.id ? 7 : (3 + Math.min(4, (f.lotes || 1) / 3)).toFixed(1)) + '" fill="' + color(f) +
-    '" fill-opacity="' + (opcMapa.sel === f.id ? 1 : bajo(f) ? .9 : .3) +
-    '" stroke="' + (opcMapa.sel === f.id ? "var(--txt)" : "none") +
-    '" stroke-width="1.5" class="u-ptr"></circle>').join("");
-
-  const yU = opcMapa.umbral != null ? py(opcMapa.umbral) : null;
-  h += '<svg viewBox="0 0 ' + W + ' ' + H + '" class="u-w-100 u-h-auto">' +
-    '<line x1="' + px(refX).toFixed(1) + '" y1="' + mA + '" x2="' +
-      px(refX).toFixed(1) + '" y2="' + (H - mB) +
-      '" stroke="var(--muted)" stroke-dasharray="3 3"></line>' +
-    (yU == null ? "" : '<rect x="' + mI + '" y="' + mA + '" width="' + (W - mI - mD) +
-      '" height="' + Math.max(0, yU - mA).toFixed(1) + '" fill="var(--amber)" opacity=".06"></rect>') +
-    (yU == null ? "" : '<line x1="' + mI + '" y1="' + yU.toFixed(1) +
-      '" x2="' + (W - mD) + '" y2="' + yU.toFixed(1) +
-      '" stroke="var(--amber)" stroke-dasharray="4 3"></line>') +
-    puntos +
-    '<text x="2" y="' + (mA + 8) + '" fill="var(--muted)" font-size="9">' +
-      num(y0, 0) + '%</text>' +
-    '<text x="2" y="' + (H - mB) + '" fill="var(--muted)" font-size="9">' +
-      num(y1, 0) + '%</text>' +
-    '<text x="' + px(refX).toFixed(1) + '" y="' + (H - 14) +
-      '" fill="var(--muted)" font-size="9" text-anchor="middle">' +
-      (esBase ? "spot " + ent(spot) : "empata acá") + '</text>' +
-    '</svg>' +
+  h += '<svg id="op-mapa-svg" class="mapa-opc-svg" role="img" aria-label="Riesgo de cada combinación según ' +
+      (opcMapa.eje === "base" ? "la base comprada" : "cuánto tiene que moverse para empatar") + '"></svg>' +
     '<div class="nota">' + filas.length + ' combinaciones · verde alcista, ' +
     'rojo bajista · eje vertical: riesgo, más arriba es mejor · franja ' +
     'ámbar: bajo el umbral de alarma · tamaño: lotes en las puntas. Tocá un punto.</div>' +
     rankingOpc(filas) +
     '<div id="op-punto"></div>';
   cont.innerHTML = h;
+  dibujarMapaOpc(filas);
   if(opcMapa.sel) pintarPuntoOpc();
   pintarCadenaOpc();
+  pintarSubOpc();
 }
+/* El ancho real de la pantalla (antes un viewBox fijo que
+   agrandaba la letra), valores en los dos ejes, la etiqueta del spot del
+   lado que tiene lugar y la franja bajo el umbral visible. */
+function dibujarMapaOpc(filas){
+  const svg = document.getElementById("op-mapa-svg");
+  if(!svg) return;
+  const cs = getComputedStyle(document.documentElement), cv = n => cs.getPropertyValue(n).trim();
+  const W = svg.clientWidth || 340, H = svg.clientHeight || 230, mI = 44, mD = 12, mA = 12, mB = 34;
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  const alcista = e => e === "BULL_CALL" || e === "BULL_PUT";
+  const spot = filas[0].spot;
+  const esBase = opcMapa.eje === "base";
+  const xs = filas.map(f => esBase ? f.base_compra : f.var_equilibrio_pct);
+  const ys = filas.map(f => f.riesgo_pct);
+  const refX = esBase ? spot : 0, u = opcMapa.umbral;
+  let x0 = Math.min(...xs, refX), x1 = Math.max(...xs, refX);
+  let y0 = Math.min(...ys), y1 = Math.max(...ys, u == null ? -Infinity : u);
+  if(x1 - x0 < 1e-9){ x0 -= 1; x1 += 1; }
+  if(y1 - y0 < 1e-9){ y0 -= 1; y1 += 1; }
+  const gx = (x1 - x0) * .08, gy = (y1 - y0) * .1; x0 -= gx; x1 += gx; y0 -= gy; y1 += gy;
+  const px = v => mI + (v - x0) / (x1 - x0) * (W - mI - mD);
+  /* El riesgo bajo es lo bueno: va arriba, que es donde se lo busca. */
+  const py = v => mA + (v - y0) / (y1 - y0) * (H - mA - mB);
+
+  let h = "";
+  if(u != null){
+    const yU = py(u);
+    h += '<rect x="' + mI + '" y="' + mA + '" width="' + (W - mI - mD) + '" height="' + Math.max(0, yU - mA).toFixed(1) +
+        '" fill="' + cv("--amber") + '" opacity=".16"></rect>' +
+      '<line x1="' + mI + '" y1="' + yU.toFixed(1) + '" x2="' + (W - mD) + '" y2="' + yU.toFixed(1) +
+        '" stroke="' + cv("--amber") + '" stroke-dasharray="5 4"></line>' +
+      '<text x="' + (W - mD - 4) + '" y="' + (yU - 5).toFixed(1) + '" text-anchor="end" fill="' + cv("--amber") +
+        '" font-size="11">umbral ' + dec(u, 0) + '%</text>';
+  }
+  const pY = pasoLindo((y1 - y0) / 4);
+  for(let v = Math.ceil(y0 / pY) * pY; v <= y1; v += pY)
+    h += '<text x="' + (mI - 6) + '" y="' + (py(v) + 4).toFixed(1) + '" text-anchor="end" fill="' + cv("--muted") +
+      '" font-size="11">' + dec(v, pY < 1 ? 1 : 0) + '%</text>';
+  const pX = pasoLindo((x1 - x0) / Math.max(2, Math.floor((W - mI - mD) / 80)));
+  const fx = v => esBase ? ent(v) : (v > 1e-9 ? "+" : v < -1e-9 ? "−" : "") + dec(Math.abs(v), pX < 1 ? 1 : 0) + "%";
+  for(let v = Math.ceil(x0 / pX) * pX; v <= x1; v += pX)
+    h += '<line x1="' + px(v).toFixed(1) + '" x2="' + px(v).toFixed(1) + '" y1="' + mA + '" y2="' + (H - mB) +
+        '" stroke="' + cv("--rule") + '" stroke-dasharray="2 4"></line>' +
+      '<text x="' + px(v).toFixed(1) + '" y="' + (H - mB + 15) + '" text-anchor="middle" fill="' + cv("--muted") +
+        '" font-size="11">' + fx(v) + '</text>';
+  const xr = px(refX), izq = xr > (mI + W - mD) / 2;
+  h += '<line x1="' + xr.toFixed(1) + '" y1="' + mA + '" x2="' + xr.toFixed(1) + '" y2="' + (H - mB) +
+      '" stroke="' + cv("--muted") + '" stroke-dasharray="3 3"></line>' +
+    '<text x="' + (izq ? xr - 5 : xr + 5).toFixed(1) + '" y="' + (H - mB - 6) + '" text-anchor="' + (izq ? "end" : "start") +
+      '" fill="' + cv("--muted") + '" font-size="11">' + (esBase ? "spot " + ent(spot) : "empata acá") + '</text>' +
+    '<text x="' + ((mI + W - mD) / 2) + '" y="' + (H - 2) + '" text-anchor="middle" fill="' + cv("--muted") +
+      '" font-size="11">' + (esBase ? "base comprada" : "movimiento para empatar") + '</text>';
+  /* Tamaño por lotes en las puntas; tenues los que estan sobre el umbral:
+     no avisarian. */
+  const bajo = f => u == null || f.riesgo_pct <= u;
+  h += filas.map((f, i) => {
+    const s = opcMapa.sel === f.id;
+    return '<circle data-punto="' + esc(f.id) + '" cx="' + px(xs[i]).toFixed(1) + '" cy="' + py(ys[i]).toFixed(1) +
+      '" r="' + (s ? 7 : (3 + Math.min(4, (f.lotes || 1) / 3))).toFixed(1) + '" fill="' + cv(alcista(f.estructura) ? "--sage" : "--coral") +
+      '" fill-opacity="' + (s ? 1 : bajo(f) ? .9 : .3) + '" stroke="' + (s ? cv("--bone") : "none") +
+      '" stroke-width="2" class="u-ptr"><title>' + esc(sprNombre(f.estructura) + " " + ent(f.base_compra) + " / " + ent(f.base_venta) +
+      " · " + dec(f.riesgo_pct, 1) + "%") + '</title></circle>';
+  }).join("");
+  svg.innerHTML = h;
+  svg._filas = filas;
+}
+
+/* ---------- subyacente con escenarios hasta el vencimiento ---------- */
+/* Un año del subyacente con las medias de 9 y 21 ruedas y un abanico sin
+   tendencia hasta el vencimiento elegido en el mapa. La volatilidad es la
+   implicita ATM (lo que el mercado paga en las primas) y, si no hay
+   puntas que sirvan, la historica de 6 meses. Con una combinacion
+   elegida, sus bases y el empate van encima y se estima la probabilidad
+   de terminar en cada zona. */
+const opcSubCache = {};
+let opcSubPer = 252;
+async function cargarSubOpc(sim){
+  if(opcSubCache[sim]) return;
+  opcSubCache[sim] = {cargando: true};
+  let d;
+  try{ d = await (await fetch(base + "api/opciones/subyacente/" + encodeURIComponent(sim))).json(); }
+  catch(e){ d = {error: "No se pudo consultar la historia del subyacente."}; }
+  opcSubCache[sim] = d;
+  pintarSubOpc();
+}
+document.addEventListener("click", ev => {
+  const b = ev.target.closest && ev.target.closest("[data-osub-p]");
+  if(!b) return;
+  opcSubPer = +b.dataset.osubP;
+  pintarSubOpc();
+});
+function opcSubDatos(){
+  if(!opcMapa || !opcMapa.filas.length) return null;
+  const sel = opcMapa.filas.find(x => x.id === opcMapa.sel) || null;
+  const f0 = sel || opcMapa.filas.find(x => x.vencimiento === opcMapa.venc) || opcMapa.filas[0];
+  const sim = f0.subyacente, d = opcSubCache[sim];
+  const vi = (opcMapa.volImpl || {})[sim + "|" + f0.vencimiento];
+  const vol = vi ? vi.iv : d && d.vol_hist;
+  return {sel, f0, sim, d, vi, vol, impl: !!vi, venc: f0.vencimiento, spot: f0.spot};
+}
+function pintarSubOpc(){
+  const cont = $("#op-sub");
+  if(!cont) return;
+  const o = opcSubDatos();
+  if(!o){ cont.innerHTML = ""; return; }
+  if(!o.d || o.d.cargando){
+    cont.innerHTML = '<div class="esc-bloque"><div class="esc-nota">Cargando la historia de ' + esc(o.sim) + '…</div></div>';
+    cargarSubOpc(o.sim);
+    return;
+  }
+  const d = o.d, sel = o.sel;
+  const hist = d.vol_hist, vi = o.vi;
+  const ven = o.venc.slice(8, 10) + "/" + o.venc.slice(5, 7);
+  const tasaTxt = opcMapa.tasa ? "caución " + dec(opcMapa.tasa, 1) + "%" + (opcMapa.tasaOrigen === "configurada" ? " (configurada)" : "")
+    : "tasa 0: sin caución en vivo ni configurada";
+  const volTxt = (vi ? "implícita ATM " + dec(vi.iv * 100, 0) + "%" : "sin implícita") +
+    (hist ? " · histórica 6 m " + dec(hist * 100, 0) + "%" : "");
+  let h = '<div class="esc-bloque">' +
+    '<div class="esc-tit">Subyacente · ' + esc(o.sim) + ' <small>' + esc(volTxt) + ' · vto ' + ven + '</small></div>' +
+    '<div class="chips" role="group" aria-label="Historia">' + [[63, "3 meses"], [126, "6 meses"], [252, "1 año"]].map(([n, t]) =>
+      '<button aria-pressed="' + (n === opcSubPer) + '" data-osub-p="' + n + '">' + t + '</button>').join("") + '</div>' +
+    '<div class="esc-lect"><span class="f" data-osub-f></span><span data-osub-v></span></div>' +
+    '<svg class="esc-svg" id="op-sub-svg" role="img" aria-label="Precio de ' + esc(o.sim) + ', medias, abanico al vencimiento y bases de la combinación elegida"></svg>' +
+    '<div class="esc-ley"><span><i style="background:var(--bone)"></i>precio</span>' +
+      '<span><i style="background:var(--amber)"></i>media 9</span>' +
+      '<span><i style="background:var(--lila)"></i>media 21</span>' +
+      '<span><i style="background:rgba(98,182,242,.35)"></i>probable (2 de cada 3)</span>' +
+      '<span><i style="background:rgba(98,182,242,.14)"></i>amplio (19 de cada 20)</span>' +
+      (sel ? '<span><i style="background:rgba(95,196,138,.35)"></i>zona de ganancia</span>' : "") + '</div>';
+  if(sel){
+    const baj = !(sel.estructura === "BULL_CALL" || sel.estructura === "BULL_PUT");
+    h += '<div class="osub-sel"><i style="background:var(--' + (baj ? "coral" : "sage") + ')"></i><div><b>' +
+      esc(sprNombre(sel.estructura)) + ' ' + ent(sel.base_compra) + ' / ' + ent(sel.base_venta) + '</b><span>empata en ' +
+      ent(sel.equilibrio) + ' (' + (sel.var_equilibrio_pct >= 0 ? "+" : "−") + dec(Math.abs(sel.var_equilibrio_pct), 1) + '%) · 1 a ' +
+      dec(sel.ratio || 0, 1) + ' · ' + ent(sel.lotes) + ' lotes</span></div><em>' + dec(sel.riesgo_pct, 1) + '%</em></div>' +
+      '<dl class="esc-tiles"></dl>';
+  }
+  h += '<p class="esc-nota"></p></div>';
+  cont.innerHTML = h;
+  const nota = cont.querySelector(".esc-nota");
+  nota.textContent = (d.error ? d.error + " " : "") +
+    (o.vol ? "Abanico sin tendencia con la volatilidad " + (o.impl ? "implícita ATM (punto medio de las puntas de las bases " +
+      vi.bases.map(b => ent(b)).join(" y ") + ", " + tasaTxt + ")" : "histórica de 6 meses: no hay puntas ATM que sirvan para la implícita") +
+      ". La histórica va de referencia: si la implícita está muy arriba, las opciones están caras." +
+      (sel ? " Probabilidades aproximadas al vencimiento." : " Tocá una combinación del mapa para ver sus bases y el empate acá.")
+      : "Sin volatilidad para el abanico.");
+  dibujarSubOpc();
+}
+function dibujarSubOpc(cursor){
+  const svg = document.getElementById("op-sub-svg");
+  const o = opcSubDatos();
+  if(!svg || !o || !o.d || o.d.cargando) return;
+  const cs = getComputedStyle(document.documentElement), cv = n => cs.getPropertyValue(n).trim();
+  const W = svg.clientWidth || 600, H = svg.clientHeight || 240, L = 6, R = 74, T = 10, B = 22;
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  const todo = (o.d.serie || []).map(([f, v]) => ({t: new Date(f + "T12:00:00").getTime(), v}));
+  const sma = n => todo.map((x, i) => i < n - 1 ? null : todo.slice(i - n + 1, i + 1).reduce((a, b) => a + b.v, 0) / n);
+  const m9a = sma(9), m21a = sma(21);
+  const k = Math.max(0, todo.length - opcSubPer);
+  const ser = todo.slice(k), m9 = m9a.slice(k), m21 = m21a.slice(k);
+  const S0 = o.spot, sel = o.sel, vol = o.vol || 0;
+  const hoy = new Date(); hoy.setHours(12, 0, 0, 0);
+  const vto = new Date(o.venc + "T12:00:00");
+  // proyeccion: ruedas para la historica (252) y dias corridos para la implicita (365)
+  const pr = [{t: hoy.getTime(), n: 0, dc: 0}]; let dt = new Date(hoy), n = 0;
+  while(dt < vto){ dt = new Date(dt.getTime() + 86400000); if(dt.getDay() > 0 && dt.getDay() < 6){ n++; pr.push({t: dt.getTime(), n, dc: Math.round((dt - hoy) / 86400000)}); } }
+  const sig = p => vol * Math.sqrt(o.impl ? p.dc / 365 : p.n / 252);
+  pr.forEach(p => { const s = sig(p); p.a1 = S0 * Math.exp(s); p.b1 = S0 * Math.exp(-s); p.a2 = S0 * Math.exp(2 * s); p.b2 = S0 * Math.exp(-2 * s); });
+  const baj = sel && !(sel.estructura === "BULL_CALL" || sel.estructura === "BULL_PUT");
+  const lo_ = sel ? Math.min(sel.base_compra, sel.base_venta) : null, hi_ = sel ? Math.max(sel.base_compra, sel.base_venta) : null;
+  const marcas0 = sel ? [{v: sel.base_compra, col: cv("--bone"), txt: "comprada", dash: true},
+    {v: sel.base_venta, col: cv("--muted"), txt: "lanzada", dash: true},
+    {v: sel.equilibrio, col: cv("--sage"), txt: "empate"}] : [];
+  const vals = ser.map(x => x.v).concat(vol ? pr.map(p => p.a2).concat(pr.map(p => p.b2)) : [], marcas0.map(x => x.v), [S0]);
+  let lo = Math.min(...vals), hi = Math.max(...vals); const pad = (hi - lo) * .05 || 1; lo -= pad; hi += pad;
+  const t0 = ser.length ? ser[0].t : pr[0].t, t1 = pr[pr.length - 1].t;
+  const X = t => L + (t - t0) / (t1 - t0) * (W - L - R), Y = v => T + (hi - v) / (hi - lo) * (H - T - B);
+  let h = "";
+  if(sel){
+    const yE = Y(sel.equilibrio);
+    h += baj ? '<rect x="' + L + '" y="' + yE + '" width="' + (W - L - R) + '" height="' + Math.max(0, H - B - yE) + '" fill="' + cv("--sage") + '" opacity=".08"/>'
+      : '<rect x="' + L + '" y="' + T + '" width="' + (W - L - R) + '" height="' + Math.max(0, yE - T) + '" fill="' + cv("--sage") + '" opacity=".08"/>';
+  }
+  for(let i = 0; i <= 4; i++){ const y = T + (H - T - B) * i / 4;
+    h += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '" stroke="' + cv("--rule") + '" stroke-dasharray="2 4"/>'; }
+  let m = new Date(t0); m = new Date(m.getFullYear(), m.getMonth() + 1, 1); let km = 0;
+  const salto = (t1 - t0) / 86400000 > 200 && W < 520 ? 2 : 1;
+  while(m.getTime() < t1){
+    if(km++ % salto === 0) h += '<text x="' + X(m.getTime()) + '" y="' + (H - 6) + '" text-anchor="middle" fill="' + cv("--muted") + '" font-size="11">' + ESC_MES[m.getMonth()] + '</text>';
+    m = new Date(m.getFullYear(), m.getMonth() + 1, 1); }
+  const xh = X(hoy.getTime()), xv = X(vto.getTime());
+  h += '<line x1="' + xh + '" x2="' + xh + '" y1="' + T + '" y2="' + (H - B) + '" stroke="' + cv("--muted") + '" stroke-dasharray="3 3"/>' +
+    '<text x="' + (xh - 4) + '" y="' + (T + 10) + '" text-anchor="end" fill="' + cv("--muted") + '" font-size="11">hoy</text>' +
+    '<line x1="' + xv + '" x2="' + xv + '" y1="' + T + '" y2="' + (H - B) + '" stroke="' + cv("--muted") + '"/>' +
+    '<text x="' + (xv - 4) + '" y="' + (T + 24) + '" text-anchor="end" fill="' + cv("--muted") + '" font-size="11">vto ' + o.venc.slice(8, 10) + '/' + o.venc.slice(5, 7) + '</text>';
+  if(vol){
+    const area = (a, b) => 'M' + pr.map(p => X(p.t) + ',' + Y(p[a])).join(' L') + ' L' + pr.slice().reverse().map(p => X(p.t) + ',' + Y(p[b])).join(' L') + 'Z';
+    h += '<path d="' + area("a2", "b2") + '" fill="' + cv("--barato") + '" opacity=".14"/>' +
+      '<path d="' + area("a1", "b1") + '" fill="' + cv("--barato") + '" opacity=".28"/>';
+  }
+  const marcas = marcas0.map(x => Object.assign({y: Y(x.v)}, x)).sort((a, b) => a.y - b.y);
+  for(let i = 1; i < marcas.length; i++) if(marcas[i].y - marcas[i - 1].y < 26) marcas[i].y = marcas[i - 1].y + 26;
+  for(const q of marcas)
+    h += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(q.v) + '" y2="' + Y(q.v) + '" stroke="' + q.col + '" stroke-width="1.4"' + (q.dash ? ' stroke-dasharray="4 4"' : "") + '/>' +
+      '<text x="' + (W - R + 6) + '" y="' + (q.y - 3) + '" fill="' + q.col + '" font-size="11" font-weight="600">' + q.txt + '</text>' +
+      '<text x="' + (W - R + 6) + '" y="' + (q.y + 10) + '" fill="' + q.col + '" font-size="11">' + ent(q.v) + '</text>';
+  const linea = (arr, col, w) => { const pts = ser.map((x, i) => arr[i] == null ? null : X(x.t) + ',' + Y(arr[i])).filter(Boolean);
+    return pts.length ? '<path d="M' + pts.join(' L') + '" fill="none" stroke="' + col + '" stroke-width="' + w + '"/>' : ""; };
+  h += linea(m21, cv("--lila"), 1.3) + linea(m9, cv("--amber"), 1.3);
+  if(ser.length) h += '<path d="M' + ser.map(x => X(x.t) + ',' + Y(x.v)).join(' L') + ' L' + xh + ',' + Y(S0) + '" fill="none" stroke="' + cv("--bone") + '" stroke-width="2"/>';
+  h += '<circle cx="' + xh + '" cy="' + Y(S0) + '" r="4" fill="' + cv("--bone") + '"/>';
+  if(cursor) h += '<line x1="' + cursor.x + '" x2="' + cursor.x + '" y1="' + T + '" y2="' + (H - B) + '" stroke="' + cv("--muted") + '"/>' +
+    '<circle cx="' + cursor.x + '" cy="' + cursor.y + '" r="4" fill="' + cv("--ink") + '" stroke="' + cv("--bone") + '" stroke-width="2"/>';
+  svg.innerHTML = h;
+
+  const lf = document.querySelector("[data-osub-f]"), lv = document.querySelector("[data-osub-v]");
+  const fecha = t => { const x = new Date(t); return x.getDate() + " " + ESC_MES[x.getMonth()] + " " + x.getFullYear(); };
+  const s = cursor && cursor.sel;
+  if(lf && lv){
+    if(!s){ lf.textContent = "Hoy"; lv.textContent = "$ " + ent(S0); }
+    else if(s.s != null){ const x = ser[s.s]; lf.textContent = fecha(x.t); lv.textContent = "$ " + ent(x.v) +
+      (m9[s.s] != null ? " · m9 " + ent(m9[s.s]) : "") + (m21[s.s] != null ? " · m21 " + ent(m21[s.s]) : ""); }
+    else { const p = pr[s.p]; lf.textContent = "En " + p.n + " ruedas · " + fecha(p.t);
+      lv.innerHTML = '<span class="u-coral">$ ' + ent(p.b1) + '</span> a <span class="u-sage">$ ' + ent(p.a1) + '</span>'; }
+  }
+  svg.onpointermove = e => {
+    const r = svg.getBoundingClientRect(), x = (e.clientX - r.left) * (W / r.width);
+    const t = t0 + (x - L) / (W - L - R) * (t1 - t0);
+    const cerca = arr => { let i = 0, b = 1e18; arr.forEach((q, j) => { const dd = Math.abs(q.t - t); if(dd < b){ b = dd; i = j; } }); return i; };
+    if(!ser.length || t > pr[0].t){ if(!vol) return; const i = cerca(pr); dibujarSubOpc({x: X(pr[i].t), y: Y(S0), sel: {p: i}}); }
+    else { const i = cerca(ser); dibujarSubOpc({x: X(ser[i].t), y: Y(ser[i].v), sel: {s: i}}); }
+  };
+  svg.onpointerleave = () => dibujarSubOpc();
+
+  // probabilidades al vencimiento de la combinacion elegida
+  const tiles = document.querySelector("#op-sub .esc-tiles");
+  if(!tiles || !sel) return;
+  if(!vol){ tiles.innerHTML = ""; return; }
+  const sT = sig(pr[pr.length - 1]);
+  const pAbajo = v => escPhi(Math.log(v / S0) / sT);
+  const gana = baj ? pAbajo(sel.equilibrio) : 1 - pAbajo(sel.equilibrio);
+  const max = baj ? pAbajo(lo_) : 1 - pAbajo(hi_);
+  const todoP = baj ? 1 - pAbajo(hi_) : pAbajo(lo_);
+  const lado = baj ? "abajo" : "arriba", otro = baj ? "arriba" : "abajo";
+  tiles.innerHTML =
+    '<div><dt>Termina ' + lado + ' del empate</dt><dd class="u-sage">' + dec(gana * 100, 0) + '%<small>gana algo</small></dd></div>' +
+    '<div><dt>Ganancia máxima</dt><dd>' + dec(max * 100, 0) + '%<small>' + lado + ' de ' + ent(baj ? lo_ : hi_) + '</small></dd></div>' +
+    '<div><dt>Pierde todo</dt><dd class="u-coral">' + dec(todoP * 100, 0) + '%<small>' + otro + ' de ' + ent(baj ? hi_ : lo_) + '</small></dd></div>';
+}
+addEventListener("resize", () => {
+  clearTimeout(window._opcRz);
+  window._opcRz = setTimeout(() => {
+    const svg = document.getElementById("op-mapa-svg");
+    if(svg && svg._filas && svg.clientWidth) dibujarMapaOpc(svg._filas);
+    if(document.getElementById("op-sub-svg")) dibujarSubOpc();
+  }, 150);
+});
 
 /* ---------- opciones 0.61.0: ranking, resultado al vencimiento, cadena ---------- */
 let opcCadena = {}, opcLotes = 1;
@@ -8174,7 +8397,7 @@ document.addEventListener("click", ev => {
 async function cargarEsc(c){
   const key = c.dataset.escKey, sim = c.dataset.sim;
   if(escCache[key]) return pintarEsc(c);
-  c.innerHTML = '<div class="esc-bloque"><div class="esc-nota">Cargando la historia de 6 meses…</div></div>';
+  c.innerHTML = '<div class="esc-bloque"><div class="esc-nota">Cargando la historia de un año…</div></div>';
   let d;
   try{ d = await (await fetch(base + "api/tenencias/" + encodeURIComponent(sim) + "/escenarios" +
     (c.dataset.escQ || ""))).json(); }
@@ -8200,7 +8423,7 @@ function pintarEsc(c){
     '<div class="chips" role="group" aria-label="Horizonte">' + [[21, "1 mes"], [63, "3 meses"], [126, "6 meses"]].map(([h, t]) =>
       '<button aria-pressed="' + (h === escHor) + '" data-esc-h="' + h + '">' + t + '</button>').join("") + '</div>' +
     '<div class="esc-lect"><span class="f" data-esc-f></span><span data-esc-v></span></div>' +
-    '<svg class="esc-svg" role="img" aria-label="Historia de 6 meses, escenarios y niveles"></svg>' +
+    '<svg class="esc-svg" role="img" aria-label="Historia de un año, escenarios y niveles"></svg>' +
     '<div class="esc-ley"><span><i style="background:var(--bone)"></i>' + (tir ? "TIR" : "precio") + '</span>' +
       '<span><i style="background:rgba(98,182,242,.35)"></i>probable (2 de cada 3)</span>' +
       '<span><i style="background:rgba(98,182,242,.14)"></i>amplio (19 de cada 20)</span>' +
@@ -8319,7 +8542,7 @@ function dibujarEsc(c, d, fv, meses, cursor){
       : '<div><dt>Rango amplio</dt><dd>' + esc(fv(fin.b2)) + ' a ' + esc(fv(fin.a2)) + '<small>19 de cada 20</small></dd></div>');
   c.querySelector(".esc-nota").textContent =
     (tir ? "En TIR el eje va invertido: arriba es TIR más baja, o sea precio más alto. El efecto en el precio sale de la duration. " : "") +
-    "El abanico supone que " + (tir ? "la TIR" : "el precio") + " se mueve como en los últimos 6 meses, sin tendencia." +
+    "Historia de un año. El abanico supone que " + (tir ? "la TIR" : "el precio") + " se mueve como en los últimos 6 meses, sin tendencia." +
     (ny ? " Precio de NY de la revisión de las 12" + (d.precio_fecha ? " del " + d.precio_fecha.slice(8, 10) + "/" + d.precio_fecha.slice(5, 7) : "") + "." : "") +
     (d.curva != null ? " La TIR de la curva es a la que volvería si su desvío vuelve al de siempre." : "") +
     (d.stop == null && d.obj == null ? " Sin stop ni objetivo cargados en Gestión." : "");

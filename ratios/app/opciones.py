@@ -17,6 +17,7 @@ bid. No hay precios teóricos.
 """
 
 import logging
+import math
 import re
 from datetime import date, datetime, timedelta
 
@@ -225,6 +226,92 @@ def _costos(comisiones, derechos=None, iva_pct=0):
     return costos.pct(comisiones, "opciones", derechos, iva_pct)
 
 
+# -- volatilidad implicita ---------------------------------------------
+
+def _N(x):
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def bs_precio(tipo, S, K, T, r, sigma):
+    """Black-Scholes europeo, sin dividendos. `r` continua anual."""
+    if T <= 0 or sigma <= 0:
+        return max(S - K, 0.0) if tipo == "CALL" else max(K - S, 0.0)
+    rt = sigma * math.sqrt(T)
+    d1 = (math.log(S / K) + (r + sigma * sigma / 2.0) * T) / rt
+    d2 = d1 - rt
+    if tipo == "CALL":
+        return S * _N(d1) - K * math.exp(-r * T) * _N(d2)
+    return K * math.exp(-r * T) * _N(-d2) - S * _N(-d1)
+
+
+def vol_implicita(tipo, precio, S, K, T, r):
+    """La sigma que reproduce `precio`, por biseccion. None si el precio
+    esta fuera de lo posible (debajo del intrinseco o arriba del maximo)."""
+    if not precio or precio <= 0 or not S or not K or T <= 0:
+        return None
+    lo, hi = 0.01, 5.0
+    if not (bs_precio(tipo, S, K, T, r, lo) <= precio <= bs_precio(tipo, S, K, T, r, hi)):
+        return None
+    for _ in range(80):
+        m = (lo + hi) / 2.0
+        if bs_precio(tipo, S, K, T, r, m) < precio:
+            lo = m
+        else:
+            hi = m
+    return (lo + hi) / 2.0
+
+
+# Puntas mas abiertas que esto (venta - compra sobre el punto medio) no
+# se usan para la implicita: con una punta fina el medio no dice nada.
+SPREAD_MAX_IV = 0.5
+
+
+def _medio(s):
+    c, v = s.get("compra"), s.get("venta")
+    if not c or not v or v < c:
+        return None
+    m = (c + v) / 2.0
+    return m if (v - c) / m <= SPREAD_MAX_IV else None
+
+
+def tasa_continua(tna_pct, dias):
+    """De la TNA de caucion (en %) a tasa continua para el plazo."""
+    t = max(dias, 1) / 365.0
+    return math.log(1.0 + (tna_pct or 0) / 100.0 * t) / t
+
+
+def vol_atm(series, spots, tna_pct):
+    """Implicita ATM por subyacente y vencimiento.
+
+    Las dos bases mas cercanas al spot, call y put, al punto medio de las
+    puntas. Devuelve {"GGAL|2026-12-18": {"iv", "bases", "n"}}.
+    """
+    grupos = {}
+    for s in series or []:
+        if s.get("tipo") in ("CALL", "PUT") and s.get("base") and s.get("dias", 0) > 0:
+            grupos.setdefault((s["subyacente"], s["vencimiento"]), []).append(s)
+    out = {}
+    for (sub, venc), ss in grupos.items():
+        S = (spots or {}).get(sub)
+        if not S:
+            continue
+        dias = ss[0]["dias"]
+        T, r = dias / 365.0, tasa_continua(tna_pct, dias)
+        bases = sorted({s["base"] for s in ss}, key=lambda b: abs(b - S))[:2]
+        ivs = []
+        for s in ss:
+            if s["base"] not in bases:
+                continue
+            iv = vol_implicita(s["tipo"], _medio(s), S, s["base"], T, r)
+            if iv:
+                ivs.append(iv)
+        if ivs:
+            out["%s|%s" % (sub, venc)] = {
+                "iv": round(sum(ivs) / len(ivs), 4),
+                "bases": sorted(bases), "n": len(ivs), "dias": dias}
+    return out
+
+
 # -- armado ----------------------------------------------------------
 
 def _combinar(series, spot, estructura, cfg, comisiones,
@@ -357,7 +444,7 @@ def a_favor(estructura, tendencia):
 
 
 def analizar(series, spots, cfg, comisiones, cierres=None,
-             derechos=None, iva_pct=0):
+             derechos=None, iva_pct=0, tasa_pct=None):
     """Todas las combinaciones que pasan el filtro de tabla.
 
     `spots` y `cierres` van por subyacente.
@@ -407,6 +494,8 @@ def analizar(series, spots, cfg, comisiones, cierres=None,
         "tendencias": tendencias,
         "sin_comisiones": _costos(comisiones, derechos, iva_pct) <= 0,
         "umbral_alarma": float(cfg.get("riesgo_max_alarma_pct") or 33),
+        "vol_impl": vol_atm(series, spots, tasa_pct or 0),
+        "tasa_pct": tasa_pct,
     }
 
 

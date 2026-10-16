@@ -1,7 +1,7 @@
 """Precio y escenarios de una posicion, para el grafico de la ficha.
 
-Una sola idea para acciones, CEDEARs y bonos: la historia de 6 meses,
-la volatilidad de esos 6 meses y un abanico hacia adelante sin tendencia
+Una sola idea para acciones, CEDEARs y bonos: la historia de un año,
+la volatilidad de los ultimos 6 meses y un abanico hacia adelante sin tendencia
 (ni alcista ni bajista por defecto). Lo que cambia es la escala:
 
 - Precio (acciones, CEDEARs, bonos con stop por precio): el abanico es
@@ -24,8 +24,13 @@ import db
 
 log = logging.getLogger("escenarios")
 
-DIAS_HIST = 183          # 6 meses corridos
+DIAS_HIST = 366          # historia de un año
+RUEDAS_VOL = 126         # la volatilidad sale de los ultimos 6 meses
 RUEDAS_ANIO = 252
+
+# Series que ya se pidieron hacia atras hoy: si IOL no tiene historia
+# anterior (especie nueva), no se vuelve a pedir en cada apertura.
+_atras = {}
 
 
 def _habil_anterior(d):
@@ -36,11 +41,13 @@ def _habil_anterior(d):
 
 
 def serie_cierres(iol, mercado, simbolo, clave=None):
-    """Cierres de los ultimos 6 meses, de `cierres` y completados con IOL.
+    """Cierres del ultimo año, de `cierres` y completados con IOL.
 
     Se guardan con `clave` (el simbolo local, o "NY:AMZN" para la serie
     de Nueva York) y se piden a IOL solo los dias que faltan hasta la
-    rueda anterior: abrir la ficha dos veces no gasta dos pedidos.
+    rueda anterior: abrir la ficha dos veces no gasta dos pedidos. Si lo
+    guardado empieza tarde (antes se guardaban 3 o 6 meses), se pide una
+    vez por dia desde el principio del año.
     """
     clave = clave or simbolo
     hoy = date.today()
@@ -48,6 +55,10 @@ def serie_cierres(iol, mercado, simbolo, clave=None):
     guardados = db.cierres_de(clave, desde.isoformat())
     ultimo = guardados[-1]["fecha"] if guardados else None
     falta_desde = (date.fromisoformat(ultimo) + timedelta(days=1)) if ultimo else desde
+    if (guardados and guardados[0]["fecha"] > (desde + timedelta(days=10)).isoformat()
+            and _atras.get(clave) != hoy):
+        _atras[clave] = hoy
+        falta_desde = desde
     if iol is not None and falta_desde <= _habil_anterior(hoy):
         try:
             datos = iol.serie(mercado, simbolo, falta_desde.isoformat(),
@@ -71,7 +82,7 @@ def serie_cierres(iol, mercado, simbolo, clave=None):
 
 
 def serie_tir(simbolo):
-    """(fecha, TIR, MD) de los ultimos 6 meses, de `bono_hist`."""
+    """(fecha, TIR, MD) del ultimo año, de `bono_hist`."""
     desde = (date.today() - timedelta(days=DIAS_HIST)).isoformat()
     return [(r["fecha"], r["tir"], r["md"]) for r in db.conn().execute(
         "SELECT fecha, tir, md FROM bono_hist WHERE simbolo=? AND fecha >= ? "
@@ -79,8 +90,10 @@ def serie_tir(simbolo):
 
 
 def volatilidad(valores, modo):
-    """Anual. Precio: desvio de los retornos logaritmicos. TIR: desvio de
+    """Anual, de las ultimas 126 ruedas (6 meses) aunque la serie sea mas
+    larga. Precio: desvio de los retornos logaritmicos. TIR: desvio de
     los cambios diarios, en puntos de TIR (1 = 100 pb)."""
+    valores = list(valores)[-(RUEDAS_VOL + 1):]
     if len(valores) < 20:
         return None
     if modo == "tir":

@@ -1,5 +1,31 @@
 # Registro de cambios
 
+## 0.65.0
+
+**OPCIONES: el subyacente con escenarios hasta el vencimiento.** Arriba
+del mapa, un grafico del subyacente (3 meses, 6 meses o 1 año) con las
+medias de 9 y 21 ruedas y un abanico sin tendencia hasta el vencimiento
+elegido en el mapa (`/api/opciones/subyacente/<sim>`). Al tocar una
+combinacion se dibujan la base comprada, la lanzada, el empate y la zona
+de ganancia, con la probabilidad aproximada de terminar del lado ganador
+del empate, de llegar a la ganancia maxima y de perderlo todo.
+
+**Volatilidad implicita ATM**: Black-Scholes invertido sobre el punto
+medio de las puntas de las dos bases mas cercanas al spot (call y put),
+sin dividendos, con la **caucion** como tasa (`tasa_caucion()`: en vivo o
+`tasa_caucion_anual`). Puntas con spread mayor al 50% del medio no se
+usan. El abanico y las probabilidades usan la implicita; la historica de
+6 meses va al lado como referencia (y en su lugar si no hay implicita).
+`/api/opciones` devuelve `vol_impl` y `tasa_pct`.
+
+**Mapa de combinaciones corregido**: ancho real de la pantalla, valores en
+los dos ejes, etiqueta del spot sin cortar, franja bajo el umbral en
+ambar visible y nombre de cada punto al pasar.
+
+**Gestion: historia de un año** en los graficos de escenarios. La
+volatilidad sigue siendo de los ultimos 6 meses (126 ruedas). Si lo
+guardado empieza tarde, la serie se completa hacia atras una vez por dia.
+
 ## 0.64.1
 
 **Stop y objetivo se analizan y se cargan en Gestion.** Al abrir una
