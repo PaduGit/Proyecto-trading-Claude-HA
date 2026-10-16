@@ -652,6 +652,8 @@ details.par-menu .menu{top:24px}
 .nivel-et small{ display:block; color:var(--muted); }
 .destello{ outline:2px solid var(--barato); outline-offset:3px; }
 .esc-caja:empty{ display:none; }
+.g-edit .g-nota{ grid-column:1 / -1; }
+.g-edit textarea{ width:100%; font:inherit; font-size:13px; line-height:1.4; padding:8px 10px; border-radius:8px; resize:vertical; }
 .esc-bloque{ margin-top:10px; padding:12px; border-radius:8px; background:var(--panel-2); display:grid; gap:10px; }
 .esc-tit{ display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; font-weight:600; font-size:14px; }
 .esc-tit small{ font-weight:400; color:var(--muted); font-size:12px; }
@@ -837,6 +839,14 @@ input, select, textarea{ border-radius:8px; }
       <div class="chips" id="g-filtros"></div>
       <div id="g-pos"></div>
     </div>
+    <details class="ini-bloque" id="g-imp-caja">
+      <summary>Cargar niveles pegando JSON</summary>
+      <div class="hist-ayuda">Formato: <code>{"niveles": {"ALUA": {"modo": "precio", "stop": 785, "obj": 930, "nota": "…"}, "AMZN": {"modo": "ny", "ny": "AMZN", "stop": 241, "obj": 287}}}</code>. Modo precio, tir o ny. Se cargan o reemplazan solo las especies del JSON que están en cartera; las demás quedan como están.</div>
+      <textarea id="g-imp-txt" class="area-json u-mt-8" rows="8" placeholder='{"niveles": {…}}'></textarea>
+      <div class="u-mt-8 acciones"><button class="secundario" id="g-imp-ver">Ver cómo queda</button>
+        <button class="primario" id="g-imp-ok" hidden>Guardar</button></div>
+      <div id="g-imp-out"></div>
+    </details>
     <div class="ini-bloque">
       <div class="cart-tit">Rebalanceo sugerido</div>
       <div class="hist-ayuda">Para volver a las bandas. Reduce primero lo de peor relación dentro de cada bloque sobreponderado.</div>
@@ -1694,6 +1704,7 @@ function pintarGestion(){
       '<span class="m">' + gPct(e.peso) + ' · −' + gPct(e.mal) + ' / ' + (e.bien >= 0 ? "+" : "−") + gPct(Math.abs(e.bien)) + ' · ' + esc(e.fuente) + '</span>' +
       '<span class="flag">' + flag + '</span></button>' + (gAbierta === e.simbolo ? detGestion(e) : "") + '</div>';
   }).join("") || '<div class="vacio">Ninguna posición con ese filtro.</div>';
+  gEsc();
   const eo = g.en_objetivo;
   $("#g-rebal").innerHTML = g.suma_objetivo !== 100 ? '<div class="vacio">El objetivo no suma 100%.</div>' :
     (g.rebalanceo.length ? g.rebalanceo.map(m => '<div class="g-mov"><b class="' + (m.accion === "reducir" ? "u-coral" : "u-sage") + '">' +
@@ -1717,7 +1728,13 @@ function detGestion(e){
     : ny ? [e.precio_ny ? dec(e.precio_ny * .9, 2) : "", e.precio_ny ? dec(e.precio_ny * 1.2, 2) : ""]
     : [e.precio ? ent(e.precio * .9) : "", e.precio ? ent(e.precio * 1.2) : ""];
   const chip = (k, t) => '<button aria-pressed="' + (modo === k) + '" data-gmodo="' + k + '" data-gs="' + esc(e.simbolo) + '">' + t + '</button>';
+  /* El grafico en el modo que se esta editando; la clave cambia si cambia
+     el modo o el ticker de NY. */
+  const q = "?modo=" + modo + (ny ? "&ny=" + encodeURIComponent(n.ny || e.ticker_ny || e.simbolo) : "");
   return '<div class="g-det">' +
+    (["moneda", "fci"].indexOf((e.tipo || "").toLowerCase()) < 0
+      ? '<div class="esc-caja" data-sim="' + esc(e.simbolo) + '" data-esc-key="' + esc(e.simbolo + q) +
+        '" data-esc-q="' + esc(q) + '"></div>' : "") +
     (bono ? '<div class="chips u-mt-8">' + chip("tir", "Por TIR") + chip("precio", "Por precio") + '</div>' : "") +
     (conNy ? '<div class="chips u-mt-8">' + chip("precio", "Por precio") + chip("ny", "En NY (US$)") + '</div>' : "") +
     '<div class="g-edit"><div><label>Stop ' + unidad + '</label><input inputmode="decimal" data-gniv="stop" data-gs="' +
@@ -1726,13 +1743,15 @@ function detGestion(e){
       esc(e.simbolo) + '" data-gm="' + modo + '" value="' + (n.modo === modo && n.obj != null ? n.obj : "") + '" placeholder="' + ph[1] + '"></div>' +
     (ny ? '<div><label>Ticker en NY</label><input data-gny data-gs="' + esc(e.simbolo) + '" value="' +
       esc(n.ny || e.ticker_ny || e.simbolo) + '" autocapitalize="characters"></div>' : "") + '</div>' +
+    '<div class="g-edit"><div class="g-nota"><label>Nota</label><textarea data-gnota data-gs="' + esc(e.simbolo) +
+      '" rows="2" maxlength="600" placeholder="Recomendación, fundamento, segundo objetivo…">' + esc(n.nota || "") + '</textarea></div></div>' +
     '<div class="hist-ayuda">' + (modo === "tir" ? "Hoy rinde " + dec(e.tir || 0, 2) + "% con duration " + dec(e.md || 0, 2) +
       ". El stop salta si rinde más que eso." : ny ? (e.precio_ny ? "En NY: US$ " + dec(e.precio_ny, 2) +
         (e.ny_fecha ? " (del " + esc(e.ny_fecha.slice(8, 10) + "/" + e.ny_fecha.slice(5, 7)) + ")" : "") + "."
         : "Todavía sin precio de NY: se pide al guardar los dos niveles.") +
       " Se revisa una vez por día, a las 12." : "Hoy " + (e.precio ? precio(e.precio) : "—") + "." +
       (e.bloque === "rv" ? " Al stop se le suma " + dec(gest.supuestos.desliz, 0) + "% por si abre por debajo." : "")) +
-      ' Brokers: ' + [...new Set(e.brokers)].map(esc).join(", ") + '. Al tocarse avisa una vez; es un aviso, no una orden.' +
+      ' Brokers: ' + [...new Set(e.brokers)].map(esc).join(", ") + '. Se guarda al salir del campo, aunque sea solo el stop. Al tocarse avisa una vez; es un aviso, no una orden.' +
       (n.stop != null ? ' <button class="ini-ir" data-gborrar="' + esc(e.simbolo) + '">Borrar niveles</button>' : "") + '</div></div>';
 }
 function pintarRbGestion(){
@@ -1793,8 +1812,16 @@ $("#v-gest").addEventListener("change", e => {
     }
     n[i.dataset.gniv] = isFinite(v) ? v : null;
     esp.niveles = n;
-    // se guarda recien con los dos niveles
-    if(n.stop != null && n.obj != null) cargarGestion({niveles: {[sim]: n}});
+    // Se guarda con uno solo: un stop sin objetivo tambien avisa.
+    if(n.stop != null || n.obj != null) cargarGestion({niveles: {[sim]: n}});
+    return;
+  }
+  const nt = e.target.closest("[data-gnota]");
+  if(nt){
+    const esp = gest.especies.find(x => x.simbolo === nt.dataset.gs);
+    const n = Object.assign({}, esp.niveles || {}, {nota: nt.value.trim()});
+    esp.niveles = n;
+    if(n.stop != null || n.obj != null) cargarGestion({niveles: {[nt.dataset.gs]: n}});
     return;
   }
   const tk = e.target.closest("[data-gny]");
@@ -1802,7 +1829,7 @@ $("#v-gest").addEventListener("change", e => {
     const esp = gest.especies.find(x => x.simbolo === tk.dataset.gs);
     const n = Object.assign({}, esp.niveles || {}, {modo: "ny", ny: tk.value.trim().toUpperCase()});
     esp.niveles = n;
-    if(n.stop != null && n.obj != null) cargarGestion({niveles: {[tk.dataset.gs]: n}});
+    if(n.stop != null || n.obj != null) cargarGestion({niveles: {[tk.dataset.gs]: n}});
     return;
   }
   const r = e.target.closest("[data-gsup]");
@@ -1811,7 +1838,54 @@ $("#v-gest").addEventListener("change", e => {
 $("#v-gest").addEventListener("input", e => {
   const r = e.target.closest("[data-gsup]");
   if(r) $("#gsv-" + r.dataset.gsup).textContent = r.value + "%";
+  /* Vista previa: mientras se escribe, el grafico ya dibuja el nivel. */
+  const i = e.target.closest("[data-gniv]");
+  if(i){
+    const det = i.closest(".g-det"), c = det && det.querySelector(".esc-caja");
+    if(!c) return;
+    const t = i.value.trim(), ny = i.dataset.gm === "ny";
+    const v = ny && t.indexOf(",") < 0 ? parseFloat(t) : parseFloat(t.replace(/\./g, "").replace(",", "."));
+    c._prev = Object.assign({}, c._prev || {}, {[i.dataset.gniv === "obj" ? "obj" : "stop"]: isFinite(v) ? v : null});
+    pintarEsc(c);
+  }
 });
+async function gImportar(simular){
+  const out = $("#g-imp-out"), ok = $("#g-imp-ok");
+  let r, d;
+  try{
+    r = await fetch(base + "api/gestion/importar", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({datos: $("#g-imp-txt").value, simular: simular})});
+    d = await r.json();
+  }catch(e){ out.innerHTML = '<div class="msg error">No se pudo consultar.</div>'; return; }
+  if(!r.ok){ ok.hidden = true; out.innerHTML = '<div class="msg error">' + esc(d.error) + '</div>'; return; }
+  const filas = d.filas || [], validas = filas.filter(f => f.estado === "nueva" || f.estado === "reemplaza");
+  const EST = {nueva: ["u-sage", "nueva"], reemplaza: ["u-amber", "reemplaza"], omitida: ["u-muted", "se omite"], error: ["u-coral", "error"]};
+  const fv = (f, v) => v == null ? "—" : f.modo === "tir" ? dec(v, 2) + "%" : f.modo === "ny" ? "US$ " + dec(v, 2) : dec(v, v < 1000 ? 2 : 0);
+  out.innerHTML = (simular ? "" : '<div class="msg ok">Guardadas ' + d.guardados + ' especies.</div>') +
+    '<div class="u-scroll-x"><table class="tabla u-mt-8"><thead><tr><th>Especie</th><th>Modo</th><th>Stop</th><th>Objetivo</th><th></th></tr></thead><tbody>' +
+    filas.map(f => '<tr><td>' + esc(f.simbolo) + (f.ny && f.ny !== f.simbolo ? ' <span class="u-muted">' + esc(f.ny) + '</span>' : "") +
+      '</td><td>' + esc(f.modo === "ny" ? "NY" : f.modo || "—") + '</td><td>' + fv(f, f.stop) + '</td><td>' + fv(f, f.obj) +
+      '</td><td class="' + EST[f.estado][0] + '">' + EST[f.estado][1] + (f.motivo ? ': ' + esc(f.motivo) : "") + '</td></tr>').join("") +
+    '</tbody></table></div>';
+  ok.hidden = !simular || !validas.length;
+  ok.textContent = "Guardar " + validas.length + (validas.length === 1 ? " especie" : " especies");
+  if(!simular) cargarGestion();
+}
+$("#g-imp-ver").addEventListener("click", () => gImportar(true));
+$("#g-imp-ok").addEventListener("click", () => gImportar(false));
+
+/* Despues de cada dibujo de Gestion: el grafico de la posicion abierta,
+   con los niveles que tiene (guardados o a medio editar). */
+function gEsc(){
+  const c = document.querySelector("#g-pos .esc-caja");
+  if(!c) return;
+  const esp = (gest.especies || []).find(x => x.simbolo === c.dataset.sim) || {};
+  const n = esp.niveles || {};
+  const modo = (new URLSearchParams(c.dataset.escQ)).get("modo");
+  c._prev = n.modo === modo ? {stop: n.stop == null ? null : n.stop, obj: n.obj == null ? null : n.obj}
+    : {stop: null, obj: null};
+  cargarEsc(c);
+}
 
 /* ---------- inicio (0.60.0) ---------- */
 /* La primera pantalla responde "¿hay algo que hacer?": oportunidades,
@@ -7699,7 +7773,6 @@ function tenPintar(){
       (tenModo === "especie" ? ' especies de ' + tenDatos.length +
         ' posiciones. Para editar una, volvé a "Por broker".'
        : ' de ' + tenDatos.length + ' posiciones.') + '</div>';
-  escRefrescar();
 }
 
 /* Lo que hay que ver sin abrir nada: la otra punta y el rango en
@@ -7893,10 +7966,10 @@ function tenFicha(t, p){
        TIR, sin redibujar la ficha. */
     '<div id="niv-' + css(t.simbolo) + '" data-precio="' + (p.precio == null ? "" : p.precio) + '">' +
       nivelHTML(t.simbolo, p.precio) + '</div>' +
-    /* Precio (o TIR) y escenarios: se arma al abrir, con la historia de
-       6 meses que trae el servidor. */
-    (["moneda", "fci"].indexOf((t.tipo || "").toLowerCase()) < 0
-      ? '<div id="esc-' + css(t.simbolo) + '" class="esc-caja"></div>' : "") +
+    /* Sin niveles, igual un camino a Gestion para fijarlos. */
+    (["moneda", "fci"].indexOf((t.tipo || "").toLowerCase()) < 0 && !(nivTen.niveles || {})[t.simbolo]
+      ? '<div class="nivel"><button class="ini-ir" data-ir-gest="' + esc(t.simbolo) +
+        '">Fijar stop y objetivo en Gestión ›</button></div>' : "") +
     '<div class="u-mt-8 acciones">' +
     '<button data-editar-ten>Editar datos</button></div>';
 
@@ -8075,7 +8148,8 @@ function nivelHTML(sim, precio){
   if(porTir && actual == null) h += '<div class="u-mt-6">Falta la TIR de hoy.</div>';
   if(porNy && actual == null) h += '<div class="u-mt-6">Sin precio de NY todavía' +
     (pny.error ? ": " + esc(pny.error) : "") + '. Se revisa a las 12.</div>';
-  return h + '<button class="ini-ir" data-ir-vista="gest">Editar en Gestión ›</button></div>';
+  if(n.nota) h += '<div class="u-mt-6">' + esc(n.nota) + '</div>';
+  return h + '<button class="ini-ir" data-ir-gest="' + esc(sim) + '">Analizar y editar en Gestión ›</button></div>';
 }
 /* ---------- precio (o TIR) y escenarios ---------- */
 /* Abanico sin tendencia con la volatilidad de los ultimos 6 meses: 2 de
@@ -8091,27 +8165,30 @@ document.addEventListener("click", ev => {
   const b = ev.target.closest("[data-esc-h]");
   if(!b) return;
   escHor = +b.dataset.escH;
-  if(tenAbierta) pintarEsc(tenAbierta.split("|").pop());
+  const c = b.closest(".esc-caja");
+  if(c) pintarEsc(c);
 });
-function escRefrescar(){
-  if(!tenAbierta) return;
-  const sim = tenAbierta.split("|").pop();
-  if(!document.getElementById("esc-" + css(sim))) return;
-  if(escCache[sim]) pintarEsc(sim); else cargarEsc(sim);
-}
-async function cargarEsc(sim){
-  const c = document.getElementById("esc-" + css(sim));
-  if(!c) return;
+/* Un contenedor .esc-caja con data-esc-key (simbolo + consulta). El
+   resultado queda en cache por clave; `c._prev` pisa stop y objetivo con
+   lo que se esta escribiendo, para ver el nivel antes de guardarlo. */
+async function cargarEsc(c){
+  const key = c.dataset.escKey, sim = c.dataset.sim;
+  if(escCache[key]) return pintarEsc(c);
   c.innerHTML = '<div class="esc-bloque"><div class="esc-nota">Cargando la historia de 6 meses…</div></div>';
   let d;
-  try{ d = await (await fetch(base + "api/tenencias/" + encodeURIComponent(sim) + "/escenarios")).json(); }
+  try{ d = await (await fetch(base + "api/tenencias/" + encodeURIComponent(sim) + "/escenarios" +
+    (c.dataset.escQ || ""))).json(); }
   catch(e){ d = {error: "No se pudo consultar la historia."}; }
-  escCache[sim] = d;
-  pintarEsc(sim);
+  escCache[key] = d;
+  // si mientras tanto se redibujo, el contenedor nuevo es otro
+  const vivo = document.querySelector('.esc-caja[data-esc-key="' + key + '"]');
+  if(vivo) pintarEsc(vivo);
 }
-function pintarEsc(sim){
-  const c = document.getElementById("esc-" + css(sim)), d = escCache[sim];
-  if(!c || !d) return;
+function pintarEsc(c){
+  const base_ = escCache[c.dataset.escKey];
+  if(!c || !base_) return;
+  const d = Object.assign({}, base_, c._prev || {});
+  const sim = c.dataset.sim;
   if(d.error && !(d.serie || []).length){ c.innerHTML = '<div class="esc-bloque"><div class="esc-nota">' + esc(d.error) + '</div></div>'; return; }
   const tir = d.modo === "tir", ny = d.modo === "ny";
   const fv = v => v == null ? "—" : tir ? dec(v, 2) + "%" : ny ? "US$ " + dec(v, 2) : "$ " + dec(v, Math.abs(v) < 1000 ? 2 : 0);
@@ -8248,6 +8325,23 @@ function dibujarEsc(c, d, fv, meses, cursor){
     (d.stop == null && d.obj == null ? " Sin stop ni objetivo cargados en Gestión." : "");
 }
 
+/* Desde TENENCIAS: abre Gestion con la tarjeta de esa especie abierta. */
+function irAGestion(sim){
+  gAbierta = sim; gFiltro = "todas";
+  irA("gest");
+  let n = 0;
+  const buscar = () => {
+    const b = document.querySelector('#g-pos [data-gesp="' + (window.CSS && CSS.escape ? CSS.escape(sim) : sim) + '"]');
+    if(!b){ if(++n < 40) setTimeout(buscar, 150); return; }
+    b.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start"});
+  };
+  setTimeout(buscar, 300);
+}
+document.addEventListener("click", ev => {
+  const b = ev.target.closest("[data-ir-gest]");
+  if(b) irAGestion(b.dataset.irGest);
+});
+
 function pintarNivel(sim){
   const cont = document.getElementById("niv-" + css(sim));
   if(!cont) return;
@@ -8278,7 +8372,13 @@ async function tenRentaFija(simbolo){
       : (dias <= 0 ? "vencido"
          : dias < 400 ? ent(dias) + " días" : num(dias / 365, 1) + " años")) +
     dato("Vence", d.vencimiento ? esc(d.vencimiento) : null) +
-    dato("Próximo pago", d.proximo_pago ? esc(d.proximo_pago) : null) +
+    /* proximo_pago es un objeto {fecha, renta, amortizacion, total} por
+       cada 100 VN: escrito tal cual se leia "[object Object]". */
+    dato("Próximo pago", (() => { const pp = d.proximo_pago;
+      if(!pp || !pp.fecha) return null;
+      const que = pp.renta && pp.amortizacion ? "renta y amortización" : pp.amortizacion ? "amortización" : "renta";
+      return esc(pp.fecha.slice(8, 10) + "/" + pp.fecha.slice(5, 7) + "/" + pp.fecha.slice(0, 4)) + " · " +
+        num(pp.total, 2) + " cada 100 VN (" + que + ")"; })()) +
     dato("Ajusta por", d.ajuste ? esc(d.ajuste) : "sin ajuste") +
     dato("Valor técnico", d.valor_tecnico == null ? null
       : num(d.valor_tecnico, 2)) +
@@ -8427,8 +8527,6 @@ async function cargarTenencias(){
     cargarCartera();
     cargarEstrategias();
     cargarNivTen();
-    // la historia se vuelve a pedir al volver a la pestaña
-    Object.keys(escCache).forEach(k => delete escCache[k]);
     cargarPropuestos();
     const r = d.en_rulo || {};
     out.insertAdjacentHTML("beforeend",

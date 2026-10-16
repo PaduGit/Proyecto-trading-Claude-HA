@@ -80,6 +80,7 @@ def guardar(cambios):
             g.setdefault(k, {}).update(cambios[k])
     for sim, n in (cambios.get("niveles") or {}).items():
         niv = g.setdefault("niveles", {})
+        prev = niv.get(sim) or {}
         if not n or (n.get("stop") is None and n.get("obj") is None):
             niv.pop(sim, None)
         else:
@@ -87,6 +88,12 @@ def guardar(cambios):
                         "stop": n.get("stop"), "obj": n.get("obj")}
             if niv[sim]["modo"] == "ny":
                 niv[sim]["ny"] = (n.get("ny") or ticker_ny(sim) or sim).strip().upper()
+            # La nota se conserva si el cambio no la trae: editar el stop
+            # desde la tarjeta no tiene que borrar el fundamento cargado.
+            nota = n["nota"] if "nota" in n else prev.get("nota")
+            nota = (nota or "").strip()[:600]
+            if nota:
+                niv[sim]["nota"] = nota
         g.setdefault("avisados", {}).pop(sim, None)
     db.set_estado("gestion", json.dumps(g))
     return config()
@@ -332,6 +339,20 @@ def precios_ny():
         return {}
 
 
+def cotizar_ny(iol, tk):
+    """(mercado, ultimo precio) de un ticker de NY probando los mercados,
+    o (None, None). Para el grafico de un nivel que todavia no se guardo."""
+    for mer in MERCADOS_NY:
+        try:
+            c = iol.cotizacion(mer, tk) or {}
+        except Exception:
+            continue
+        p = c.get("ultimo") or c.get("ref")
+        if p:
+            return mer, float(p)
+    return None, None
+
+
 def actualizar_ny(iol, solo=None):
     """Ultimo precio en NY de las especies con niveles en modo ny.
 
@@ -369,3 +390,70 @@ def actualizar_ny(iol, solo=None):
             out[sim] = dict(prev, ticker=tk, error="sin cotización en NY")
     db.set_estado("ny_precios", json.dumps(out))
     return hechos
+
+
+# -- cargar niveles pegando JSON ----------------------------------------
+
+MODOS = ("precio", "tir", "ny")
+
+
+def _num(v):
+    if v is None or v == "":
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    t = str(v).strip()
+    if "," in t:                       # 1.234,5 -> 1234.5
+        t = t.replace(".", "").replace(",", ".")
+    return float(t)
+
+
+def revisar_importacion(datos, en_cartera, actuales=None):
+    """Vista previa de un JSON de niveles: {"niveles": {SIM: {...}}}.
+
+    Devuelve (filas, validos). Cada fila dice que pasaria con la especie:
+    nuevo, reemplaza, se omite (no esta en cartera) o error. Solo lo
+    valido y en cartera va en `validos`: una especie vendida no tiene que
+    quedar avisando ni pidiendo su precio de NY todos los dias.
+    """
+    actuales = config()["niveles"] if actuales is None else actuales
+    niveles = (datos or {}).get("niveles") if isinstance(datos, dict) else None
+    if not isinstance(niveles, dict) or not niveles:
+        raise ValueError('falta "niveles": {"SIMBOLO": {"modo", "stop", "obj"}}')
+    filas, validos = [], {}
+    for sim, n in niveles.items():
+        sim = (sim or "").strip().upper()
+        f = {"simbolo": sim}
+        try:
+            if not isinstance(n, dict):
+                raise ValueError("cada especie va como objeto")
+            modo = (n.get("modo") or "precio").strip().lower()
+            if modo not in MODOS:
+                raise ValueError("modo %r: tiene que ser precio, tir o ny" % modo)
+            stop, obj = _num(n.get("stop")), _num(n.get("obj", n.get("objetivo")))
+            if stop is None and obj is None:
+                raise ValueError("sin stop ni objetivo")
+            # Por precio el stop va abajo; por TIR, arriba (la TIR sube
+            # cuando el precio cae).
+            if stop is not None and obj is not None and \
+                    ((modo == "tir" and stop <= obj) or (modo != "tir" and stop >= obj)):
+                raise ValueError("stop y objetivo invertidos para el modo %s" % modo)
+            d = {"modo": modo, "stop": stop, "obj": obj}
+            if modo == "ny":
+                d["ny"] = (n.get("ny") or ticker_ny(sim, "cedears") or sim).strip().upper()
+            if n.get("nota"):
+                d["nota"] = str(n["nota"]).strip()[:600]
+            f.update(d)
+            if sim not in en_cartera:
+                f["estado"] = "omitida"
+                f["motivo"] = "no está en cartera"
+            else:
+                f["estado"] = "reemplaza" if sim in actuales else "nueva"
+                if sim in actuales:
+                    f["antes"] = actuales[sim]
+                validos[sim] = d
+        except (TypeError, ValueError) as e:
+            f["estado"] = "error"
+            f["motivo"] = str(e)
+        filas.append(f)
+    return filas, validos

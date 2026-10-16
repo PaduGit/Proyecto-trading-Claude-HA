@@ -1,5 +1,29 @@
 # Registro de cambios
 
+## 0.64.1
+
+**Stop y objetivo se analizan y se cargan en Gestion.** Al abrir una
+posicion en Gestion esta el grafico de precio (o TIR) y escenarios, en el
+modo que se esta editando (precio, TIR o NY; `/api/tenencias/<sim>/
+escenarios` acepta `?modo=` y `?ny=`), y debajo el stop, el objetivo, el
+ticker de NY y una **nota**. Mientras se escribe, el grafico dibuja el
+nivel y recalcula distancia y probabilidad. Se guarda al salir del campo,
+aunque sea solo el stop. La nota se conserva al cambiar los niveles.
+
+**TENENCIAS, simplificada**: en la ficha queda el riel con la nota y un
+enlace **Analizar y editar en Gestion**, o **Fijar stop y objetivo en
+Gestion** si no hay niveles; abre la tarjeta de esa especie. El grafico de
+escenarios ya no esta en la ficha.
+
+**Cargar niveles pegando JSON** (Gestion): `{"niveles": {"SIM": {"modo",
+"stop", "obj", "ny", "nota"}}}`. Vista previa por especie (nueva,
+reemplaza, se omite, error) y despues guardar. Solo se cargan especies en
+cartera; las demas quedan como estan. Valida modo y que stop y objetivo
+no esten invertidos. Endpoint `/api/gestion/importar`.
+
+**Proximo pago** en la ficha de un bono mostraba `[object Object]`: ahora
+la fecha, el monto cada 100 VN y si es renta, amortizacion o las dos.
+
 ## 0.64.0
 
 **Avisos de curva sin repetirse.** Desde el 05/10 salian unos 19 por

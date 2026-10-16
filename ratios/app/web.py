@@ -888,6 +888,13 @@ def crear_app(monitor):
         es_rf = tipo in ("bonos", "letras", "on", "bcra")
         modo = "ny" if niv.get("modo") == "ny" else \
             "tir" if (es_rf and niv.get("modo") != "precio") else "precio"
+        # Gestion pide el grafico en el modo que se esta editando, aunque
+        # todavia no este guardado (y con el ticker de NY que se escribio).
+        pedido = (request.args.get("modo") or "").strip().lower()
+        if pedido in ("precio", "tir", "ny") and (pedido != "tir" or es_rf):
+            modo = pedido
+        if request.args.get("ny"):
+            niv = dict(niv, ny=request.args.get("ny").strip().upper())
         out = {"simbolo": sim, "tipo": tipo}
         serie, v0 = [], None
 
@@ -903,10 +910,17 @@ def crear_app(monitor):
                 modo = "precio"     # sin historia de TIR: se grafica el precio
         if modo == "ny":
             pny = GE.precios_ny().get(sim) or {}
-            tk = (niv.get("ny") or pny.get("ticker") or sim).upper()
+            tk = (niv.get("ny") or pny.get("ticker") or GE.ticker_ny(sim, tipo) or sim).upper()
+            if pny.get("ticker") != tk or not pny.get("mercado"):
+                # ticker nuevo (se esta editando): se cotiza una vez para
+                # saber el mercado y el precio
+                mer, p = GE.cotizar_ny(monitor.iol, tk)
+                pny = {"ticker": tk, "mercado": mer, "precio": p} if mer else {}
             serie = ES.serie_cierres(monitor.iol, pny.get("mercado") or "nYSE",
-                                     tk, "NY:" + tk)
+                                     tk, "NY:" + tk) if pny else []
             v0 = pny.get("precio") or (serie[-1][1] if serie else None)
+            if not pny:
+                out["error"] = "Sin cotización en NY para %s." % tk
             out.update(ticker_ny=tk, precio_fecha=pny.get("fecha"))
         if modo == "precio":
             serie = ES.serie_cierres(monitor.iol, "bCBA", sim)
@@ -931,7 +945,7 @@ def crear_app(monitor):
         if niv.get("modo", "precio") == modo:
             out["stop"], out["obj"] = niv.get("stop"), niv.get("obj")
         if not serie or not v0 or not vol:
-            out["error"] = "Sin historia suficiente para estimar escenarios."
+            out.setdefault("error", "Sin historia suficiente para estimar escenarios.")
         return jsonify(out)
 
     @app.get("/api/tenencias")
@@ -1764,6 +1778,36 @@ def crear_app(monitor):
             except Exception as e:
                 log.warning("precio en NY de %s: %s", ", ".join(nuevos), e)
         return gestion_ver()
+
+    @app.post("/api/gestion/importar")
+    def gestion_importar():
+        """Niveles pegados como JSON. Con `simular` devuelve la vista previa
+        sin guardar; sin el, guarda solo lo valido y en cartera."""
+        import gestion as GE
+        import json as _json
+        d = request.get_json(silent=True) or {}
+        datos = d.get("datos")
+        if isinstance(datos, str):
+            try:
+                datos = _json.loads(datos)
+            except ValueError as e:
+                return jsonify({"error": "El texto no es un JSON válido: %s" % e}), 400
+        en_cartera = {t["simbolo"] for t in db.tenencias()
+                      if float(t.get("cantidad") or 0) != 0}
+        try:
+            filas, validos = GE.revisar_importacion(datos, en_cartera)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        if d.get("simular") or not validos:
+            return jsonify({"filas": filas, "guardados": 0})
+        GE.guardar({"niveles": validos})
+        ny = [s for s, n in validos.items() if n["modo"] == "ny"]
+        if ny:
+            try:
+                GE.actualizar_ny(monitor.iol, solo=ny)
+            except Exception as e:
+                log.warning("precios de NY al importar: %s", e)
+        return jsonify({"filas": filas, "guardados": len(validos)})
 
     @app.get("/api/gestion/niveles")
     def gestion_niveles():
