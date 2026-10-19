@@ -353,6 +353,11 @@ def cotizar_ny(iol, tk):
     return None, None
 
 
+# Si la ultima actualizacion de NY termino entera. Un 429 o un error de
+# red la dejan incompleta y el monitor la reintenta mas tarde en el dia.
+ny_completo = True
+
+
 def actualizar_ny(iol, solo=None):
     """Ultimo precio en NY de las especies con niveles en modo ny.
 
@@ -360,10 +365,12 @@ def actualizar_ny(iol, solo=None):
     guardado: despues es un solo pedido por especie.
     """
     from datetime import date as _d, datetime as _dt
+    global ny_completo
     niv = config()["niveles"]
     previos = precios_ny()
     out = dict(previos)
     hechos = 0
+    ny_completo = True
     for sim, n in niv.items():
         if n.get("modo") != "ny" or (solo and sim not in solo):
             continue
@@ -371,13 +378,19 @@ def actualizar_ny(iol, solo=None):
         prev = previos.get(sim) or {}
         orden = ([prev["mercado"]] if prev.get("ticker") == tk and prev.get("mercado")
                  else []) + [m for m in MERCADOS_NY if m != prev.get("mercado")]
+        de_red = 0
         for mer in orden:
             try:
                 c = iol.cotizacion(mer, tk) or {}
             except Exception as e:
-                if getattr(e, "status", None) == 429:
+                st = getattr(e, "status", None)
+                if st == 429:
+                    ny_completo = False
                     db.set_estado("ny_precios", json.dumps(out))
                     return hechos
+                # 404 = no cotiza en ese mercado; lo demas es transitorio
+                if st != 404:
+                    de_red += 1
                 continue
             p = c.get("ultimo") or c.get("ref")
             if p:
@@ -387,6 +400,8 @@ def actualizar_ny(iol, solo=None):
                 hechos += 1
                 break
         else:
+            if de_red:
+                ny_completo = False
             out[sim] = dict(prev, ticker=tk, error="sin cotización en NY")
     db.set_estado("ny_precios", json.dumps(out))
     return hechos

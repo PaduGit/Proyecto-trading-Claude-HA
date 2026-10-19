@@ -1,5 +1,38 @@
 # Registro de cambios
 
+## 0.66.0
+
+Correcciones de una auditoria externa, verificadas contra el codigo.
+
+**Robustez para operar sin mirar**
+- **Login al arrancar**: si IOL falla en el primer login (un 502 mientras
+  HA reinicia), el monitor sigue y pide el token en el primer pedido.
+  Antes el hilo terminaba y la app quedaba sin monitor.
+- **Precios de NY**: con un 429 o un corte de red la revision de las 12 no
+  se da por hecha; se reintenta cada ciclo hasta las 18.
+- **CER, BADLAR y TAMAR**: una fecha se marca sin dato solo si el BCRA
+  respondio. Un corte de red ya no la bloquea hasta reiniciar, y
+  "reintentar" limpia las fechas marcadas.
+- **Backfill de pares**: saltea los pares por TIR (leen `bono_hist`; deja
+  de pedir TZXM9 y sus 500 diarios), un bono sin historia arranca en su
+  emision y una especie que falla no se vuelve a pedir ese dia.
+
+**Datos**
+- **Moneda por la letra D/C**: es dolar solo si la especie es el bono base
+  mas esa letra (AL30 + D). DIP0 ya no se toma como cable en circuitos.
+- **Ultimo precio "viejo"** en BONOS: se compara contra la rueda del dia y
+  no contra la liquidacion T+1 (todo salia marcado como viejo).
+- **Duales en proximos cobros**: marcados como estimados (CER congelado y
+  TAMAR vigente).
+- **Canjes**: al costo se suma la distancia del ultimo precio al bid del
+  que sale y al ask del que entra (`costo_puntas_pct`, se ve en la
+  tarjeta). El residuo y el z siguen con el ultimo.
+- **Rulo**: `/api/rulo` deja fuera del ciclo los caminos con menos de
+  `monto_min_punta` en las puntas.
+
+**Gestion en el resumen**: los stops y objetivos tocados van primero en
+las oportunidades y en el resumen de `resumen_horas`.
+
 ## 0.65.0
 
 **OPCIONES: el subyacente con escenarios hasta el vencimiento.** Arriba

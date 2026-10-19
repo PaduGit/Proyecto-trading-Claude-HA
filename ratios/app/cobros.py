@@ -26,6 +26,13 @@ def _factor(cfg, cer_actual=0):
     """
     ajuste = (cfg.get("ajuste") or "").lower()
 
+    # Dual CER/TAMAR: el flujo ya trae el pago proyectado (el maximo de
+    # las dos patas, dual.filas), pero es proyeccion con CER congelado y
+    # TAMAR vigente, no un importe cerrado.
+    if (cfg.get("tipo") or "").strip().lower() == "dual":
+        nb = float(cfg.get("nominal_base") or 100) / 100.0
+        return nb, "ARS", True
+
     if ajuste == "cer":
         base = cfg.get("cer_base")
         if not base:

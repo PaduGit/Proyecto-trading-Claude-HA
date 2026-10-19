@@ -53,9 +53,17 @@ def _guardar(filas):
 
 
 def reintentar_ya():
-    """Limpia el enfriamiento: lo usa el botón de prueba."""
+    """Limpia el enfriamiento y las fechas marcadas sin dato: lo usa el
+    botón de prueba."""
     global _ultimo_fallo
     _ultimo_fallo = None
+    _fallidas.clear()
+
+
+# Si la ultima descarga llego al BCRA y respondio (200). Una fecha se
+# marca sin dato solo en ese caso: un corte de red no dice nada del dato
+# y antes dejaba la fecha bloqueada hasta reiniciar el add-on.
+_respondio = False
 
 
 def descargar(desde, hasta, verificar_ssl=True):
@@ -64,8 +72,9 @@ def descargar(desde, hasta, verificar_ssl=True):
     Misma secuencia de intentos que el CER: v4, después v3, y si el
     certificado falla reintenta sin verificarlo.
     """
-    global ultimo_error, ultima_respuesta, _ultimo_fallo
+    global ultimo_error, ultima_respuesta, _ultimo_fallo, _respondio
     from datetime import datetime as _dt
+    _respondio = False
 
     if _ultimo_fallo and (_dt.now() - _ultimo_fallo).total_seconds() < ESPERA_TRAS_FALLO:
         return 0
@@ -100,6 +109,7 @@ def descargar(desde, hasta, verificar_ssl=True):
         _ultimo_fallo = _dt.now()
         return 0
     _ultimo_fallo = None
+    _respondio = True
 
     # el JSON del BCRA tiene el mismo formato para todas las series
     filas = CER._extraer(d)
@@ -142,7 +152,8 @@ def valor(f, verificar_ssl=True):
         "ORDER BY fecha DESC LIMIT 1", (f,)).fetchone()
     if r2:
         return r2["valor"]
-    _fallidas.add(f)
+    if _respondio:
+        _fallidas.add(f)
     return None
 
 

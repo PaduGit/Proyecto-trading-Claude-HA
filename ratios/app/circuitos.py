@@ -119,9 +119,9 @@ def _efectivo(nominales, precio):
 
 def _moneda_de(especie, bono):
     """La moneda en que liquida una especie, por su sufijo."""
-    if especie == bono:
-        return "ARS"
-    return "MEP" if especie.endswith("D") else "CABLE"
+    import bonos as BO
+    letra = BO._letra_usd(especie, bono)
+    return "MEP" if letra == "D" else "CABLE" if letra == "C" else "ARS"
 
 
 def _paso(accion, especie, nominales, precio, moneda):

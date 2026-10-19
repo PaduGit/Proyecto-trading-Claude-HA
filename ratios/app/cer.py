@@ -92,9 +92,17 @@ def _intentar(url, params, verify):
 
 
 def reintentar_ya():
-    """Limpia el enfriamiento: lo usa el botón de prueba."""
+    """Limpia el enfriamiento y las fechas marcadas sin dato: lo usa el
+    botón de prueba."""
     global _ultimo_fallo
     _ultimo_fallo = None
+    _fallidas.clear()
+
+
+# Si la ultima descarga llego al BCRA y respondio (200). Una fecha se
+# marca sin dato solo en ese caso: un corte de red no dice nada del dato
+# y antes dejaba la fecha bloqueada hasta reiniciar el add-on.
+_respondio = False
 
 
 def descargar(desde, hasta, verificar_ssl=True):
@@ -103,8 +111,9 @@ def descargar(desde, hasta, verificar_ssl=True):
     Prueba v4, después v3, y si el certificado falla reintenta sin
     verificarlo: los sitios del Estado suelen tener la cadena incompleta.
     """
-    global ultimo_error, ultima_respuesta, _ultimo_fallo
+    global ultimo_error, ultima_respuesta, _ultimo_fallo, _respondio
     from datetime import datetime as _dt
+    _respondio = False
 
     # si el BCRA acaba de fallar, no lo golpeamos en cada consulta
     if _ultimo_fallo and (_dt.now() - _ultimo_fallo).total_seconds() < ESPERA_TRAS_FALLO:
@@ -137,6 +146,7 @@ def descargar(desde, hasta, verificar_ssl=True):
         _ultimo_fallo = _dt.now()
         return 0
     _ultimo_fallo = None
+    _respondio = True
 
     filas = _extraer(d)
     if filas:
@@ -178,7 +188,8 @@ def valor(f, verificar_ssl=True):
         (f,)).fetchone()
     if not r:
         global ultimo_error
-        _fallidas.add(f)
+        if _respondio:
+            _fallidas.add(f)
         ultimo_error = ("no hay CER guardado para %s ni antes. "
                         "Hay que descargar la serie desde esa fecha." % f)
         log.warning("CER: %s", ultimo_error)

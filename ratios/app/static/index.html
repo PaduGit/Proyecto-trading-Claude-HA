@@ -2016,7 +2016,7 @@ $("#ini-mov").addEventListener("click", () => {
    Una señal que sigue vigente es una linea que se queda, no un aviso
    nuevo; "desde" es cuando entro. */
 const OPOR_GRUPO = {1: "Sobre lo que tenés", 2: "Oportunidades", 3: "Para mirar"};
-const OPOR_TIPO = {canje: "canje", curva: "curva", par: "par", opciones: "opciones"};
+const OPOR_TIPO = {nivel: "gestión", canje: "canje", curva: "curva", par: "par", opciones: "opciones"};
 function oporDesde(ts){
   if(!ts) return "";
   const hoy = new Date().toISOString().slice(0, 10);
@@ -7294,6 +7294,7 @@ async function cargarCanjes(recalcular){
         ' · recorrido ' + num(f.recorrido_hacia, 3) + '%' +
       '</div><div class="u-block pos-pie">' +
       esc(f.familia) + ' · costo de ida y vuelta ' + num(f.costo_pct, 3) + '%' +
+        (f.costo_puntas_pct ? ' · puntas ' + num(f.costo_puntas_pct, 3) + '%' : '') +
       '</div><div class="acciones">' +
       '<button data-rotar="' + esc(f.desde) + '" data-entra="' +
         esc(f.hacia) + '" data-destino="rot-' + css(f.desde + f.hacia) +

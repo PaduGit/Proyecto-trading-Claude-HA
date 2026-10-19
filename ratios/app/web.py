@@ -635,7 +635,8 @@ def crear_app(monitor):
     def rulo_tabla():
         try:
             umbral = float(monitor.cfg.get("rulo_umbral_pct") or 0.6)
-            return jsonify(BO.rulo(_cot_bonos(), umbral))
+            return jsonify(BO.rulo(_cot_bonos(), umbral,
+                                   min_monto=monitor._min_monto()))
         except Exception as e:
             log.exception("rulo")
             return jsonify({"error": str(e)}), 500

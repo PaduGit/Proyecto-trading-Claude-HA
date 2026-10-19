@@ -44,8 +44,19 @@ def especies():
     for esp, base in equiv.items():
         if base in bonos:
             out[esp] = {"cronograma": base,
-                        "moneda": "USD" if esp.endswith(("D", "C")) else "ARS"}
+                        "moneda": "USD" if _letra_usd(esp, base) else "ARS"}
     return out
+
+
+def _letra_usd(esp, base):
+    """D o C solo cuando la especie es el bono base mas esa letra
+    (AL30D = AL30 + D). Mirar solo la ultima letra marcaba como dolar
+    cualquier ticker en pesos que terminara en D o C."""
+    if esp == base + "D":
+        return "D"
+    if esp == base + "C":
+        return "C"
+    return None
 
 
 # -- MEP ---------------------------------------------------------------
@@ -126,9 +137,10 @@ def etiqueta(cfg, fila=None):
 
 def _moneda_cotiza(info, simbolo):
     """En qué moneda liquida la especie: ARS, MEP o CABLE."""
-    if simbolo.endswith("D"):
+    letra = _letra_usd(simbolo, (info or {}).get("cronograma") or "")
+    if letra == "D":
         return "MEP"
-    if simbolo.endswith("C"):
+    if letra == "C":
         return "CABLE"
     return "ARS"
 
@@ -183,7 +195,7 @@ def _familia(cfg, info, simbolo=""):
         return "TASA$" + sufijo
     ley = "AR" if (cfg.get("ley") or "").startswith("arg") else "NY"
     moneda = info["moneda"]
-    if moneda == "USD" and simbolo.endswith("C"):
+    if moneda == "USD" and _letra_usd(simbolo, info["cronograma"]) == "C":
         moneda = "CABLE"
     return "%s-%s%s" % (moneda, ley, sufijo)
 
@@ -222,6 +234,23 @@ def factor_cer(cfg, cer_actual=0):
     if not base or not cer_actual:
         return 0.0
     return float(cer_actual) / base
+
+
+def ultima_rueda(d=None):
+    """La rueda de hoy, o la ultima si hoy no hay. Un last de esa fecha
+    no es viejo; antes se comparaba contra la liquidacion (T+1) y todo
+    last, aun el de hoy, salia marcado como viejo."""
+    import calendario as CAL
+    d = d or date.today()
+    for _ in range(15):
+        try:
+            if CAL.hay_rueda(d):
+                return d
+        except Exception:
+            if d.weekday() < 5:
+                return d
+        d -= timedelta(days=1)
+    return d
 
 
 def liquidacion(d=None):
@@ -394,7 +423,7 @@ def fila(simbolo, info, cot, mep, liq=None, cer_actual=0):
         "tir_ask": tir_ask,
         "tir_last": tir_last,
         "last_viejo": bool(cot.get("fecha") and str(cot["fecha"])[:10] <
-                           liq.isoformat()),
+                           ultima_rueda().isoformat()),
         "md": md,
         "vencimiento": str(cfg["vencimiento"])[:10],
         "dual": _dual_resumen(cfg, liq, last or ask or bid),
@@ -452,9 +481,9 @@ def _brechas(filas):
     """
     por_bono = {}
     for f in filas:
-        s = f["simbolo"]
-        if s.endswith("D") or s.endswith("C"):
-            por_bono.setdefault(s[:-1], {})[s[-1]] = f
+        letra = _letra_usd(f["simbolo"], f.get("cronograma") or "")
+        if letra:
+            por_bono.setdefault(f["cronograma"], {})[letra] = f
 
     for base, par in por_bono.items():
         d, c = par.get("D"), par.get("C")
@@ -489,8 +518,9 @@ def detalle(simbolo, cot, liq=None, par_mep=("AL30", "AL30D"), cer_actual=0):
         return None
 
     # la brecha necesita la especie hermana (D contra C)
-    if simbolo.endswith(("D", "C")):
-        otra = simbolo[:-1] + ("C" if simbolo.endswith("D") else "D")
+    letra = _letra_usd(simbolo, info["cronograma"])
+    if letra:
+        otra = info["cronograma"] + ("C" if letra == "D" else "D")
         if otra in esps and cot.get(otra):
             g = fila(otra, esps[otra], cot[otra], mep, liq, cer_actual)
             if g:
@@ -586,11 +616,15 @@ def _tc(pesos, dolarizada):
     }
 
 
-def rulo(cot, umbral_pct=0.6):
+def rulo(cot, umbral_pct=0.6, min_monto=0):
     """Tipos de cambio implícitos por bono y el ciclo más conveniente.
 
     Si el bono más barato para comprar dólares está por debajo del más caro
     para venderlos, hay un rulo: comprás por uno y vendés por el otro.
+
+    `min_monto` (pesos, el mismo `monto_min_punta` de los canjes): un
+    camino cuyas puntas no alcanzan esa plata se muestra pero no entra en
+    el ciclo. Una lamina suelta en el libro armaba rulos que no existen.
     """
     bonos, _ = cargar()
     filas = []
@@ -604,6 +638,13 @@ def rulo(cot, umbral_pct=0.6):
             if cot.get(esp):
                 f[clave] = _tc(p, cot[esp])
                 f[clave]["especie"] = esp
+                if min_monto:
+                    # nominales que pasan por las dos puntas, en pesos
+                    for dire, q, px in (("comprar", "q_comprar", p.get("venta")),
+                                        ("vender", "q_vender", p.get("compra"))):
+                        monto = (f[clave][q] or 0) * (px or 0) / 100.0
+                        f[clave]["monto_" + dire] = monto
+                        f[clave]["chica_" + dire] = monto < min_monto
         if "mep" in f or "cable" in f:
             # brecha cable/mep del propio bono, con la punta de compra
             m = (f.get("mep") or {}).get("comprar")
@@ -613,7 +654,8 @@ def rulo(cot, umbral_pct=0.6):
 
     def _mejor(clave, direccion, peor=False):
         cand = [(f[clave][direccion], f["bono"]) for f in filas
-                if f.get(clave) and f[clave].get(direccion)]
+                if f.get(clave) and f[clave].get(direccion)
+                and not f[clave].get("chica_" + direccion)]
         if not cand:
             return None, None
         return (max(cand) if peor else min(cand))
@@ -630,6 +672,7 @@ def rulo(cot, umbral_pct=0.6):
                 "umbral_pct": umbral_pct,
                 "hay_rulo": (caro / barato - 1) * 100 >= umbral_pct,
                 "mismo_bono": b_bono == c_bono,
+                "min_monto": min_monto,
             }
 
     filas.sort(key=lambda f: ((f.get("mep") or {}).get("comprar") or 9e9))

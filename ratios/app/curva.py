@@ -183,7 +183,9 @@ def canjes(filas, an, tenidos, costo_pct=0.5, min_ganancia=1.0,
     Con el residuo en puntos basicos y la duration modificada en anios,
     el precio esperado se mueve MD x (residuo - media) / 100 por ciento.
     La ganancia del canje es la diferencia entre las dos puntas, menos lo
-    que cuesta salir y entrar.
+    que cuesta salir y entrar: comisiones (`costo_pct`) y la distancia
+    del ultimo precio a la punta que se toca (bid del que sale, ask del
+    que entra).
 
     Se compara solo dentro de la misma familia y con duration parecida:
     pasar de un tramo corto a uno largo puede dar mas nominales y dejar
@@ -204,6 +206,20 @@ def canjes(filas, an, tenidos, costo_pct=0.5, min_ganancia=1.0,
     comprar AO28 (z +1,13). Sin z del que sale no se compara.
     """
     por_sim = {f["simbolo"]: f for f in filas}
+
+    def puntas(f, lado):
+        """Lo que se pierde por operar contra la punta y no al ultimo
+        precio, en % del ultimo. El residuo y su historia se miden con el
+        ultimo operado (bono_hist no guarda puntas): medir el residuo de
+        hoy contra bid o ask sesgaria el z. Por eso la punta entra como
+        costo del canje. Si el ultimo quedo del otro lado de la punta, no
+        se cuenta a favor."""
+        last = f.get("last")
+        px = f.get("bid") if lado == "bid" else f.get("ask")
+        if not last or not px:
+            return 0.0
+        d = (last - px) if lado == "bid" else (px - last)
+        return max(0.0, d / last * 100.0)
 
     def recorrido(sim):
         d = an.get(sim) or {}
@@ -249,7 +265,8 @@ def canjes(filas, an, tenidos, costo_pct=0.5, min_ganancia=1.0,
             rec_b = recorrido(osim)
             if rec_b is None:
                 continue
-            gana = rec_b - rec_a - costo_pct
+            c_puntas = puntas(f, "bid") + puntas(otro, "ask")
+            gana = rec_b - rec_a - costo_pct - c_puntas
             if gana < min_ganancia:
                 continue
             if not mejor or gana > mejor["ganancia_pct"]:
@@ -261,6 +278,7 @@ def canjes(filas, an, tenidos, costo_pct=0.5, min_ganancia=1.0,
                     "md_hacia": otro["md"], "tir_hacia": otro.get("tir_last"),
                     "recorrido_hacia": rec_b,
                     "monto_hacia": monto_punta(otro, "ask", mep),
+                    "costo_puntas_pct": c_puntas,
                 }
         if mejor:
             mejor.update({

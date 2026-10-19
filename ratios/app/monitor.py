@@ -1070,6 +1070,29 @@ class Monitor:
             return r["t"] if r else None
 
         out = []
+        # Stop y objetivo de Gestion que siguen tocados: primero de todo.
+        # El aviso sale una sola vez al tocarse; si no se lo vio, el
+        # resumen de las 12 y las 16:30 lo vuelve a poner adelante.
+        try:
+            import gestion as GE
+            niv = GE.config()["niveles"]
+            for sim, que in sorted(GE.tocados().items()):
+                n = niv.get(sim) or {}
+                modo = n.get("modo") or "precio"
+                nivel = n.get("stop") if que == "stop" else n.get("obj")
+                fn = (lambda v: "%.2f%% de TIR" % v) if modo == "tir" else \
+                    (lambda v: "US$ %s en NY" % _n(v)) if modo == "ny" else _n
+                out.append({
+                    "tipo": "nivel", "prioridad": 1, "clave": sim,
+                    "titulo": "%s %s %s" % ("🛑" if que == "stop" else "🎯", sim,
+                                            "en el stop" if que == "stop" else "en el objetivo"),
+                    "detalle": ("nivel %s · " % fn(nivel) if nivel is not None else "") +
+                               "cargado en Gestión",
+                    # arriba de todo dentro de la prioridad 1
+                    "valor": 1e9 if que == "stop" else 1e8,
+                    "desde": desde(sim, "nivel_" + que)})
+        except Exception as e:
+            log.debug("oportunidades, niveles: %s", e)
         for f in canjes:
             out.append({
                 "tipo": "canje", "prioridad": 1,
@@ -2523,13 +2546,30 @@ class Monitor:
         se gastaba una llamada por ticker en cada arranque para traer un
         dato que iba a llegar igual, o que todavia no existe.
         """
+        # Los pares por TIR leen bono_hist: sus cierres no hacen falta y
+        # pedirlos daba 500 todos los dias en las Lecap/Boncap (TZXM9).
         simbolos = set()
         for p in self.pares:
+            if p.get("modo") == "tir":
+                continue
             simbolos.add((p["mercado"], p["num"]))
             simbolos.add((p["mercado"], p["den"]))
         hasta = datetime.now().date() - timedelta(days=1)
+        hoy = datetime.now().date().isoformat()
+        fallos = getattr(self, "_backfill_fallos", {})
+        self._backfill_fallos = fallos
+        try:
+            import bonos as BO
+            import historico as HI
+            catalogo, _eq = BO.cargar()
+            esps = BO.especies()
+        except Exception:
+            catalogo, esps, HI = {}, {}, None
 
         for mercado, sim in sorted(simbolos):
+            # una especie que fallo hoy no se vuelve a pedir hasta manana
+            if fallos.get(sim) == hoy:
+                continue
             ultimo = db.ultimo_cierre_guardado(sim)
             if ultimo:
                 desde = datetime.fromisoformat(ultimo).date() + timedelta(days=1)
@@ -2537,11 +2577,18 @@ class Monitor:
                     continue
             else:
                 desde = hasta - timedelta(days=BACKFILL_DIAS)
+                # un bono no tiene historia antes de su emision
+                info = esps.get(sim)
+                if HI and info and catalogo.get(info["cronograma"]):
+                    desde = max(desde, HI.inicio_de(catalogo[info["cronograma"]]))
+                if desde > hasta:
+                    continue
             try:
                 datos = self.iol.serie(mercado, sim, desde.isoformat(),
                                        hasta.isoformat())
             except IOLError as e:
-                log.warning("historico %s: %s", sim, e)
+                fallos[sim] = hoy
+                log.warning("historico %s: %s (se reintenta manana)", sim, e)
                 continue
             filas = []
             for punto in datos or []:
@@ -2566,12 +2613,16 @@ class Monitor:
             self._cargar_snapshot()
         except Exception as e:
             log.debug("snapshot guardado: %s", e)
+        # Si IOL falla al arrancar (un 502 de su lado mientras HA reinicia)
+        # el monitor sigue: el token se vuelve a pedir solo en el primer
+        # pedido (`_asegurar_token`, con un minuto de espera entre
+        # intentos). Antes el hilo terminaba y la app quedaba sin
+        # monitor hasta reiniciar el add-on.
         try:
             self.iol.login()
         except Exception as e:
             self.ultimo_error = str(e)
-            log.error("no se pudo autenticar: %s", e)
-            return
+            log.error("no se pudo autenticar al arrancar (se reintenta solo): %s", e)
 
         try:
             import calendario as CAL
@@ -2605,13 +2656,22 @@ class Monitor:
                 ahora = datetime.now()
                 if ahora.weekday() < 5 and ahora.hour >= 12 and \
                         db.get_estado("ny_dia") != ahora.date().isoformat():
+                    # El dia se marca hecho solo si la revision termino
+                    # entera: con un 429 o un corte de red se reintenta en
+                    # el ciclo siguiente (cada poll_seconds) hasta las 18.
+                    completa = True
                     try:
                         import gestion as GE
                         if any(n.get("modo") == "ny" for n in GE.config()["niveles"].values()):
                             log.info("precios de NY: %d", GE.actualizar_ny(self.iol))
+                            completa = GE.ny_completo
                     except Exception as e:
+                        completa = False
                         log.warning("precios de NY: %s", e)
-                    db.set_estado("ny_dia", ahora.date().isoformat())
+                    if completa or ahora.hour >= 18:
+                        db.set_estado("ny_dia", ahora.date().isoformat())
+                    else:
+                        log.info("precios de NY incompletos: se reintenta en el próximo ciclo")
                 if self._en_horario():
                     self.ciclo()
                     self.ultimo_error = None
