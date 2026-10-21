@@ -1649,9 +1649,16 @@ def guardar_tenencias(filas, reemplazar="todo", precios=None):
     """
     c = conn()
     previo = {}
-    for r in c.execute("SELECT broker, simbolo, ppc, fecha_alta, precision, "
-                       "ppc_base FROM tenencia"):
+    for r in c.execute("SELECT * FROM tenencia"):
         previo[(r["broker"], r["simbolo"])] = r
+    # Todo lo que la carga no trae se conserva. Antes solo se conservaban
+    # PPC, base, fecha de alta y precision: el PPC en dolares, el par, el
+    # nombre del FCI y las marcas de la posicion se borraban cada vez que
+    # se recargaba un broker (0.67.1).
+    cols = [r["name"] for r in c.execute("PRAGMA table_info(tenencia)")]
+    extra = [k for k in cols if k not in (
+        "broker", "simbolo", "cantidad", "tipo", "ts", "ppc", "fecha_alta",
+        "precision", "ppc_base")]
     if reemplazar == "todo":
         c.execute("DELETE FROM tenencia")
     elif reemplazar:
@@ -1688,11 +1695,23 @@ def guardar_tenencias(filas, reemplazar="todo", precios=None):
             pbase = None
         if pbase is None and antes:
             pbase = antes["ppc_base"]
+        vals = []
+        for k in extra:
+            v = f.get(k) if f.get(k) not in (None, "") else None
+            if v is not None and k in ("ppc_usd", "stop", "objetivo", "ratio_min", "ratio_max"):
+                try:
+                    v = float(v)
+                except (TypeError, ValueError):
+                    v = None
+            if v is None and antes:
+                v = antes[k]
+            vals.append(v)
         c.execute(
             "INSERT OR REPLACE INTO tenencia "
             "(broker, simbolo, cantidad, tipo, ts, ppc, fecha_alta, "
-            "precision, ppc_base) VALUES (?,?,?,?,?,?,?,?,?)",
-            (br, sim, cant, tipo, ahora, ppc, alta, prec, pbase))
+            "precision, ppc_base" + "".join(", " + k for k in extra) + ") VALUES (" +
+            ",".join("?" * (9 + len(extra))) + ")",
+            (br, sim, cant, tipo, ahora, ppc, alta, prec, pbase, *vals))
         brokers.add(br)
         n += 1
     c.commit()

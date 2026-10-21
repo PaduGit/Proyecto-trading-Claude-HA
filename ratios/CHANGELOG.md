@@ -1,5 +1,13 @@
 # Registro de cambios
 
+## 0.67.1
+
+**Recargar un broker ya no borra datos de la posicion.** Al cargar la
+tenencia (JSON o el boton de IOL) se conservaban solo PPC, base, fecha de
+alta y precision: el **PPC en dolares**, el par, el nombre del FCI, las
+marcas de revisar y los rangos se borraban en cada recarga. Ahora se
+conserva todo lo que la carga no trae. El JSON acepta tambien `ppc_usd`.
+
 ## 0.67.0
 
 **Boletos de Veta desde Google Drive.** Un script de Google en la cuenta
