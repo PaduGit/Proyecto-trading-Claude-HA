@@ -30,6 +30,7 @@ tocarse (`cruces`).
 
 import json
 import logging
+from datetime import datetime
 
 import db
 
@@ -302,6 +303,7 @@ def cruces(precios, tir_md):
     rearma recien cuando vuelve adentro del rango: un precio que oscila
     sobre el stop no avisa en cada ciclo. Devuelve [(simbolo, que, nivel,
     actual, modo)] y guarda el estado."""
+    purgar_sin_tenencia()
     g = _leer()
     niv, avisados = g.get("niveles") or {}, g.get("avisados") or {}
     ny = precios_ny()
@@ -323,8 +325,33 @@ def cruces(precios, tir_md):
     return nuevos
 
 
+def purgar_sin_tenencia():
+    """Archiva los niveles de las especies que ya no estan en ninguna
+    cuenta, salga como salga la posicion (boletos, JSON, IOL o a mano).
+    El motivo es el nivel tocado si lo habia, o "sin tenencia". Sin
+    ninguna tenencia cargada no toca nada: una base vacia no es una
+    cartera vendida."""
+    try:
+        tenidos = {r[0] for r in db.conn().execute(
+            "SELECT simbolo FROM tenencia GROUP BY simbolo HAVING SUM(cantidad) > 0")}
+    except Exception:
+        return []
+    if not tenidos:
+        return []
+    g = _leer()
+    fuera = [s_ for s_ in (g.get("niveles") or {}) if s_ not in tenidos]
+    avisados = g.get("avisados") or {}
+    hechos = []
+    for s_ in fuera:
+        if archivar_nivel(s_, avisados.get(s_) or "sin tenencia", None,
+                          datetime.now().date().isoformat(), None):
+            hechos.append(s_)
+    return hechos
+
+
 def tocados():
     """Lo que esta hoy en stop u objetivo, para Inicio."""
+    purgar_sin_tenencia()
     return dict(_leer().get("avisados") or {})
 
 

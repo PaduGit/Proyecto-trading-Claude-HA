@@ -1,5 +1,19 @@
 # Registro de cambios
 
+## 0.67.2
+
+**Niveles de especies que ya no se tienen.** Gestion archiva los niveles
+de toda especie que no esta en ninguna cuenta, salga como salga la
+posicion (boletos, JSON, IOL o a mano), con el motivo del nivel tocado o
+"sin tenencia" (`gestion.purgar_sin_tenencia`). Dejan de figurar en
+Inicio, oportunidades y el resumen. Antes solo se archivaban al confirmar
+boletos: TRAN seguia en el stop despues de venderlo.
+
+**Bonos caros que no se tienen: sin aviso.** "Caro contra su curva" avisa
+solo si el bono esta en alguna cuenta, en cualquiera de sus versiones
+(pesos, D o C, por cronograma). Tampoco entran en oportunidades. La señal
+se sigue registrando para medir aciertos. "Barato" avisa para todos.
+
 ## 0.67.1
 
 **Recargar un broker ya no borra datos de la posicion.** Al cargar la

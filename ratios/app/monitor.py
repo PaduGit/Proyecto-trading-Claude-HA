@@ -1049,7 +1049,8 @@ class Monitor:
         1. Sobre lo que ya tenes: canjes, pares donde estas del lado que
            no conviene, bonos tuyos caros contra su curva.
         2. Sin tenencia: bonos baratos, pares sin posicion.
-        3. Informativas: bonos caros que no tenes.
+        3. Informativas: opciones. (Un bono caro que no se tiene no entra:
+           no hay accion posible.)
 
         Dentro de cada prioridad, por lo que se espera ganar (canje y
         curva, en %) o por |z| (pares). `desde` es el ultimo aviso de esa
@@ -1122,9 +1123,18 @@ class Monitor:
                     f.get("z_hacia") or 0),
                 "valor": f["ganancia_pct"], "desde": desde(f["desde"], "canje"),
                 "sale": f["desde"], "entra": f["hacia"]})
+        try:
+            import bonos as BO
+            esps = BO.especies()
+        except Exception:
+            esps = {}
+        cron = lambda x: (esps.get(x) or {}).get("cronograma") or x
+        tenidos_cron = {cron(x) for x in tenidos}
         for sim, v in curva.items():
             barato = v["zona"] == "barato"
-            tengo = sim in tenidos
+            tengo = cron(sim) in tenidos_cron
+            if not barato and not tengo:
+                continue    # caro y sin tenencia: no hay nada que hacer
             pr = 2 if barato else (1 if tengo else 3)
             out.append({
                 "tipo": "curva", "prioridad": pr, "clave": sim,
@@ -1432,6 +1442,12 @@ class Monitor:
         enviadas = 0
         vigentes = {}
         racha = self._curva_racha
+        # Un bono caro solo sirve si se tiene: no se puede vender en corto.
+        # Se compara por cronograma, asi AL30D, AL30C y AL30 (o DIP0 y
+        # DICP) cuentan como el mismo bono.
+        esps = BO.especies()
+        cron = lambda x: (esps.get(x) or {}).get("cronograma") or x
+        tenidos_cron = {cron(x) for x in saldos_tenencia()}
         hoy = date.today().isoformat()
         # Una vez por dia por bono y zona, contando C/D/pesos como uno.
         dia = self._curva_dia()
@@ -1492,6 +1508,18 @@ class Monitor:
             if (cot.get(sim) or {}).get("punta_vieja"):
                 continue    # punta de antes del cierre: no es operable
 
+            import senales as SE
+            if zona == "caro" and cron(sim) not in tenidos_cron:
+                # Sin tenencia no hay accion: no se avisa ni se registra la
+                # alerta, pero la señal se mide igual (estadistica de la
+                # curva).
+                dia["claves"].append(clave)
+                self._curva_dia(dia)
+                SE.registrar("curva", sim, direccion=zona, z=z, entra=None,
+                             sale=sim, md_entra=None, md_sale=f.get("md"),
+                             r_entra=None, r_sale=d["residuo"])
+                log.info("curva: %s caro sin tenencia, sin aviso (z=%+.2f)", sim, z)
+                continue
             icono = "🟢" if zona == "barato" else "🔴"
             que = "barato" if zona == "barato" else "caro"
             L = ["%s <b>%s</b> %s contra su curva" % (icono, sim, que),
@@ -1516,7 +1544,6 @@ class Monitor:
             dia["claves"].append(clave)
             self._curva_dia(dia)
             db.registrar_alerta(sim, "curva_" + zona, d["residuo"], umbral, msg)
-            import senales as SE
             barato = zona == "barato"
             SE.registrar("curva", sim, direccion=zona, z=z,
                          entra=sim if barato else None,
