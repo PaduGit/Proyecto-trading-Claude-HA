@@ -586,6 +586,26 @@ details.par-menu .menu{top:24px}
 .ini-grid small{ display:block; font-size:11px; font-weight:400; color:var(--muted); }
 .ini-ir{ border:0; background:none; color:var(--barato); font-size:13px; padding:8px 0 0; cursor:pointer; min-height:36px; }
 @media (max-width:520px){ .ini-grid{ grid-template-columns:repeat(2,1fr); } }
+/* boletos de Veta */
+.bol-fuente{ display:grid; grid-template-columns:auto 1fr; gap:4px 10px; align-items:center; font-size:14px; margin:6px 0 10px; }
+.bol-fuente i{ width:10px; height:10px; border-radius:50%; background:var(--sage); }
+.bol-fuente i.mal{ background:var(--coral); } .bol-fuente i.off{ background:var(--muted); }
+.bol-fuente .f{ grid-column:2; font-size:13px; color:var(--muted); }
+.bol-g{ display:grid; gap:8px; padding:12px; border-radius:10px; background:var(--panel-2); margin-top:8px; }
+.bol-g .cab{ display:grid; grid-template-columns:6px 1fr auto; gap:10px; }
+.bol-g .cab i{ border-radius:3px; } .bol-g .cab b{ display:block; } .bol-g .cab span{ font-size:13px; color:var(--muted); }
+.bol-g .r{ text-align:right; font-weight:600; } .bol-g .r small{ display:block; font-weight:400; font-size:12px; color:var(--muted); }
+.bol-g .sel{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; font-size:13px; color:var(--muted); }
+.bol-g select{ background:var(--panel); color:var(--bone); border:1px solid var(--rule); border-radius:8px; min-height:36px; padding:0 8px; font:inherit; max-width:100%; }
+.bol-g .av{ font-size:13px; color:var(--amber); }
+.bol-g details{ font-size:12px; color:var(--muted); } .bol-g details summary{ cursor:pointer; min-height:28px; font-size:13px; font-weight:400; color:var(--muted); }
+.bol-tabla{ overflow-x:auto; margin-top:10px; }
+.bol-tabla table{ border-collapse:collapse; width:100%; font-size:13px; }
+.bol-tabla th, .bol-tabla td{ padding:6px 8px; text-align:right; border-bottom:1px solid var(--rule); white-space:nowrap; }
+.bol-tabla th:first-child, .bol-tabla td:first-child{ text-align:left; }
+.bol-tabla th{ color:var(--muted); font-weight:500; font-size:12px; }
+.bol-acc{ display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+.bol-nota{ font-size:13px; color:var(--muted); }
 /* tenencias 0.59.0 */
 .aviso-mov{ display:flex; align-items:center; gap:10px; width:100%; margin:0 0 12px; padding:12px 14px;
   border-radius:12px; background:rgba(224,180,90,.12); color:var(--amber); border:0; text-align:left;
@@ -725,6 +745,7 @@ button, .periodos button, .op-acc button{
 label{ font-size:12px; color:var(--muted); }
 dialog h2{ font-size:17px; font-weight:600; }
 summary{ font-size:16px; font-weight:600; }
+.bol-g details summary{ font-size:13px; font-weight:400; color:var(--muted); }
 
 /* superficies y botones */
 .par, .pos, .hallazgo, dialog{ border-radius:12px; border-color:transparent; }
@@ -987,8 +1008,14 @@ input, select, textarea{ border-radius:8px; }
 
   <section id="v-pos" hidden>
     <button class="aviso-mov" id="mov-aviso" hidden></button>
+    <button class="aviso-mov" id="bol-aviso" hidden></button>
     <div id="cart-out"></div>
     <div id="estr-tarjetas" class="cart-bloque" hidden></div>
+    <details id="bol-caja" class="cart-bloque">
+      <summary class="cart-tit">Boletos de Veta <small class="u-muted" id="bol-sub"></small></summary>
+      <div id="bol-out"><div class="vacio">Cargando…</div></div>
+      <input type="file" id="bol-archivo" accept="application/pdf,.pdf" hidden>
+    </details>
     <div id="filtro-resumen" class="u-mb-10 u-ptr filtro-fila">
       <span class="filtro-etq">Filtros</span>
       <div class="u-m-0 periodos">
@@ -1557,7 +1584,7 @@ function irA(v){
     .forEach(x => $("#v-"+x).hidden = (x !== v));
   if(v === "inicio") cargarInicio();
   if(v === "gest") cargarGestion();
-  if(v === "pos"){ cargarTenencias(); cargarCobros(); }
+  if(v === "pos"){ cargarTenencias(); cargarCobros(); cargarBoletos(); }
   /* Los pares se administran desde Ratios: la lista de grupos tiene que
      estar cargada ahi, no en Tenencias. */
   if(v === "panel") cargarPosicion();
@@ -2011,12 +2038,182 @@ $("#ini-mov").addEventListener("click", () => {
     caja.scrollIntoView({behavior: "smooth", block: "start"}); }, 300);
 });
 
+/* ---------- boletos de Veta ---------- */
+/* Lo que el add-on leyo de la carpeta de Drive (a las 4) o de un PDF
+   subido a mano. Nada se aplica solo: cada especie va a su estrategia,
+   la venta con su motivo, y una venta y una compra se unen como
+   rotacion solo si se marca. */
+let bolDatos = null;
+async function cargarBoletos(){
+  let d;
+  try{ d = await (await fetch(base + "api/boletos")).json(); }
+  catch(e){ d = {error: "No se pudo consultar."}; }
+  pintarBoletos(d);
+}
+function bolCant(g, v){ return ent(v) + (g.base === 100 ? " VN" : ""); }
+function pintarBoletos(d, msg){
+  bolDatos = d;
+  const out = $("#bol-out"), av = $("#bol-aviso");
+  if(!out) return;
+  if(d.error && !d.vista){ out.innerHTML = '<div class="msg error">' + esc(d.error) + '</div>'; return; }
+  const v = d.vista || {grupos: []}, gs = v.grupos || [], f = d.fuente || {};
+  const nBol = gs.reduce((a, g) => a + g.boletos.length, 0);
+  if(av){
+    av.hidden = !gs.length;
+    av.innerHTML = '<span>●</span><span><b>' + nBol + ' boleto' + (nBol === 1 ? "" : "s") + ' de ' + esc(d.broker) +
+      '</b> para confirmar: ' + gs.slice(0, 2).map(g => g.tipo === "caucion" ? "caución" : (g.tipo === "compra" ? "compra " : "venta ") + esc(g.simbolo)).join(", ") +
+      (gs.length > 2 ? "…" : "") + '</span><span>›</span>';
+  }
+  $("#bol-sub").textContent = gs.length ? "· " + nBol + " para confirmar" : "";
+  if(gs.length) $("#bol-caja").open = true;
+  const fh = t => t ? t.slice(8, 10) + "/" + t.slice(5, 7) + " " + t.slice(11, 16) : "";
+  let h = '<div class="bol-fuente">' +
+    (!d.configurado ? '<i class="off"></i><span><b>Carpeta de Drive</b> sin configurar</span><span class="f">Cargá boletos_drive_carpeta y boletos_drive_clave en la configuración del add-on. Mientras tanto podés subir el PDF a mano.</span>'
+      : f.ultimo_error ? '<i class="mal"></i><span><b>Carpeta de Drive</b> · error ' + esc(fh(f.ultima_revision)) + '</span><span class="f">' + esc(f.ultimo_error) + '</span>'
+      : '<i></i><span><b>Carpeta de Drive</b> · revisada ' + esc(fh(f.ultima_revision) || "todavía no") + '</span><span class="f">Se revisa todos los días a las 4:00. ' +
+        (f.archivos ? f.archivos + ' PDF leídos en total.' : '') + '</span>') + '</div>' +
+    '<div class="bol-acc">' + (d.configurado ? '<button class="corto secundario" id="bol-revisar">Revisar Drive ahora</button>' : '') +
+    '<button class="corto secundario" id="bol-subir">Subir PDF</button></div>';
+  if(msg) h += '<div class="msg ' + (msg.error ? "error" : "ok") + ' u-mt-8">' + esc(msg.texto) + '</div>';
+  const inf = d.informativos || [];
+  if(inf.length) h += '<div class="bol-nota u-mt-8">' + inf.length + ' boleto' + (inf.length === 1 ? "" : "s") +
+    ' que no cambia' + (inf.length === 1 ? "" : "n") + ' la tenencia, solo informativo' + (inf.length === 1 ? "" : "s") + ': ' +
+    inf.map(x => esc((x.fecha || "").slice(8, 10) + "/" + (x.fecha || "").slice(5, 7) + " " + x.descripcion)).join(" · ") + '</div>';
+  if(!gs.length){
+    out.innerHTML = h + '<div class="vacio u-mt-8">Nada para confirmar.</div>';
+    return;
+  }
+  const estr = d.estrategias || [];
+  const optEstr = sel => '<option value="">Sin estrategia</option>' + estr.map(e =>
+    '<option value="' + e.id + '"' + (e.id === sel ? " selected" : "") + '>' + esc(e.nombre) + '</option>').join("");
+  const MOT = {stop: "Stop", objetivo: "Objetivo", propio: "Decisión propia", "sin motivo": "Sin motivo"};
+  h += gs.map((g, i) => {
+    if(g.tipo === "caucion"){
+      const col = g.lado === "colocadora";
+      return '<div class="bol-g" data-bol-k="' + esc(g.clave) + '"><div class="cab"><i style="background:var(--barato)"></i>' +
+        '<div><b>Caución ' + esc(g.lado) + ' · $ ' + dec(g.capital, 2) + '</b><span>' + esc(g.fecha.slice(8, 10) + "/" + g.fecha.slice(5, 7)) +
+        ' · ' + dec(g.tasa, 2) + '% TNA · ' + (g.apertura != null ? "apertura" : "") + (g.apertura != null && g.cierre != null ? " y " : "") +
+        (g.cierre != null ? "cierre" : "") + '</span></div>' +
+        '<div class="r">' + (g.interes_neto != null ? (g.interes_neto >= 0 ? "+ " : "− ") + '$ ' + dec(Math.abs(g.interes_neto), 2) + '<small>' + (col ? "interés neto" : "costo neto") + '</small>'
+          : (g.efecto_ars >= 0 ? "+ " : "− ") + '$ ' + dec(Math.abs(g.efecto_ars), 2) + '<small>pesos</small>') + '</div></div>' +
+        '<div class="sel"><label><input type="checkbox" data-bol-ap' + (g.ya_incluido ? "" : " checked") + '> Aplicar</label>' +
+        '<span>Pesos ' + (g.efecto_ars >= 0 ? "+ " : "− ") + '$ ' + dec(Math.abs(g.efecto_ars), 2) +
+        (Math.abs(g.efecto_caucion) > 1e-6 ? ' · línea CAUCION ' + (g.efecto_caucion >= 0 ? "+ " : "− ") + '$ ' + dec(Math.abs(g.efecto_caucion), 2) : "") + '</span></div>' +
+        (g.avisos || []).map(a => '<div class="av">' + esc(a) + '</div>').join("") +
+        '<details><summary>Ver boletos</summary>' + g.boletos.map(b => 'BOL ' + esc(b.bol) + ' · ' + esc((b.tipo || "").replace("caucion_", "")) +
+          ' · liquida ' + esc((b.liquida || "").slice(8, 10) + "/" + (b.liquida || "").slice(5, 7)) + ' · $ ' + dec(b.neto, 2)).join("<br>") + '</details></div>';
+    }
+    const compra = g.tipo === "compra";
+    return '<div class="bol-g" data-bol-k="' + esc(g.clave) + '"><div class="cab"><i style="background:var(--' + (compra ? "sage" : "coral") + ')"></i>' +
+      '<div><b>' + (compra ? "Compra " : "Venta ") + esc(g.simbolo) + ' · ' + bolCant(g, g.cantidad) + '</b>' +
+      '<span>' + esc(g.fecha.slice(8, 10) + "/" + g.fecha.slice(5, 7)) + ' · precio ' + dec(g.precio_bol, 2) + ' · con gastos ' + dec(g.precio_ef, 2) +
+      (g.base === 100 ? " por 100" : "") + ' · ' + g.boletos.length + ' boleto' + (g.boletos.length === 1 ? "" : "s") + '</span></div>' +
+      '<div class="r">' + (compra ? "− " : "+ ") + '$ ' + dec(g.neto, 2) + '<small>gastos $ ' + dec(g.gastos, 2) + '</small></div></div>' +
+      '<div class="sel"><label><input type="checkbox" data-bol-ap' + (g.ya_incluido ? "" : " checked") + '> Aplicar</label>' +
+      '<label for="bol-e-' + i + '">Estrategia</label><select id="bol-e-' + i + '" data-bol-e>' + optEstr(g.estrategia_id) + '</select>' +
+      (compra ? "" : '<label for="bol-m-' + i + '">Motivo</label><select id="bol-m-' + i + '" data-bol-m>' +
+        (d.motivos || []).map(m => '<option value="' + esc(m) + '"' + (m === g.motivo ? " selected" : "") + '>' + esc(MOT[m] || m) + '</option>').join("") + '</select>') +
+      (compra && !g.tipo_conocido ? '<label for="bol-t-' + i + '">Tipo</label><select id="bol-t-' + i + '" data-bol-t>' +
+        ["acciones", "cedears", "bonos", "letras", "on"].map(t => '<option' + (t === g.tipo_tenencia ? " selected" : "") + '>' + t + '</option>').join("") + '</select>' : "") +
+      '</div>' +
+      (g.avisos || []).map(a => '<div class="av">' + esc(a) + '</div>').join("") +
+      (!compra && g.despues <= 1e-9 ? '<div class="bol-nota">Sale toda: los niveles de ' + esc(g.simbolo) + ' en Gestión se archivan y dejan de avisar.</div>' : "") +
+      '<details><summary>Ver boletos</summary>' + g.boletos.map(b => 'BOL ' + esc(b.bol) + ' · orden ' + esc(b.orden || "") + ' ' +
+        esc((b.fecha || "").slice(11, 16)) + ' · ' + ent(b.cantidad) + ' @ ' + dec(b.precio, 2) + ' · $ ' + dec(b.neto, 2)).join("<br>") + '</details></div>';
+  }).join("");
+  const filas = gs.map(g => g.tipo === "caucion" ? (Math.abs(g.efecto_caucion) > 1e-6 ? '<tr><td>Caución</td><td>$ ' + dec(g.antes, 2) + '</td><td>$ ' + dec(g.despues, 2) + '</td><td colspan="3"></td></tr>' : "") :
+    '<tr><td>' + esc(g.simbolo) + '</td><td>' + bolCant(g, g.antes) + '</td><td class="' + (g.tipo === "compra" ? "u-sage" : "u-coral") + '">' +
+    bolCant(g, g.despues) + '</td><td>' + (g.ppc_antes != null ? dec(g.ppc_antes, 2) : "—") + '</td><td>' + (g.ppc_despues != null ? dec(g.ppc_despues, 2) : "—") +
+    '</td><td>' + (g.resultado != null ? '<span class="' + (g.resultado >= 0 ? "u-sage" : "u-coral") + '">$ ' + ent(g.resultado) + '</span>' : "") + '</td></tr>').join("");
+  const ps = v.pesos || {};
+  h += '<div class="bol-tabla"><table><thead><tr><th>Especie</th><th>Antes</th><th>Después</th><th>PPC antes</th><th>PPC después</th><th>Resultado</th></tr></thead><tbody>' +
+    filas + (ps.tiene ? '<tr><td>Pesos</td><td>$ ' + dec(ps.antes || 0, 2) + '</td><td>$ ' + dec(ps.despues || 0, 2) + '</td><td colspan="3">' +
+      (ps.neto >= 0 ? "+ " : "− ") + '$ ' + dec(Math.abs(ps.neto), 2) + '</td></tr>' : '') + '</tbody></table></div>' +
+    (ps.tiene ? "" : '<div class="bol-nota u-mt-8">' + esc(d.broker) + ' no tiene línea de pesos (ARS) en la tenencia: el neto de ' + (ps.neto >= 0 ? "+ " : "− ") +
+      '$ ' + dec(Math.abs(ps.neto || 0), 2) + ' no se aplica.</div>') +
+    '<div class="bol-nota u-mt-8">PPC con gastos incluidos, en la unidad en que cotiza (bonos por 100). El PPC en dólares se calcula con el MEP del día de la operación.</div>';
+  const ventas = gs.filter(g => g.tipo === "venta"), compras = gs.filter(g => g.tipo === "compra");
+  if(ventas.length === 1 && compras.length === 1)
+    h += '<label class="bol-nota u-mt-8 u-block" for="bol-rot"><input type="checkbox" id="bol-rot"> Es una rotación: unir la venta de ' +
+      esc(ventas[0].simbolo) + ' y la compra de ' + esc(compras[0].simbolo) + ' en la estrategia de la venta</label>';
+  h += '<div class="bol-acc"><button class="primario" id="bol-aplicar">Confirmar y actualizar ' + esc(d.broker) + '</button>' +
+    '<button class="secundario" id="bol-descartar">Descartar</button></div>' +
+    '<div id="bol-conf" class="u-mt-8" hidden></div>';
+  out.innerHTML = h;
+}
+async function bolPost(ruta, cuerpo, okTxt){
+  let d;
+  try{
+    const r = await fetch(base + "api/boletos/" + ruta, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(cuerpo || {})});
+    d = await r.json();
+  }catch(e){ d = {error: "No se pudo conectar con la app."}; }
+  if(d.error){ pintarBoletos(bolDatos || {}, {error: true, texto: d.error}); return null; }
+  pintarBoletos(d, {texto: okTxt(d)});
+  return d;
+}
+document.addEventListener("click", async ev => {
+  const t = ev.target;
+  if(!t || !t.closest) return;
+  if(t.closest("#bol-aviso")){ const c = $("#bol-caja"); c.open = true; c.scrollIntoView({behavior: "smooth", block: "start"}); return; }
+  if(t.closest("#bol-revisar")){
+    t.disabled = true; t.textContent = "Revisando…";
+    await bolPost("revisar", {}, d => { const r = d.revision || {}; return r.boletos ? r.boletos + " boletos nuevos en " + r.archivos + " PDF." : "Sin boletos nuevos (" + (r.en_carpeta || 0) + " PDF en la carpeta)."; });
+    return;
+  }
+  if(t.closest("#bol-subir")){ $("#bol-archivo").click(); return; }
+  if(t.closest("#bol-descartar")){
+    const conf = $("#bol-conf");
+    conf.hidden = false;
+    conf.innerHTML = '<div class="msg error">Los boletos descartados no se vuelven a ofrecer. <button class="corto secundario" id="bol-descartar-si">Descartar igual</button></div>';
+    return;
+  }
+  if(t.closest("#bol-descartar-si")){
+    await bolPost("descartar", {}, d => d.descartados + " boletos descartados.");
+    return;
+  }
+  if(t.closest("#bol-aplicar")){
+    const dec_ = {};
+    document.querySelectorAll("#bol-out [data-bol-k]").forEach(el => {
+      const e = el.querySelector("[data-bol-e]"), m = el.querySelector("[data-bol-m]"), tp = el.querySelector("[data-bol-t]");
+      const ap = el.querySelector("[data-bol-ap]");
+      dec_[el.dataset.bolK] = {aplicar: !ap || ap.checked, estrategia_id: e && e.value ? +e.value : null, motivo: m ? m.value : null, tipo_tenencia: tp ? tp.value : null};
+    });
+    let rot = null;
+    const chk = $("#bol-rot");
+    if(chk && chk.checked){
+      const gs = bolDatos.vista.grupos, v = gs.find(g => g.tipo === "venta"), k = gs.find(g => g.tipo === "compra");
+      rot = {venta: v.clave, compra: k.clave, estrategia_id: dec_[v.clave].estrategia_id};
+      if(!rot.estrategia_id){ pintarBoletos(bolDatos, {error: true, texto: "Para unirla como rotación, elegí la estrategia de la venta."}); return; }
+    }
+    t.disabled = true; t.textContent = "Aplicando…";
+    const d = await bolPost("aplicar", {decisiones: dec_, rotacion: rot}, d => {
+      const r = d.resultado || {};
+      return r.aplicados + " boletos aplicados en " + (d.broker || "") + "." + (r.omitidos ? " " + r.omitidos + " omitidos (ya estaban en la tenencia)." : "") + (r.archivados && r.archivados.length ? " Niveles archivados: " + r.archivados.join(", ") + "." : "");
+    });
+    if(d && typeof cargarTenencias === "function") cargarTenencias();
+    return;
+  }
+});
+document.addEventListener("change", ev => {
+  if(ev.target && ev.target.id === "bol-archivo"){
+    const f = ev.target.files && ev.target.files[0];
+    if(!f) return;
+    const rd = new FileReader();
+    rd.onload = async () => {
+      const b64 = String(rd.result).split(",")[1] || "";
+      await bolPost("subir", {nombre: f.name, datos: b64}, d => { const r = d.revision || {}; return r.leidos + " boletos leídos, " + r.boletos + " nuevos."; });
+      ev.target.value = "";
+    };
+    rd.readAsDataURL(f);
+  }
+});
+
 /* ---------- oportunidades vigentes ---------- */
 /* Lo que esta vigente ahora, por prioridad: lo que ya tenes primero.
    Una señal que sigue vigente es una linea que se queda, no un aviso
    nuevo; "desde" es cuando entro. */
 const OPOR_GRUPO = {1: "Sobre lo que tenés", 2: "Oportunidades", 3: "Para mirar"};
-const OPOR_TIPO = {nivel: "gestión", canje: "canje", curva: "curva", par: "par", opciones: "opciones"};
+const OPOR_TIPO = {nivel: "gestión", boletos: "boletos", canje: "canje", curva: "curva", par: "par", opciones: "opciones"};
 function oporDesde(ts){
   if(!ts) return "";
   const hoy = new Date().toISOString().slice(0, 10);
@@ -2876,7 +3073,7 @@ $("#o-guardar").addEventListener("click", async () => {
     if(vista === "opc") cargarOpciones();
     if(vista === "plazos") cargarPlazos();
     if(vista === "alertas"){ cargarAlertas(); cargarAlertasFecha(); }
-    if(vista === "pos"){ cargarTenencias(); cargarCobros(); }
+    if(vista === "pos"){ cargarTenencias(); cargarCobros(); cargarBoletos(); }
     if(vista === "reg") cargarRegistro();
   }catch(e){
     $("#o-msg").innerHTML = '<div class="msg error">No se pudo guardar.</div>';

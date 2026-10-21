@@ -1696,6 +1696,10 @@ def guardar_tenencias(filas, reemplazar="todo", precios=None):
         brokers.add(br)
         n += 1
     c.commit()
+    # Hasta cuando cada broker ya refleja sus operaciones: los boletos
+    # anteriores a esta carga se marcan como probablemente incluidos.
+    for br in brokers:
+        set_estado("carga_tenencia:" + br, ahora)
     # Una sola marca de tiempo para toda la carga: si se cargan dos
     # brokers de un saque, las dos fotos son del mismo momento.
     for br in brokers:

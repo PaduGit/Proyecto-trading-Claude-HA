@@ -976,6 +976,90 @@ def crear_app(monitor):
             "en_rulo": monitor.tengo_actual(),
         })
 
+    # -- boletos (Veta) -----------------------------------------------
+
+    def _boletos_vista():
+        import boletos as BOL
+        bc = monitor.boletos_cfg()
+        estr = [{"id": e["id"], "nombre": e["nombre"], "familia": e["familia"]}
+                for e in db.estrategias()]
+        return {"broker": bc["broker"],
+                "configurado": bool(bc["carpeta"] and bc["clave"]),
+                "fuente": BOL.estado_fuente(),
+                "vista": BOL.preparar(bc["broker"]),
+                "informativos": BOL.informativos(bc["broker"]),
+                "estrategias": estr, "motivos": list(BOL.MOTIVOS)}
+
+    @app.get("/api/boletos")
+    def boletos_ver():
+        try:
+            return jsonify(_boletos_vista())
+        except Exception as e:
+            log.exception("boletos")
+            return jsonify({"error": str(e)}), 500
+
+    @app.post("/api/boletos/revisar")
+    def boletos_revisar():
+        try:
+            r = monitor.revisar_boletos()
+            if r is None:
+                return jsonify({"error": "Falta configurar la carpeta de Drive y la clave de Google en el add-on."}), 400
+            out = _boletos_vista()
+            out["revision"] = r
+            return jsonify(out)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 502
+
+    @app.post("/api/boletos/subir")
+    def boletos_subir():
+        import base64 as _b64
+        import boletos as BOL
+        d = request.get_json(silent=True) or {}
+        try:
+            datos = _b64.b64decode(d.get("datos") or "")
+        except Exception:
+            return jsonify({"error": "El archivo no llegó bien."}), 400
+        if not datos.startswith(b"%PDF"):
+            return jsonify({"error": "No es un PDF."}), 400
+        try:
+            leidos, nuevos = BOL.cargar_pdf(datos, (d.get("nombre") or "boletos.pdf")[:120],
+                                            monitor.boletos_cfg()["broker"])
+        except Exception as e:
+            return jsonify({"error": "No se pudo leer el PDF: %s" % e}), 400
+        out = _boletos_vista()
+        out["revision"] = {"boletos": nuevos, "leidos": leidos}
+        return jsonify(out)
+
+    @app.post("/api/boletos/aplicar")
+    def boletos_aplicar():
+        import boletos as BOL
+        d = request.get_json(silent=True) or {}
+        precios = {}
+        for sim, cv in (monitor.cotizaciones_para_valuar() or {}).items():
+            p = (cv or {}).get("ultimo") or (cv or {}).get("ref")
+            if p:
+                precios[sim] = p
+        try:
+            r = BOL.aplicar(monitor.boletos_cfg()["broker"], d.get("decisiones") or {},
+                            precios, d.get("rotacion"))
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except Exception as e:
+            log.exception("boletos aplicar")
+            return jsonify({"error": str(e)}), 500
+        out = _boletos_vista()
+        out["resultado"] = r
+        return jsonify(out)
+
+    @app.post("/api/boletos/descartar")
+    def boletos_descartar():
+        import boletos as BOL
+        d = request.get_json(silent=True) or {}
+        n = BOL.descartar(monitor.boletos_cfg()["broker"], d.get("claves"))
+        out = _boletos_vista()
+        out["descartados"] = n
+        return jsonify(out)
+
     @app.post("/api/tenencias")
     def tenencias_cargar():
         d = request.get_json(silent=True) or {}

@@ -1093,6 +1093,25 @@ class Monitor:
                     "desde": desde(sim, "nivel_" + que)})
         except Exception as e:
             log.debug("oportunidades, niveles: %s", e)
+        # Boletos leidos y sin confirmar: van con lo que ya tenes.
+        try:
+            import boletos as BOL
+            pend = BOL.pendientes()
+            if pend:
+                grupos = {}
+                for b in pend:
+                    k = (b["tipo"], b["simbolo"])
+                    grupos[k] = grupos.get(k, 0) + (b["cantidad"] or 0)
+                out.append({
+                    "tipo": "boletos", "prioridad": 1, "clave": "boletos",
+                    "titulo": "📄 %d boleto%s de %s para confirmar" % (
+                        len(pend), "" if len(pend) == 1 else "s", pend[0]["broker"]),
+                    "detalle": " · ".join("%s %s %s" % ("Compra" if t == "compra" else "Venta",
+                                                        s_, _n(q)) for (t, s_), q in grupos.items())
+                               + " · en TENENCIAS",
+                    "valor": 5e8, "desde": min(b["leido"] or "" for b in pend) or None})
+        except Exception as e:
+            log.debug("oportunidades, boletos: %s", e)
         for f in canjes:
             out.append({
                 "tipo": "canje", "prioridad": 1,
@@ -1155,6 +1174,30 @@ class Monitor:
                 "valor": -m["riesgo_pct"], "desde": None})
         out.sort(key=lambda o: (o["prioridad"], -(o["valor"] or 0)))
         return out
+
+    def boletos_cfg(self):
+        return {"broker": (self.cfg.get("boletos_broker") or "Veta").strip(),
+                "carpeta": (self.cfg.get("boletos_drive_carpeta") or "").strip(),
+                "clave": (self.cfg.get("boletos_drive_clave") or "").strip()}
+
+    def revisar_boletos(self):
+        """Lee la carpeta de Drive de los boletos. Devuelve lo que trajo,
+        o None si no esta configurado."""
+        bc = self.boletos_cfg()
+        if not (bc["carpeta"] and bc["clave"]):
+            return None
+        import boletos as BOL
+        try:
+            r = BOL.revisar_drive(bc["clave"], bc["carpeta"], bc["broker"])
+            db.set_estado("boletos_error", "")
+            log.info("boletos: %s", r)
+            return r
+        except Exception as e:
+            db.set_estado("boletos_error", str(e)[:300])
+            log.warning("boletos: %s", e)
+            raise
+        finally:
+            db.set_estado("boletos_revision", datetime.now().isoformat(timespec="seconds"))
 
     def enviar_resumen(self, ahora=None):
         """El resumen de oportunidades a las horas de `resumen_horas`.
@@ -2672,6 +2715,15 @@ class Monitor:
                         db.set_estado("ny_dia", ahora.date().isoformat())
                     else:
                         log.info("precios de NY incompletos: se reintenta en el próximo ciclo")
+                # Boletos del broker sin API (Veta): la carpeta de Drive se
+                # revisa una vez por dia a las 4. Sin notificacion: lo
+                # pendiente queda en oportunidades y en el resumen.
+                if ahora.hour >= 4 and db.get_estado("boletos_dia") != ahora.date().isoformat():
+                    db.set_estado("boletos_dia", ahora.date().isoformat())
+                    try:
+                        self.revisar_boletos()
+                    except Exception:
+                        pass    # queda en boletos_error, se ve en TENENCIAS
                 if self._en_horario():
                     self.ciclo()
                     self.ultimo_error = None

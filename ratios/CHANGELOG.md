@@ -1,5 +1,38 @@
 # Registro de cambios
 
+## 0.67.0
+
+**Boletos de Veta desde Google Drive.** Un script de Google en la cuenta
+del usuario copia a la carpeta "Boletos Veta" los PDF que manda
+contacto@vetacap.com.ar. A las 4:00 la app lee esa carpeta con una
+cuenta de servicio de solo lectura (`boletos.py`, Drive API v3, JWT
+firmado con `cryptography`), interpreta cada PDF con `pypdf` y deja los
+boletos pendientes. Sin notificacion: aparecen en Inicio, en el resumen
+de `resumen_horas` y arriba de TENENCIAS. Tambien se puede subir el PDF
+a mano.
+
+**Confirmacion en TENENCIAS → Boletos de Veta.** Por especie: aplicar o
+no, estrategia (la asignada por defecto), motivo de la venta (stop,
+objetivo, decision propia; propone el de Gestion si el nivel esta
+tocado) y tipo si la especie es nueva. Una venta y una compra se unen
+como rotacion solo si se marca.
+
+- Cantidades por diferencia y en orden; PPC de las compras **con gastos**
+  y PPC en dolares al MEP del dia de la operacion.
+- Pesos (`ARS`) por el neto de cada boleto. **Cauciones como moneda**: la
+  apertura pasa el capital a la linea `CAUCION` y el cierre lo devuelve
+  con el interes neto.
+- Ledger de cada estrategia: compra = aporte, venta = retiro, con
+  boletos, motivo y resultado en la nota.
+- Una especie que queda en cero archiva sus niveles de Gestion.
+- Boletos anteriores a la ultima carga de tenencia del broker se marcan
+  como probablemente ya incluidos y arrancan sin tildar.
+- Gastos e IVA salen de las lineas "Rec." y "Arancel" del boleto.
+- No cubre operaciones en dolares, cobros ni transferencias.
+
+**Configuracion nueva**: `boletos_broker` (Veta), `boletos_drive_carpeta`,
+`boletos_drive_clave` (JSON de la cuenta de servicio).
+
 ## 0.66.0
 
 Correcciones de una auditoria externa, verificadas contra el codigo.

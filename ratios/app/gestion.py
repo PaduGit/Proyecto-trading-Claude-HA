@@ -99,6 +99,27 @@ def guardar(cambios):
     return config()
 
 
+def archivar_nivel(sim, motivo=None, resultado=None, fecha=None, precio=None):
+    """Saca los niveles de una especie que ya no se tiene y los guarda en
+    `archivados` con el motivo de la salida y el resultado. Dejan de
+    avisar. Devuelve True si habia niveles."""
+    g = _leer()
+    n = (g.get("niveles") or {}).pop(sim, None)
+    if not n:
+        return False
+    g.setdefault("avisados", {}).pop(sim, None)
+    arch = g.setdefault("archivados", [])
+    arch.append(dict(n, simbolo=sim, motivo=motivo, resultado=resultado,
+                     fecha=fecha, precio_salida=precio))
+    g["archivados"] = arch[-200:]
+    db.set_estado("gestion", json.dumps(g))
+    return True
+
+
+def archivados():
+    return list(reversed(_leer().get("archivados") or []))
+
+
 def _bloque(p, md):
     expo, tipo = p.get("exposicion") or "", p.get("tipo") or ""
     if tipo in ("acciones", "cedears") or expo in ("Acciones", "CEDEARs"):
