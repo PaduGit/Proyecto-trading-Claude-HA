@@ -1,5 +1,34 @@
 # Registro de cambios
 
+## 0.68.0
+
+**Solapa DIARIO: diario de trading.** Cada posicion desde la primera
+compra hasta que la cantidad vuelve a cero, con resultado contra el PPC
+con gastos, en pesos y en dolares (cada movimiento al MEP de su dia).
+Aciertos, ganancia y perdida media y esperanza por operacion se miden en
+dolares, por estrategia y por motivo de salida (`diario.py`).
+
+- **Fuentes**: boletos de Veta (aplicados, omitidos o descartados: la
+  operacion existio), operaciones de IOL-ALE e IOL-SOL por API (precio
+  real, gastos estimados con la tabla de costos) y, para ECO y los demas
+  sin API, los movimientos confirmados de la diferencia entre tenencias
+  (aproximado: precio de la foto).
+- **Importacion de IOL** a las 4:00, junto con los boletos. La primera
+  vez, desde la primera compra de las tenencias actuales, de a un año;
+  despues, solo lo nuevo. Boton "Actualizar ahora".
+- **R multiplo** con una copia del stop y objetivo de Gestion guardada al
+  comprar (compras de los ultimos 7 dias). Sin copia, se cargan a mano en
+  el detalle. Stop respetado con tolerancia de 1%.
+- **Rotaciones**: cierran una posicion y abren otra, vinculadas. Las de
+  boletos y movimientos confirmados se unen solas; en IOL se elige la
+  compra al poner el motivo.
+- **Para completar**: ventas sin motivo (una por dia) y posiciones sin
+  estrategia.
+- **Historia incompleta**: una posicion que empezo antes de lo registrado
+  queda fuera de las estadisticas y sin resultado latente.
+- Alerta previa de la especie en los 5 dias anteriores a la entrada o la
+  salida, con enlace a Registro. Comentario por posicion.
+
 ## 0.67.2
 
 **Niveles de especies que ya no se tienen.** Gestion archiva los niveles

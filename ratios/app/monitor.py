@@ -1190,6 +1190,21 @@ class Monitor:
                 "carpeta": (self.cfg.get("boletos_drive_carpeta") or "").strip(),
                 "clave": (self.cfg.get("boletos_drive_clave") or "").strip()}
 
+    def cuentas_iol(self):
+        """Las cuentas de IOL configuradas, en orden. La segunda es opcional."""
+        cta = [((self.cfg.get("broker_propio") or "IOL").strip(), self.iol)]
+        cli2 = getattr(self, "iol2", None)
+        if cli2:
+            cta.append(((self.cfg.get("broker2_nombre") or "IOL-2").strip(), cli2))
+        return cta
+
+    def sincronizar_diario(self):
+        """Operaciones de IOL por API y lo local (boletos, movimientos
+        confirmados, rotaciones) al diario de trading."""
+        import diario as DI
+        bc = self.boletos_cfg()
+        return DI.sincronizar(self.cuentas_iol(), bc["broker"], self.cfg)
+
     def revisar_boletos(self):
         """Lee la carpeta de Drive de los boletos. Devuelve lo que trajo,
         o None si no esta configurado."""
@@ -2751,6 +2766,13 @@ class Monitor:
                         self.revisar_boletos()
                     except Exception:
                         pass    # queda en boletos_error, se ve en TENENCIAS
+                    # El diario se actualiza en el mismo paso: operaciones
+                    # nuevas de las cuentas de IOL, boletos y movimientos
+                    # confirmados.
+                    try:
+                        self.sincronizar_diario()
+                    except Exception as e:
+                        log.warning("diario: %s", e)
                 if self._en_horario():
                     self.ciclo()
                     self.ultimo_error = None

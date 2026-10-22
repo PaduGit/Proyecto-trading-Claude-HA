@@ -1505,13 +1505,7 @@ def crear_app(monitor):
 
     def _cuentas_iol():
         """Las cuentas configuradas, en orden. La segunda es opcional."""
-        cta = [((monitor.cfg.get("broker_propio") or "IOL").strip(),
-                monitor.iol)]
-        cli2 = getattr(monitor, "iol2", None)
-        if cli2:
-            cta.append(((monitor.cfg.get("broker2_nombre")
-                         or "IOL-2").strip(), cli2))
-        return cta
+        return monitor.cuentas_iol()
 
     @app.post("/api/iol/estadocuenta")
     def iol_estado_cuenta():
@@ -1853,6 +1847,61 @@ def crear_app(monitor):
         except Exception as e:
             log.debug("tabla de bonos: %s", e)
         return out
+
+    # -- diario de trading ---------------------------------------------
+
+    def _diario_vista(sincronizar=True):
+        import diario as DI
+        cuentas = [n for n, _ in monitor.cuentas_iol()]
+        bol = monitor.boletos_cfg()["broker"]
+        if sincronizar:
+            DI.sincronizar_local(cuentas, bol, monitor.cfg)
+        pos = DI.posiciones(_precios_vigentes(), _mep())
+        return {"posiciones": pos, "pendientes": DI.pendientes(pos),
+                "estrategias": [{"id": e["id"], "nombre": e["nombre"],
+                                 "familia": e["familia"], "cerrada": bool(e.get("cierre"))}
+                                for e in db.estrategias(incluir_cerradas=True)],
+                "motivos": list(DI.MOTIVOS), "estado": DI.estado(cuentas, bol),
+                "hoy": datetime.now().date().isoformat()}
+
+    @app.get("/api/diario")
+    def diario_ver():
+        try:
+            return jsonify(_diario_vista())
+        except Exception as e:
+            log.exception("diario")
+            return jsonify({"error": str(e)}), 500
+
+    @app.post("/api/diario/importar")
+    def diario_importar():
+        try:
+            r = monitor.sincronizar_diario()
+            out = _diario_vista(sincronizar=False)
+            out["importacion"] = r
+            return jsonify(out)
+        except Exception as e:
+            log.exception("diario importar")
+            return jsonify({"error": str(e)}), 500
+
+    @app.post("/api/diario/op/<int:oid>")
+    def diario_op(oid):
+        import diario as DI
+        d = request.get_json(silent=True) or {}
+        try:
+            DI.guardar_op(oid, d)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify(_diario_vista(sincronizar=False))
+
+    @app.post("/api/diario/pos/<int:pid>")
+    def diario_pos(pid):
+        import diario as DI
+        d = request.get_json(silent=True) or {}
+        try:
+            DI.guardar_pos(pid, d)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify(_diario_vista(sincronizar=False))
 
     @app.get("/api/gestion")
     def gestion_ver():

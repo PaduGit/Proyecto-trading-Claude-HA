@@ -158,6 +158,8 @@ def main():
     db.init_cartera_hist()
     db.quitar_indices_redundantes()
     db.init_puntas()
+    import diario
+    diario.init()
 
     notif = Notificador(cfg)
     iol = IOL(cfg["iol_user"], cfg["iol_pass"])

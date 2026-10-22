@@ -777,6 +777,66 @@ input, select, textarea{ border-radius:8px; }
 .acciones button{ min-height:40px; font-size:14px; }
 @media (max-width:520px){ .par .datos{ grid-template-columns:repeat(2,1fr); } }
 }
+/* ---------- diario de trading ---------- */
+@layer tema{
+.dr-estado{ font-size:12px; color:var(--muted); display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.dr-estado .mal{ color:var(--coral); }
+.dr-filtros{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:8px; }
+.dr-filtros .chips{ margin:0; }
+.dr-filtros select, .dr-pend select, .dr-det select, .dr-det input, .dr-det textarea{
+  background:var(--panel-2); color:var(--bone); border:1px solid var(--rule); border-radius:8px;
+  min-height:36px; padding:0 8px; font:inherit; font-size:13px; max-width:100%; }
+.dr-det textarea{ padding:8px; min-height:56px; resize:vertical; width:100%; }
+.dr-kpis{ grid-template-columns:repeat(4,1fr); }
+.dr-kpis dd{ font-size:20px; }
+.dr-pend{ border-left:3px solid var(--amber); }
+.dr-pf{ display:grid; grid-template-columns:1.6fr 1fr 1fr auto; gap:8px; align-items:center; padding:8px 0; border-top:1px solid var(--rule); font-size:13px; }
+.dr-pf:first-child{ border-top:0; }
+.dr-pf .q b{ font-weight:600; }
+.dr-pf select{ width:100%; }
+.dr-pf .rot{ grid-column:2 / 4; }
+.dr-tr{ background:var(--panel-2); border-radius:10px; border-left:3px solid transparent; margin-top:8px; }
+.dr-tr.g{ border-left-color:var(--sage); } .dr-tr.p{ border-left-color:var(--coral); } .dr-tr.a{ border-left-color:var(--barato); }
+.dr-tr > summary{ list-style:none; cursor:pointer; padding:12px; display:grid; grid-template-columns:1fr auto; gap:4px 12px; font-size:14px; font-weight:400; }
+.dr-tr > summary::-webkit-details-marker{ display:none; }
+.dr-tr .t1{ display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+.dr-tr .esp{ font-size:15px; font-weight:600; }
+.dr-tr .meta{ font-size:12px; color:var(--muted); }
+.dr-tr .res{ text-align:right; font-size:16px; font-weight:700; }
+.dr-tr .res small{ display:block; font-size:12px; font-weight:500; }
+.dr-tags{ display:flex; gap:6px; flex-wrap:wrap; grid-column:1 / -1; }
+.dr-tag{ font-size:11px; border:1px solid var(--rule); border-radius:999px; padding:1px 8px; color:var(--muted); }
+.dr-tag.boleto, .dr-tag.ok{ color:var(--sage); border-color:rgba(95,196,138,.4); }
+.dr-tag.iol{ color:var(--barato); border-color:rgba(98,182,242,.4); }
+.dr-tag.aprox{ color:var(--amber); border-color:rgba(224,180,90,.45); }
+.dr-tag.mal{ color:var(--coral); border-color:rgba(224,122,111,.45); }
+.dr-tag.rot{ color:var(--lila); border-color:rgba(180,142,240,.45); }
+.dr-det{ padding:0 12px 12px; display:grid; gap:10px; }
+.dr-riel{ position:relative; height:34px; margin:6px 6px 0; }
+.dr-riel .lin{ position:absolute; left:0; right:0; top:14px; height:4px; border-radius:2px; background:var(--panel); }
+.dr-riel .mk{ position:absolute; top:6px; width:2px; height:20px; transform:translateX(-1px); }
+.dr-riel .lb{ position:absolute; top:24px; font-size:11px; transform:translateX(-50%); white-space:nowrap; }
+.dr-riel .pt{ position:absolute; top:10px; width:12px; height:12px; border-radius:50%; transform:translateX(-6px); border:2px solid var(--ink); }
+.dr-cajas{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+.dr-caja{ background:var(--panel); border-radius:8px; padding:7px 9px; font-size:12px; color:var(--muted); line-height:1.35; }
+.dr-caja b{ display:block; color:var(--bone); font-size:14px; font-weight:600; }
+.dr-det table.tabla{ font-size:13px; }
+.dr-nota{ font-size:12px; color:var(--muted); }
+.dr-link{ font-size:13px; background:var(--panel); border-radius:8px; padding:8px 10px; }
+.dr-link a{ color:var(--barato); text-decoration:none; }
+.dr-ed{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.dr-ed label{ display:grid; gap:4px; font-size:12px; color:var(--muted); }
+.dr-ed .ancho{ grid-column:1 / -1; }
+.dr-ed .acc{ grid-column:1 / -1; display:flex; gap:8px; align-items:center; }
+.dr-pie{ margin-top:12px; line-height:1.5; }
+@media (max-width:620px){
+  .dr-kpis, .dr-cajas{ grid-template-columns:repeat(2,1fr); }
+  .dr-pf{ grid-template-columns:1fr 1fr; }
+  .dr-pf .q{ grid-column:1 / -1; }
+  .dr-pf .rot{ grid-column:1 / -1; }
+  .dr-ed{ grid-template-columns:1fr; }
+}
+}
 </style>
 </head>
 <body>
@@ -818,6 +878,7 @@ input, select, textarea{ border-radius:8px; }
     <button role="tab" aria-selected="true" data-vista="inicio">Inicio</button>
     <button role="tab" aria-selected="false" data-vista="pos">Tenencias</button>
     <button role="tab" aria-selected="false" data-vista="gest">Gestión</button>
+    <button role="tab" aria-selected="false" data-vista="diario">Diario</button>
     <button role="tab" aria-selected="false" data-vista="panel">Ratios</button>
     <button role="tab" aria-selected="false" data-vista="bonos">Bonos</button>
     <button role="tab" aria-selected="false" data-vista="rulo">Rulo</button>
@@ -883,6 +944,39 @@ input, select, textarea{ border-radius:8px; }
       <div id="g-sup"></div>
       <div class="hist-ayuda">La renta fija en dólares rinde su TIR. Los CER, TIR real más inflación menos la suba del MEP; las tasas en pesos, tasa menos MEP. Un stop por TIR en un bono en pesos no cubre la devaluación: se suma al riesgo. Son opiniones, no datos.</div>
     </details>
+  </section>
+
+  <section id="v-diario" hidden>
+    <div class="dr-estado" id="dr-estado"></div>
+    <div class="dr-filtros">
+      <div class="chips" id="dr-per">
+        <button data-v="30">30 días</button><button data-v="90" aria-pressed="true">90 días</button><button data-v="365">Año</button><button data-v="0">Todo</button>
+      </div>
+      <select id="dr-f-estr" aria-label="Estrategia"></select>
+      <select id="dr-f-brk" aria-label="Broker"></select>
+      <div class="chips" id="dr-est">
+        <button data-v="todas" aria-pressed="true">Todas</button><button data-v="cerradas">Cerradas</button><button data-v="abiertas">Abiertas</button>
+      </div>
+    </div>
+    <dl class="ini-grid dr-kpis" id="dr-kpis"></dl>
+    <div class="hist-ayuda" id="dr-excl"></div>
+    <div class="ini-bloque dr-pend" id="dr-pend-caja" hidden>
+      <div class="cart-tit">Para completar <span class="u-muted" id="dr-pend-sub"></span></div>
+      <div id="dr-pend"></div>
+    </div>
+    <div class="ini-bloque">
+      <div class="cart-tit">Por estrategia <span class="u-muted">· cerradas, porcentajes en dólares</span></div>
+      <div class="u-scroll-x"><table class="tabla" id="dr-t-estr"></table></div>
+    </div>
+    <div class="ini-bloque">
+      <div class="cart-tit">Por motivo de salida</div>
+      <div class="u-scroll-x"><table class="tabla" id="dr-t-mot"></table></div>
+    </div>
+    <div class="ini-bloque">
+      <div class="cart-tit">Posiciones <span class="u-muted" id="dr-cuenta"></span></div>
+      <div id="dr-lista"></div>
+    </div>
+    <div class="hist-ayuda dr-pie">Una posición va desde la primera compra hasta que la cantidad vuelve a cero. El resultado se mide contra el PPC con gastos; en dólares, cada movimiento al MEP de su día. Aciertos, ganancia y pérdida media y esperanza se miden en dólares. Una rotación cierra una posición y abre otra, vinculadas. R = resultado ÷ riesgo inicial (cantidad de la primera compra × (entrada − stop al entrar)); el stop al entrar es una copia de Gestión guardada al comprar. Stop respetado: salida hasta 1% debajo del stop. Una posición que empezó antes de lo registrado queda como historia incompleta, fuera de las estadísticas. Fuente: boleto (precio y gastos reales), IOL (precio real, gastos estimados), aproximado (diferencia entre dos tenencias: precio de la foto, gastos estimados).</div>
   </section>
 
   <section id="v-panel" hidden>
@@ -1580,10 +1674,11 @@ function irA(v){
   vista = v;
   document.querySelectorAll("nav button").forEach(x =>
     x.setAttribute("aria-selected", x.dataset.vista === v));
-  ["inicio","gest","panel","bonos","rulo","opc","plazos","pos","alertas","reg","expl"]
+  ["inicio","gest","diario","panel","bonos","rulo","opc","plazos","pos","alertas","reg","expl"]
     .forEach(x => $("#v-"+x).hidden = (x !== v));
   if(v === "inicio") cargarInicio();
   if(v === "gest") cargarGestion();
+  if(v === "diario") cargarDiario();
   if(v === "pos"){ cargarTenencias(); cargarCobros(); cargarBoletos(); }
   /* Los pares se administran desde Ratios: la lista de grupos tiene que
      estar cargada ahi, no en Tenencias. */
@@ -1607,6 +1702,292 @@ $("#menu").addEventListener("click", ev => {
   ev.preventDefault();
   $("#menu").hidden = true;
   irA(a.dataset.ir);
+});
+
+/* ---------- diario de trading ---------- */
+/* Las posiciones vienen armadas del servidor; los filtros y las
+   estadisticas se calculan aca. El acierto se mide en dolares. */
+let drDatos = null;
+const drSt = {per: 90, estr: "", brk: "", est: "todas", abiertas: new Set(), pendTodas: false};
+const DR_MOT = {stop: "Stop", objetivo: "Objetivo", propio: "Decisión propia", rotacion: "Rotación", "sin motivo": "Sin motivo"};
+const drF = s => s ? s.slice(8, 10) + "/" + s.slice(5, 7) : "—";
+const drFA = s => s ? s.slice(8, 10) + "/" + s.slice(5, 7) + "/" + s.slice(0, 4) : "—";
+const drFH = s => s ? drF(s) + " " + s.slice(11, 16) : "todavía no";
+const drS = (v, n) => v == null || !isFinite(v) ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + dec(Math.abs(v), n || 0);
+const drDias = (a, b) => Math.round((new Date(b.slice(0, 10)) - new Date(a.slice(0, 10))) / 864e5);
+
+async function cargarDiario(){
+  let d;
+  try{ d = await (await fetch(base + "api/diario")).json(); }
+  catch(e){ d = {error: "No se pudo consultar."}; }
+  pintarDiario(d);
+}
+
+async function drPost(ruta, cuerpo){
+  let d;
+  try{
+    const r = await fetch(base + "api/diario/" + ruta, {method: "POST",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify(cuerpo || {})});
+    d = await r.json();
+  }catch(e){ d = {error: "No se pudo conectar con la app."}; }
+  if(d.error){ pintarDiario(drDatos || {}, {error: true, texto: d.error}); return null; }
+  pintarDiario(d);
+  return d;
+}
+
+function drFiltradas(){
+  const hoy = (drDatos && drDatos.hoy) || new Date().toISOString().slice(0, 10);
+  return ((drDatos && drDatos.posiciones) || []).filter(p => {
+    if(drSt.estr && String(p.estrategia_id || "") !== drSt.estr) return false;
+    if(drSt.brk && p.broker !== drSt.brk) return false;
+    if(drSt.est === "cerradas" && p.abierta) return false;
+    if(drSt.est === "abiertas" && !p.abierta) return false;
+    if(drSt.per && !p.abierta && drDias(p.fecha_fin, hoy) > drSt.per) return false;
+    return true;
+  });
+}
+
+function drStats(arr){
+  const c = arr.filter(p => !p.abierta && p.medible && p.res_usd != null);
+  const g = c.filter(p => p.res_usd > 0), pe = c.filter(p => p.res_usd <= 0);
+  const avg = a => a.length ? a.reduce((s, v) => s + v, 0) / a.length : null;
+  const rs = c.filter(p => p.r != null).map(p => p.r);
+  const st = c.filter(p => p.stop_respetado != null);
+  return {n: c.length, ac: c.length ? g.length / c.length : null,
+    gm: avg(g.map(p => p.pct_usd)), pm: avg(pe.map(p => p.pct_usd)),
+    esp: avg(c.map(p => p.pct_usd)), usd: c.reduce((s, p) => s + p.res_usd, 0),
+    r: avg(rs), nr: rs.length, stOk: st.filter(p => p.stop_respetado).length, stN: st.length};
+}
+
+function pintarDiario(d, msg){
+  drDatos = d;
+  if(d.error && !d.posiciones){
+    $("#dr-estado").innerHTML = '<div class="msg error">' + esc(d.error) + '</div>';
+    return;
+  }
+  const e = d.estado || {}, estr = d.estrategias || [];
+  const nombres = (e.iol || []).map(x => x.broker);
+  const errs = (e.iol || []).filter(x => x.error);
+  const cortes = (e.iol || []).filter(x => x.corte).map(x => x.broker + " desde " + drFA(x.corte));
+  $("#dr-estado").innerHTML = '<span>' + (e.revision ? 'Actualizado ' + esc(drFH(e.revision)) : 'Todavía sin actualizar') + ': ' +
+    (e.broker_boletos ? 'boletos de ' + esc(e.broker_boletos) + ' y ' : '') + 'operaciones de ' + esc(nombres.join(" e ")) + '.' +
+    (cortes.length ? ' Primera carga: ' + esc(cortes.join(", ")) + '.' : '') + ' Se actualiza todos los días a las 4:00.</span>' +
+    errs.map(x => '<span class="mal">' + esc(x.broker) + ': ' + esc(x.error) + '</span>').join("") +
+    '<button class="corto secundario" id="dr-importar">Actualizar ahora</button>' +
+    (msg ? '<div class="msg ' + (msg.error ? "error" : "ok") + ' u-mt-8">' + esc(msg.texto) + '</div>' : "");
+
+  const usadas = new Set((d.posiciones || []).map(p => p.estrategia_id).filter(Boolean));
+  $("#dr-f-estr").innerHTML = '<option value="">Todas las estrategias</option>' +
+    estr.filter(x => usadas.has(x.id)).map(x => '<option value="' + x.id + '"' + (String(x.id) === drSt.estr ? " selected" : "") + '>' + esc(x.nombre) + '</option>').join("");
+  const brks = [...new Set((d.posiciones || []).map(p => p.broker))].sort();
+  $("#dr-f-brk").innerHTML = '<option value="">Todos los brokers</option>' +
+    brks.map(b => '<option' + (b === drSt.brk ? " selected" : "") + '>' + esc(b) + '</option>').join("");
+  drPintarPend(d);
+  drRender();
+}
+
+function drRender(){
+  const d = drDatos || {}, arr = drFiltradas(), s = drStats(arr);
+  const ab = arr.filter(p => p.abierta).length;
+  $("#dr-kpis").innerHTML =
+    '<div><dt>Cerradas</dt><dd>' + s.n + '</dd><small>' + ab + ' abiertas</small></div>' +
+    '<div><dt>Aciertos en dólares</dt><dd>' + (s.ac == null ? "—" : dec(s.ac * 100, 0) + "%") + '</dd><small>ganancia media <span class="u-sage">' +
+      (s.gm == null ? "—" : drS(s.gm, 1) + "%") + '</span> · pérdida media <span class="u-coral">' + (s.pm == null ? "—" : drS(s.pm, 1) + "%") + '</span></small></div>' +
+    '<div><dt>Esperanza por operación en US$</dt><dd class="' + (s.esp > 0 ? "u-sage" : s.esp < 0 ? "u-coral" : "") + '">' + (s.esp == null ? "—" : drS(s.esp, 1) + "%") +
+      '</dd><small>R medio ' + (s.r == null ? "—" : drS(s.r, 2)) + ' (' + s.nr + ' con stop)</small></div>' +
+    '<div><dt>Resultado en dólares</dt><dd class="' + (s.usd > 0 ? "u-sage" : s.usd < 0 ? "u-coral" : "") + '">US$ ' + drS(s.usd, 0) +
+      '</dd><small>stops respetados ' + s.stOk + ' de ' + s.stN + '</small></div>';
+  const fuera = arr.filter(p => !p.abierta && !(p.medible && p.res_usd != null));
+  $("#dr-excl").textContent = fuera.length ? fuera.length + " cerrada" + (fuera.length === 1 ? "" : "s") +
+    " fuera de las estadísticas: historia incompleta, sin precio o sin MEP del día." : "";
+
+  const tabla = (clave, el, titulo) => {
+    const ks = [...new Set(arr.filter(p => !p.abierta && p.medible && p.res_usd != null).map(clave))];
+    const filas = ks.map(k => {
+      const t = drStats(arr.filter(p => clave(p) === k));
+      return '<tr><td>' + esc(k) + '</td><td>' + t.n + '</td><td>' + (t.ac == null ? "—" : dec(t.ac * 100, 0) + "%") + '</td><td class="u-sage">' +
+        (t.gm == null ? "—" : drS(t.gm, 1) + "%") + '</td><td class="u-coral">' + (t.pm == null ? "—" : drS(t.pm, 1) + "%") + '</td><td class="' +
+        (t.esp > 0 ? "u-sage" : "u-coral") + '">' + drS(t.esp, 1) + '%</td><td>' + (t.r == null ? "—" : drS(t.r, 2)) + '</td><td class="' +
+        (t.usd > 0 ? "u-sage" : "u-coral") + '">' + drS(t.usd, 0) + '</td></tr>';
+    }).join("");
+    $(el).innerHTML = '<thead><tr><th>' + titulo + '</th><th>Cerradas</th><th>Aciertos</th><th>Gan. media</th><th>Pérd. media</th><th>Esperanza</th><th>R medio</th><th>US$</th></tr></thead><tbody>' +
+      (filas || '<tr><td colspan="8" class="u-muted">Sin posiciones cerradas en el filtro.</td></tr>') + '</tbody>';
+  };
+  tabla(p => p.estrategia || "Sin estrategia", "#dr-t-estr", "Estrategia");
+  tabla(p => p.motivo ? (DR_MOT[p.motivo] || p.motivo) : "Sin cargar", "#dr-t-mot", "Motivo");
+
+  $("#dr-cuenta").textContent = "· " + arr.length + " en el filtro";
+  $("#dr-lista").innerHTML = arr.map(p => drTarjeta(p, d)).join("") || '<div class="vacio u-mt-8">Nada en el filtro.</div>';
+}
+
+function drTarjeta(p, d){
+  const cls = p.abierta ? "a" : (p.res_usd > 0 ? "g" : "p");
+  const pu = p.abierta ? p.lat_pct_usd : p.pct_usd, vu = p.abierta ? p.lat_usd : p.res_usd;
+  const vp = p.abierta ? p.lat : p.res, pp = p.abierta ? p.lat_pct : p.pct;
+  const fuente = {boleto: '<span class="dr-tag boleto">boleto</span>', iol: '<span class="dr-tag iol">IOL · gastos estimados</span>',
+    tenencia: '<span class="dr-tag aprox">aproximado</span>'}[p.fuente] || "";
+  const rot = p.rot_a ? '<span class="dr-tag rot">rotación → ' + esc(p.rot_a.simbolo) + '</span>' :
+    p.rot_de ? '<span class="dr-tag rot">rotación desde ' + esc(p.rot_de.simbolo) + '</span>' : "";
+  const resp = p.stop_respetado == null ? "" : p.stop_respetado ? '<span class="dr-tag ok">stop respetado</span>' :
+    '<span class="dr-tag mal">salió ' + dec(Math.abs((p.px_salida / p.stop_ent - 1) * 100), 1) + '% debajo del stop</span>';
+  const rtag = p.r != null ? '<span class="dr-tag">' + drS(p.r, 2) + ' R</span>' : (p.stop_ent ? "" : '<span class="dr-tag">sin stop al entrar</span>');
+  const inc = p.incompleta ? '<span class="dr-tag mal">historia incompleta</span>' : (p.sin_precio ? '<span class="dr-tag mal">sin precio</span>' : "");
+  return '<details class="dr-tr ' + cls + '" data-dr-pos="' + p.id + '"' + (drSt.abiertas.has(p.id) ? " open" : "") + '><summary>' +
+    '<div><div class="t1"><span class="esp">' + esc(p.simbolo) + '</span><span class="meta">' + esc(p.broker) + ' · ' + esc(p.estrategia || "sin estrategia") + '</span></div>' +
+    '<div class="meta">' + drF(p.fecha_ini) + ' → ' + (p.abierta ? "abierta" : drF(p.fecha_fin)) + ' · ' + p.dias + ' días' + (p.motivo ? " · " + esc(DR_MOT[p.motivo] || p.motivo) : "") + '</div></div>' +
+    '<div class="res ' + (vu > 0 ? "u-sage" : vu < 0 ? "u-coral" : "") + '">' + (pu == null ? "—" : drS(pu, 1) + "% US$") +
+    '<small>' + (p.abierta ? "latente · " : "") + 'US$ ' + drS(vu, 0) + ' · $ ' + drS(vp, 0) + (pp == null ? "" : ' (' + drS(pp, 1) + '%)') + '</small></div>' +
+    '<div class="dr-tags">' + rot + fuente + inc + rtag + resp + (p.alertas && p.alertas.length ? '<span class="dr-tag">con alerta previa</span>' : "") + '</div>' +
+    '</summary><div class="dr-det">' + drDetalle(p, d) + '</div></details>';
+}
+
+function drRiel(p){
+  if(!(p.stop_ent && p.obj_ent && (p.modo_ent || "precio") === "precio" && p.px_entrada)) return "";
+  const sal = p.abierta ? null : p.px_salida;
+  const vals = [p.stop_ent, p.obj_ent, p.px_entrada].concat(sal ? [sal] : []);
+  const lo = Math.min(...vals) * 0.985, hi = Math.max(...vals) * 1.015, x = v => ((v - lo) / (hi - lo) * 100).toFixed(2) + "%";
+  return '<div class="dr-riel" aria-label="Entrada, salida, stop y objetivo"><div class="lin"></div>' +
+    '<div class="mk" style="left:' + x(p.stop_ent) + ';background:var(--coral)"></div><div class="lb u-coral" style="left:' + x(p.stop_ent) + '">stop ' + dec(p.stop_ent, 0) + '</div>' +
+    '<div class="mk" style="left:' + x(p.obj_ent) + ';background:var(--sage)"></div><div class="lb u-sage" style="left:' + x(p.obj_ent) + '">objetivo ' + dec(p.obj_ent, 0) + '</div>' +
+    '<div class="pt" style="left:' + x(p.px_entrada) + ';background:var(--muted)" title="entrada"></div>' +
+    (sal ? '<div class="pt" style="left:' + x(sal) + ';background:var(--bone)" title="salida"></div>' : "") + '</div>' +
+    '<div class="dr-nota">gris: entrada ' + dec(p.px_entrada, 2) + (sal ? ' · blanco: salida ' + dec(sal, 2) : "") + '</div>';
+}
+
+function drDetalle(p, d){
+  const filas = p.ops.map(o => '<tr><td>' + drFA(o.fecha) + '</td><td>' + (o.lado === "compra" ? "Compra" : "Venta") +
+    (o.moneda === "USD" ? " (US$)" : "") + '</td><td>' + ent(o.cantidad) + '</td><td>' + (o.precio == null ? "—" : dec(o.precio, 2)) + '</td><td>' +
+    (o.gastos == null ? "—" : dec(o.gastos, 0) + (o.gastos_est ? "*" : "")) + '</td><td>' + (o.neto == null ? "—" : (o.lado === "compra" ? "−" : "+") + dec(Math.abs(o.neto), 0)) +
+    '</td><td>' + (o.mep == null ? "—" : dec(o.mep, 0)) + '</td></tr>').join("");
+  const hoy = p.hoy && (p.hoy.stop != null || p.hoy.obj != null) ? ' · hoy en Gestión ' + (p.hoy.stop != null ? dec(p.hoy.stop, 2) : "—") + ' / ' + (p.hoy.obj != null ? dec(p.hoy.obj, 2) : "—") +
+    (p.hoy.modo && p.hoy.modo !== "precio" ? " (por " + esc(p.hoy.modo === "tir" ? "TIR" : p.hoy.modo === "ny" ? "precio de NY" : p.hoy.modo) + ")" : "") : "";
+  const niveles = p.stop_ent || p.obj_ent ? (p.stop_ent != null ? dec(p.stop_ent, 2) : "—") + " / " + (p.obj_ent != null ? dec(p.obj_ent, 2) : "—") : "—";
+  const modo = p.modo_ent && p.modo_ent !== "precio" ? " (por " + esc(p.modo_ent) + ", sin R)" : "";
+  const notas = [];
+  if(p.gastos_est) notas.push("* Gastos estimados con la tabla de costos de la configuración.");
+  if(p.fuente === "tenencia") notas.push("Precio de la foto de tenencia, no el ejecutado; dos operaciones entre las mismas fotos se ven como una.");
+  if(p.incompleta) notas.push("Historia incompleta: la posición empezó antes de lo registrado (compras anteriores a la primera carga, a la primera foto de tenencia o por transferencia). Queda fuera de las estadísticas y sin resultado latente.");
+  if(p.sin_mep) notas.push("Falta el MEP de algún día: sin resultado en dólares.");
+  const estr = (d.estrategias || []).filter(x => !x.cerrada || x.id === p.estrategia_id);
+  const optE = '<option value="">Sin estrategia</option>' + estr.map(x => '<option value="' + x.id + '"' + (x.id === p.estrategia_id ? " selected" : "") + '>' + esc(x.nombre) + '</option>').join("");
+  const optM = '<option value="">Sin cargar</option>' + (d.motivos || []).map(m => '<option value="' + m + '"' + (m === p.motivo ? " selected" : "") + '>' + esc(DR_MOT[m] || m) + '</option>').join("");
+  return drRiel(p) +
+    '<div class="dr-cajas">' +
+    '<div class="dr-caja">PPC con gastos<b>' + (p.ppc_cg == null ? "—" : dec(p.ppc_cg, 2)) + '</b>' + (p.base === 100 ? "por 100" : "") + '</div>' +
+    '<div class="dr-caja">' + (p.abierta ? "Cantidad" : "Precio de salida") + '<b>' + (p.abierta ? ent(p.cantidad) : (p.px_salida == null ? "—" : dec(p.px_salida, 2))) + '</b></div>' +
+    '<div class="dr-caja">Stop / objetivo al entrar<b>' + niveles + '</b>' + (p.stop_ent || p.obj_ent ? "copia del " + drF(p.fecha_ini) + modo : "sin copia") + hoy + '</div>' +
+    '<div class="dr-caja">Riesgo inicial<b>' + (p.riesgo == null ? "—" : "$ " + dec(p.riesgo, 0)) + '</b></div></div>' +
+    '<div class="u-scroll-x"><table class="tabla"><thead><tr><th>Fecha</th><th>Operación</th><th>Cantidad</th><th>Precio</th><th>Gastos</th><th>Neto $</th><th>MEP</th></tr></thead><tbody>' + filas + '</tbody></table></div>' +
+    notas.map(n => '<div class="dr-nota">' + esc(n) + '</div>').join("") +
+    (p.rot_a ? '<div class="dr-link">Rotación: el neto de la venta entró en <a href="#" data-dr-ir="' + p.rot_a.id + '">' + esc(p.rot_a.simbolo) + ' (' + esc(p.rot_a.broker) + ')</a>. Cada una se mide por separado.</div>' : "") +
+    (p.rot_de ? '<div class="dr-link">Rotación: entró con el neto de la venta de <a href="#" data-dr-ir="' + p.rot_de.id + '">' + esc(p.rot_de.simbolo) + ' (' + esc(p.rot_de.broker) + ')</a>.</div>' : "") +
+    (p.alertas || []).map(a => '<div class="dr-link">Alerta antes de la ' + esc(a.cuando) + ': ' + esc(a.texto) + ' · ' + drFH(a.ts) + ' · <a href="#" data-dr-reg="1">ver en Registro</a></div>').join("") +
+    '<div class="dr-ed">' +
+    '<label for="dr-e-' + p.id + '">Estrategia<select id="dr-e-' + p.id + '" data-dr-e>' + optE + '</select></label>' +
+    (p.abierta ? '<span></span>' : '<label for="dr-m-' + p.id + '">Motivo de salida<select id="dr-m-' + p.id + '" data-dr-m>' + optM + '</select></label>') +
+    (p.stop_ent == null && p.obj_ent == null ? '<label for="dr-s-' + p.id + '">Stop al entrar (sin copia)<input id="dr-s-' + p.id + '" data-dr-s inputmode="decimal" placeholder="precio"></label>' +
+      '<label for="dr-o-' + p.id + '">Objetivo al entrar<input id="dr-o-' + p.id + '" data-dr-o inputmode="decimal" placeholder="precio"></label>' : "") +
+    '<label class="ancho" for="dr-n-' + p.id + '">Comentario<textarea id="dr-n-' + p.id + '" data-dr-n placeholder="Qué vi al entrar, qué haría distinto">' + esc(p.nota) + '</textarea></label>' +
+    '<div class="acc"><button class="corto secundario" data-dr-guardar="' + p.id + '">Guardar</button></div></div>';
+}
+
+function drPintarPend(d){
+  const ps = d.pendientes || [], estr = (d.estrategias || []).filter(x => !x.cerrada);
+  $("#dr-pend-caja").hidden = !ps.length;
+  $("#dr-pend-sub").textContent = ps.length ? "· " + ps.length + " sin estrategia o motivo" : "";
+  const optE = sel => '<option value="">Estrategia…</option>' + estr.map(x => '<option value="' + x.id + '"' + (x.id === sel ? " selected" : "") + '>' + esc(x.nombre) + '</option>').join("");
+  const vis = drSt.pendTodas ? ps : ps.slice(0, 5);
+  $("#dr-pend").innerHTML = vis.map(o => {
+    const rot = o.falta_motivo && o.candidatos_rot && o.candidatos_rot.length ?
+      '<select class="rot" data-dr-pr hidden aria-label="Compra en la que entró"><option value="">Entró en…</option>' + o.candidatos_rot.map(k =>
+        '<option value="' + k.id + '">' + esc(k.simbolo) + ' · ' + esc(k.broker) + ' · ' + drF(k.fecha) + '</option>').join("") + '</select>' : "";
+    return '<div class="dr-pf" data-dr-op="' + o.op_id + '"><div class="q"><b>' + esc(o.simbolo) + '</b> · ' + (o.lado === "compra" ? "Compra" : "Venta") + ' ' + ent(o.cantidad) +
+      (o.precio != null ? ' a ' + dec(o.precio, 2) + (o.moneda === "USD" ? " US$" : "") : "") + ' <span class="u-muted">· ' + esc(o.broker) + ' · ' + drFA(o.fecha) + '</span></div>' +
+      (o.falta_estrategia ? '<select data-dr-pe aria-label="Estrategia">' + optE(o.estrategia_id) + '</select>' : '<span></span>') +
+      (o.falta_motivo ? '<select data-dr-pm aria-label="Motivo"><option value="">Motivo…</option>' + (d.motivos || []).map(m => '<option value="' + m + '"' +
+        (m === o.motivo_sugerido ? " selected" : "") + '>' + esc(DR_MOT[m] || m) + '</option>').join("") + '</select>' : '<span></span>') +
+      '<button class="corto secundario" data-dr-pg>Guardar</button>' + rot + '</div>';
+  }).join("") + (ps.length > 5 ? '<button class="corto secundario" id="dr-pend-mas">' +
+    (drSt.pendTodas ? "Ver menos" : "Ver las " + ps.length) + '</button>' : "");
+}
+
+document.addEventListener("change", ev => {
+  const t = ev.target;
+  if(!t || !t.closest) return;
+  if(t.id === "dr-f-estr"){ drSt.estr = t.value; drRender(); return; }
+  if(t.id === "dr-f-brk"){ drSt.brk = t.value; drRender(); return; }
+  if(t.matches("[data-dr-pm]")){
+    const r = t.closest(".dr-pf").querySelector("[data-dr-pr]");
+    if(r) r.hidden = t.value !== "rotacion";
+  }
+});
+document.addEventListener("toggle", ev => {
+  const t = ev.target;
+  if(!t || !t.matches || !t.matches("details[data-dr-pos]")) return;
+  const id = +t.dataset.drPos;
+  if(t.open) drSt.abiertas.add(id); else drSt.abiertas.delete(id);
+}, true);
+document.addEventListener("click", async ev => {
+  const t = ev.target;
+  if(!t || !t.closest) return;
+  const chip = t.closest("#dr-per button, #dr-est button");
+  if(chip){
+    const grupo = chip.parentElement;
+    [...grupo.children].forEach(x => x.setAttribute("aria-pressed", x === chip ? "true" : "false"));
+    if(grupo.id === "dr-per") drSt.per = +chip.dataset.v; else drSt.est = chip.dataset.v;
+    drRender();
+    return;
+  }
+  if(t.closest("#dr-pend-mas")){ drSt.pendTodas = !drSt.pendTodas; drPintarPend(drDatos || {}); return; }
+  if(t.closest("#dr-importar")){
+    t.disabled = true; t.textContent = "Actualizando…";
+    const d = await drPost("importar", {});
+    if(d){
+      const r = (d.importacion || {}).iol || [];
+      const txt = r.map(x => x.error ? x.broker + ": " + x.error : x.broker + ": " + x.nuevas + " operaciones nuevas").join(" · ") || "Listo.";
+      pintarDiario(d, {texto: txt, error: r.some(x => x.error)});
+    }
+    return;
+  }
+  const ir = t.closest("[data-dr-ir]");
+  if(ir){
+    ev.preventDefault();
+    const id = +ir.dataset.drIr;
+    drSt.abiertas.add(id);
+    drSt.est = "todas"; drSt.per = 0; drSt.estr = ""; drSt.brk = "";
+    document.querySelectorAll("#dr-per button").forEach(x => x.setAttribute("aria-pressed", x.dataset.v === "0" ? "true" : "false"));
+    document.querySelectorAll("#dr-est button").forEach(x => x.setAttribute("aria-pressed", x.dataset.v === "todas" ? "true" : "false"));
+    $("#dr-f-estr").value = ""; $("#dr-f-brk").value = "";
+    drRender();
+    const el = document.querySelector('details[data-dr-pos="' + id + '"]');
+    if(el) el.scrollIntoView({behavior: "smooth", block: "start"});
+    return;
+  }
+  if(t.closest("[data-dr-reg]")){ ev.preventDefault(); irA("reg"); return; }
+  const pg = t.closest("[data-dr-pg]");
+  if(pg){
+    const fila = pg.closest(".dr-pf"), cuerpo = {};
+    const e = fila.querySelector("[data-dr-pe]"), m = fila.querySelector("[data-dr-pm]"), r = fila.querySelector("[data-dr-pr]");
+    if(e){ if(!e.value){ e.focus(); return; } cuerpo.estrategia_id = +e.value; }
+    if(m){ if(!m.value){ m.focus(); return; } cuerpo.motivo = m.value; }
+    if(m && m.value === "rotacion" && r && r.value) cuerpo.rot_a = +r.value;
+    pg.disabled = true;
+    await drPost("op/" + fila.dataset.drOp, cuerpo);
+    return;
+  }
+  const gu = t.closest("[data-dr-guardar]");
+  if(gu){
+    const det = gu.closest(".dr-det"), id = gu.dataset.drGuardar, cuerpo = {};
+    const e = det.querySelector("[data-dr-e]"), m = det.querySelector("[data-dr-m]");
+    const s = det.querySelector("[data-dr-s]"), o = det.querySelector("[data-dr-o]"), n = det.querySelector("[data-dr-n]");
+    cuerpo.estrategia_id = e.value ? +e.value : null;
+    if(m) cuerpo.motivo = m.value || null;
+    if(s && (s.value || o.value)){ cuerpo.stop_ent = s.value; cuerpo.obj_ent = o.value; }
+    cuerpo.nota = n.value;
+    gu.disabled = true;
+    drSt.abiertas.add(+id);
+    await drPost("pos/" + id, cuerpo);
+  }
 });
 
 /* ---------- reloj ---------- */
