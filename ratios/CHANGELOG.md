@@ -1,5 +1,24 @@
 # Registro de cambios
 
+## 0.69.0
+
+**Boletos de varias paginas.** Un boleto con muchas ejecuciones ocupa
+varias paginas y cada una repite el encabezado: el total y los gastos
+estan en la ultima. El lector se quedaba con la primera y lo guardaba
+como informativo (NFLX del 21/10, 8 registros en 3 paginas). Ahora junta
+las paginas del ORIGINAL. Los PDF que tengan una compra o venta guardada
+como informativa se vuelven a leer en la proxima revision de Drive y el
+boleto queda para confirmar.
+
+**DIARIO**
+- **Para completar** pide motivo y estrategia desde 2026 (y la estrategia
+  de las abiertas). Lo anterior se completa desde el detalle.
+- **Cambio de moneda**: compra y venta de la misma especie el mismo dia,
+  una en pesos y otra en dolares (dolar MEP), fuera de las estadisticas.
+- **Salida sin registrar**: lo que las operaciones dan por abierto y ya
+  no esta en la cuenta (vencimiento, rescate, canje o transferencia) deja
+  de figurar como abierto y queda fuera de las estadisticas.
+
 ## 0.68.0
 
 **Solapa DIARIO: diario de trading.** Cada posicion desde la primera

@@ -976,7 +976,7 @@ input, select, textarea{ border-radius:8px; }
       <div class="cart-tit">Posiciones <span class="u-muted" id="dr-cuenta"></span></div>
       <div id="dr-lista"></div>
     </div>
-    <div class="hist-ayuda dr-pie">Una posición va desde la primera compra hasta que la cantidad vuelve a cero. El resultado se mide contra el PPC con gastos; en dólares, cada movimiento al MEP de su día. Aciertos, ganancia y pérdida media y esperanza se miden en dólares. Una rotación cierra una posición y abre otra, vinculadas. R = resultado ÷ riesgo inicial (cantidad de la primera compra × (entrada − stop al entrar)); el stop al entrar es una copia de Gestión guardada al comprar. Stop respetado: salida hasta 1% debajo del stop. Una posición que empezó antes de lo registrado queda como historia incompleta, fuera de las estadísticas. Fuente: boleto (precio y gastos reales), IOL (precio real, gastos estimados), aproximado (diferencia entre dos tenencias: precio de la foto, gastos estimados).</div>
+    <div class="hist-ayuda dr-pie">Una posición va desde la primera compra hasta que la cantidad vuelve a cero. El resultado se mide contra el PPC con gastos; en dólares, cada movimiento al MEP de su día. Aciertos, ganancia y pérdida media y esperanza se miden en dólares. Una rotación cierra una posición y abre otra, vinculadas. R = resultado ÷ riesgo inicial (cantidad de la primera compra × (entrada − stop al entrar)); el stop al entrar es una copia de Gestión guardada al comprar. Stop respetado: salida hasta 1% debajo del stop. Una posición que empezó antes de lo registrado queda como historia incompleta, fuera de las estadísticas; una compra y venta el mismo día en monedas distintas es un cambio de moneda (dólar MEP), también fuera, igual que una que ya no está en la cuenta sin venta registrada (vencimiento, rescate, canje o transferencia). Para completar pide motivo y estrategia desde 2026; lo anterior se completa desde el detalle. Fuente: boleto (precio y gastos reales), IOL (precio real, gastos estimados), aproximado (diferencia entre dos tenencias: precio de la foto, gastos estimados).</div>
   </section>
 
   <section id="v-panel" hidden>
@@ -1799,7 +1799,7 @@ function drRender(){
       '</dd><small>stops respetados ' + s.stOk + ' de ' + s.stN + '</small></div>';
   const fuera = arr.filter(p => !p.abierta && !(p.medible && p.res_usd != null));
   $("#dr-excl").textContent = fuera.length ? fuera.length + " cerrada" + (fuera.length === 1 ? "" : "s") +
-    " fuera de las estadísticas: historia incompleta, sin precio o sin MEP del día." : "";
+    " fuera de las estadísticas: historia incompleta, salida sin registrar, cambio de moneda, sin precio o sin MEP del día." : "";
 
   const tabla = (clave, el, titulo) => {
     const ks = [...new Set(arr.filter(p => !p.abierta && p.medible && p.res_usd != null).map(clave))];
@@ -1831,11 +1831,11 @@ function drTarjeta(p, d){
   const resp = p.stop_respetado == null ? "" : p.stop_respetado ? '<span class="dr-tag ok">stop respetado</span>' :
     '<span class="dr-tag mal">salió ' + dec(Math.abs((p.px_salida / p.stop_ent - 1) * 100), 1) + '% debajo del stop</span>';
   const rtag = p.r != null ? '<span class="dr-tag">' + drS(p.r, 2) + ' R</span>' : (p.stop_ent ? "" : '<span class="dr-tag">sin stop al entrar</span>');
-  const inc = p.incompleta ? '<span class="dr-tag mal">historia incompleta</span>' : (p.sin_precio ? '<span class="dr-tag mal">sin precio</span>' : "");
+  const inc = p.cambio ? '<span class="dr-tag">cambio de moneda</span>' : p.sin_salida ? '<span class="dr-tag mal">salida sin registrar</span>' : p.incompleta ? '<span class="dr-tag mal">historia incompleta</span>' : (p.sin_precio ? '<span class="dr-tag mal">sin precio</span>' : "");
   return '<details class="dr-tr ' + cls + '" data-dr-pos="' + p.id + '"' + (drSt.abiertas.has(p.id) ? " open" : "") + '><summary>' +
     '<div><div class="t1"><span class="esp">' + esc(p.simbolo) + '</span><span class="meta">' + esc(p.broker) + ' · ' + esc(p.estrategia || "sin estrategia") + '</span></div>' +
-    '<div class="meta">' + drF(p.fecha_ini) + ' → ' + (p.abierta ? "abierta" : drF(p.fecha_fin)) + ' · ' + p.dias + ' días' + (p.motivo ? " · " + esc(DR_MOT[p.motivo] || p.motivo) : "") + '</div></div>' +
-    '<div class="res ' + (vu > 0 ? "u-sage" : vu < 0 ? "u-coral" : "") + '">' + (pu == null ? "—" : drS(pu, 1) + "% US$") +
+    '<div class="meta">' + drF(p.fecha_ini) + ' → ' + (p.abierta ? "abierta" : p.sin_salida ? "salida sin registrar" : drF(p.fecha_fin)) + ' · ' + p.dias + ' días' + (p.motivo ? " · " + esc(DR_MOT[p.motivo] || p.motivo) : "") + '</div></div>' +
+    '<div class="res ' + (p.cambio || p.sin_salida ? "u-muted" : vu > 0 ? "u-sage" : vu < 0 ? "u-coral" : "") + '">' + (p.cambio ? "cambio" : p.sin_salida ? "sin salida" : pu == null ? "—" : drS(pu, 1) + "% US$") +
     '<small>' + (p.abierta ? "latente · " : "") + 'US$ ' + drS(vu, 0) + ' · $ ' + drS(vp, 0) + (pp == null ? "" : ' (' + drS(pp, 1) + '%)') + '</small></div>' +
     '<div class="dr-tags">' + rot + fuente + inc + rtag + resp + (p.alertas && p.alertas.length ? '<span class="dr-tag">con alerta previa</span>' : "") + '</div>' +
     '</summary><div class="dr-det">' + drDetalle(p, d) + '</div></details>';
@@ -1866,6 +1866,8 @@ function drDetalle(p, d){
   const notas = [];
   if(p.gastos_est) notas.push("* Gastos estimados con la tabla de costos de la configuración.");
   if(p.fuente === "tenencia") notas.push("Precio de la foto de tenencia, no el ejecutado; dos operaciones entre las mismas fotos se ven como una.");
+  if(p.sin_salida) notas.push("Ya no está en la cuenta y no hay venta registrada: salió por un vencimiento, un rescate, un canje o una transferencia. Queda fuera de las estadísticas.");
+  if(p.cambio) notas.push("Compra y venta el mismo día en monedas distintas: es una operación de dólar MEP, no una posición. Queda fuera de las estadísticas.");
   if(p.incompleta) notas.push("Historia incompleta: la posición empezó antes de lo registrado (compras anteriores a la primera carga, a la primera foto de tenencia o por transferencia). Queda fuera de las estadísticas y sin resultado latente.");
   if(p.sin_mep) notas.push("Falta el MEP de algún día: sin resultado en dólares.");
   const estr = (d.estrategias || []).filter(x => !x.cerrada || x.id === p.estrategia_id);

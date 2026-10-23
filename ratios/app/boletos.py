@@ -95,7 +95,19 @@ def parsear(texto):
     """Los boletos de un PDF de Veta. Cada boleto viene dos veces
     (ORIGINAL y DUPLICADO): se queda el primero por numero."""
     out, vistos = [], set()
-    partes = re.split(r"(?=BOL \d{6,})", texto)
+    # Un boleto con muchas ejecuciones ocupa varias paginas, y cada pagina
+    # repite el encabezado "BOL n": la linea del total y los gastos estan
+    # en la ultima (NFLX del 21/10, 8 registros en 3 paginas). Se juntan
+    # las paginas del ORIGINAL de cada numero; el DUPLICADO se descarta.
+    bloques = {}
+    for b in re.split(r"(?=BOL \d{6,})", texto):
+        m = re.match(r"BOL (\d+)", b)
+        if m:
+            bloques.setdefault(m.group(1), []).append(b)
+    partes = []
+    for num, bs in bloques.items():
+        orig = [b for b in bs if "DUPLICADO" not in b]
+        partes.append("\n".join(orig or bs[:1]))
     for b in partes:
         m = re.match(r"BOL (\d+)", b)
         if not m or m.group(1) in vistos:
@@ -182,6 +194,10 @@ def guardar(boletos, broker, archivo):
     for b in boletos:
         estado = "pendiente" if (b["tipo"] in ("compra", "venta")
                                  or b["tipo"].startswith("caucion_")) else "informativo"
+        # Un boleto que antes quedo como informativo porque no se pudo leer
+        # entero (las paginas de un boleto largo) se completa al releerlo.
+        if estado == "pendiente":
+            c.execute("DELETE FROM boleto WHERE bol=? AND estado='informativo'", (b["bol"],))
         cur = c.execute(
             "INSERT OR IGNORE INTO boleto (bol, broker, fecha, liquida, tipo, "
             "simbolo, codigo, descripcion, cantidad, precio, neto, gastos, iva, "
@@ -269,6 +285,12 @@ def revisar_drive(clave, carpeta, broker):
         if not pagina:
             break
     c = db.conn()
+    # Los archivos con una compra o venta que quedo como informativa se
+    # vuelven a leer: es el caso de los boletos de varias paginas que el
+    # lector anterior no juntaba.
+    c.execute("DELETE FROM boleto_archivo WHERE nombre IN (SELECT archivo FROM boleto WHERE "
+              "estado='informativo' AND (descripcion LIKE 'Compra %' OR descripcion LIKE 'Venta %'))")
+    c.commit()
     leidos = {r["id"] for r in c.execute(
         "SELECT id FROM boleto_archivo WHERE error IS NULL")}
     n_arch, n_bol = 0, 0

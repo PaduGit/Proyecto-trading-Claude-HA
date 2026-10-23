@@ -44,6 +44,10 @@ DIAS_COPIA = 7
 DIAS_ALERTA = 5
 # Ventana para unir una venta y una compra como rotacion.
 DIAS_ROTACION = 5
+# "Para completar" pide motivo y estrategia solo desde esta fecha
+# (decidido el 22/10: lo anterior es historia de IOL desde 2017). Lo viejo
+# se puede completar desde el detalle.
+DESDE_PENDIENTES = "2026-01-01"
 NO_OPERA = ("moneda",)
 MONEDAS = ("ARS", "USD", "MEP", "CCL", "CAUCION", "US$", "PESOS", "DOLARES")
 
@@ -568,6 +572,12 @@ def posiciones(precios=None, mep_hoy=None):
         q = sum(o["q"] if o["lado"] == "compra" else -o["q"] for o in p["ops"])
         if q > 1e-9 and ten.get(k, 0) > q * 1.01 + 1e-6:
             p["incompleta"] = True
+        # Al reves: las operaciones dicen que sigue abierta y la cuenta ya
+        # no la tiene. Salio por un vencimiento, un rescate, un canje o una
+        # transferencia, que no son ventas: queda cerrada sin salida
+        # registrada y fuera de las estadisticas.
+        elif q > 1e-9 and ten.get(k, 0) <= 1e-9:
+            p["sin_salida"] = True
     out = []
     for p in pos:
         d = _medir(p, precios, mep_hoy, niv_hoy)
@@ -625,7 +635,8 @@ def _medir(p, precios, mep_hoy, niv_hoy):
             costo -= cs
             costo_u -= csu
             q = max(0.0, q - o["q"])
-    abierta = q > 1e-9
+    sin_salida = bool(p.get("sin_salida"))
+    abierta = q > 1e-9 and not sin_salida
     primera = compras[0] if compras else ops[0]
     ultima = ops[-1]
     base = primera.get("base") or 1.0
@@ -635,7 +646,7 @@ def _medir(p, precios, mep_hoy, niv_hoy):
         or next((o["estrategia_id"] for o in ops if o["estrategia_id"]), None)
     if not eid and abierta:
         eid = db._estrategia_de(p["simbolo"])
-    motivo = ventas[-1]["motivo"] if ventas and not abierta else None
+    motivo = ventas[-1]["motivo"] if ventas and not abierta and not p.get("sin_salida") else None
 
     lat = lat_u = None
     if abierta and not sin_precio and not p["incompleta"]:
@@ -645,7 +656,13 @@ def _medir(p, precios, mep_hoy, niv_hoy):
             lat = v_act - costo
             if mep_hoy and not sin_mep:
                 lat_u = v_act / mep_hoy - costo_u
-    medible = not sin_precio and not p["incompleta"]
+    # Compra y venta de la misma especie el mismo dia, una en pesos y la
+    # otra en dolares: es una compra o venta de dolar MEP, no una posicion
+    # (decidido el 22/10). Fuera de las estadisticas y de "Para completar".
+    cambio = (bool(compras) and bool(ventas) and q <= 1e-9
+              and len({o["fecha"][:10] for o in ops}) == 1
+              and len({o["moneda"] for o in ops}) > 1)
+    medible = not sin_precio and not p["incompleta"] and not cambio and not sin_salida
 
     # R: con la copia de los niveles de la primera compra, solo por precio
     stop = primera.get("stop_ent") if compras else None
@@ -678,7 +695,7 @@ def _medir(p, precios, mep_hoy, niv_hoy):
     return {
         "id": primera["id"], "broker": p["broker"], "simbolo": p["simbolo"],
         "estrategia_id": eid, "fuente": fuente, "abierta": abierta,
-        "incompleta": p["incompleta"], "sin_precio": sin_precio, "sin_mep": sin_mep,
+        "incompleta": p["incompleta"], "cambio": cambio, "sin_salida": sin_salida, "sin_precio": sin_precio, "sin_mep": sin_mep,
         "medible": medible, "gastos_est": any(o["gastos_est"] for o in ops),
         "fecha_ini": primera["fecha"], "fecha_fin": None if abierta else ultima["fecha"],
         "dias": ((date.today() if abierta else date.fromisoformat(ultima["fecha"][:10]))
@@ -725,8 +742,9 @@ def pendientes(pos=None):
     for p in pos:
         # Una posicion con historia incompleta queda fuera de las
         # estadisticas: clasificarla no cambia nada.
-        if p["incompleta"]:
+        if p["incompleta"] or p["cambio"] or p["sin_salida"]:
             continue
+        reciente = p["abierta"] or (p["fecha_fin"] or "") >= DESDE_PENDIENTES
         # Las ventas del mismo dia son una salida (TRAN vendio en cuatro
         # boletos): se pregunta una vez, por la ultima.
         dias = {}
@@ -734,10 +752,10 @@ def pendientes(pos=None):
             if o["lado"] == "venta":
                 dias.setdefault(o["fecha"][:10], []).append(o)
         filas = []
-        if not p["estrategia_id"]:
+        if not p["estrategia_id"] and reciente:
             filas.append((p["ops"][0], p["ops"][0]["cantidad"]))
         for f, vs in dias.items():
-            if not vs[-1]["motivo"]:
+            if not vs[-1]["motivo"] and f >= DESDE_PENDIENTES:
                 filas.append((vs[-1], sum(v["cantidad"] for v in vs)))
         for o, cant in filas:
             falta_e = not p["estrategia_id"] and o["id"] == p["id"]
