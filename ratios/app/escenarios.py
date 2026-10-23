@@ -53,6 +53,9 @@ def serie_cierres(iol, mercado, simbolo, clave=None):
     hoy = date.today()
     desde = hoy - timedelta(days=DIAS_HIST)
     guardados = db.cierres_de(clave, desde.isoformat())
+    if db._en_bono_hist(clave):
+        # La serie de un bono es la de bono_hist: no se pide ni se copia.
+        return [(r["fecha"], r["cierre"]) for r in guardados]
     ultimo = guardados[-1]["fecha"] if guardados else None
     falta_desde = (date.fromisoformat(ultimo) + timedelta(days=1)) if ultimo else desde
     if (guardados and guardados[0]["fecha"] > (desde + timedelta(days=10)).isoformat()

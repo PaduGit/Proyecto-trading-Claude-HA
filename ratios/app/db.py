@@ -54,20 +54,6 @@ CREATE TABLE IF NOT EXISTS alertas (
 );
 CREATE INDEX IF NOT EXISTS ix_alertas_ts ON alertas(ts);
 
-CREATE TABLE IF NOT EXISTS operaciones (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts           TEXT NOT NULL,
-    alias        TEXT NOT NULL,
-    alerta_id    INTEGER,
-    lado         TEXT NOT NULL,
-    cantidad     REAL,
-    precio_num   REAL,
-    precio_den   REAL,
-    ratio        REAL,
-    nota         TEXT
-);
-CREATE INDEX IF NOT EXISTS ix_oper_alias ON operaciones(alias, ts);
-
 CREATE TABLE IF NOT EXISTS requests (
     fecha     TEXT NOT NULL,
     tipo      TEXT NOT NULL,
@@ -241,6 +227,11 @@ def purgar_puntas(dias=DIAS_PUNTAS):
 def init():
     c = conn()
     c.executescript(ESQUEMA)
+    # Tablas retiradas por duplicar datos (22/10/2026): `operaciones`
+    # (registro manual, las operaciones estan en el diario) y `movimientos`
+    # (ledger viejo por grupo, reemplazado por estrategia_mov).
+    for t in ("operaciones", "movimientos"):
+        c.execute("DROP TABLE IF EXISTS %s" % t)
     # migracion desde 0.1.x
     cols = {r["name"] for r in c.execute("PRAGMA table_info(lecturas)")}
     for col in ("qc_num", "qv_num", "qc_den", "qv_den"):
@@ -280,7 +271,34 @@ def guardar_lectura(alias, ratio, num, den, ts=None):
     c.commit()
 
 
+def _en_bono_hist(simbolo):
+    """Si la especie tiene serie en `bono_hist`. Los cierres de los bonos
+    viven ahi (con TIR y desajustados); guardarlos tambien en `cierres`
+    los duplicaba (22/10/2026)."""
+    try:
+        return bool(conn().execute("SELECT 1 FROM bono_hist WHERE simbolo=? LIMIT 1",
+                                   (simbolo,)).fetchone())
+    except Exception:       # sin la tabla todavia
+        return False
+
+
+def limpiar_cierres_bonos():
+    """Borra de `cierres` lo que ya esta en `bono_hist`. Corre al arrancar,
+    despues de crear las tablas del historico."""
+    c = conn()
+    try:
+        n = c.execute("DELETE FROM cierres WHERE simbolo IN (SELECT DISTINCT simbolo FROM bono_hist)").rowcount
+    except Exception:
+        return 0
+    c.commit()
+    if n:
+        log.info("cierres de bonos borrados (estan en bono_hist): %d", n)
+    return n
+
+
 def guardar_cierres(simbolo, filas):
+    if _en_bono_hist(simbolo):
+        return
     c = conn()
     c.executemany(
         "INSERT OR IGNORE INTO cierres (fecha, simbolo, cierre) VALUES (?,?,?)",
@@ -300,20 +318,6 @@ def registrar_alerta(alias, tipo, ratio, nivel, mensaje, num=None, den=None):
          nivel, mensaje, num.get("ref"), den.get("ref"),
          num.get("vol_compra"), num.get("vol_venta"),
          den.get("vol_compra"), den.get("vol_venta")))
-    c.commit()
-    return cur.lastrowid
-
-
-def registrar_operacion(alias, lado, cantidad, precio_num, precio_den,
-                        alerta_id=None, nota=None):
-    ratio = (precio_num / precio_den) if precio_den else None
-    c = conn()
-    cur = c.execute(
-        "INSERT INTO operaciones "
-        "(ts, alias, alerta_id, lado, cantidad, precio_num, precio_den, ratio, nota) "
-        "VALUES (?,?,?,?,?,?,?,?,?)",
-        (datetime.now().isoformat(timespec="seconds"), alias, alerta_id,
-         lado, cantidad, precio_num, precio_den, ratio, nota))
     c.commit()
     return cur.lastrowid
 
@@ -381,6 +385,8 @@ def serie_propia_diaria(alias, desde=None, horario=None):
 
 def cierres_de(simbolo, desde=None):
     q = "SELECT fecha, cierre FROM cierres WHERE simbolo=?"
+    if _en_bono_hist(simbolo):
+        q = "SELECT fecha, precio AS cierre FROM bono_hist WHERE simbolo=?"
     args = [simbolo]
     if desde:
         q += " AND fecha >= ?"
@@ -390,8 +396,9 @@ def cierres_de(simbolo, desde=None):
 
 
 def ultimo_cierre_guardado(simbolo):
+    tabla = "bono_hist" if _en_bono_hist(simbolo) else "cierres"
     r = conn().execute(
-        "SELECT MAX(fecha) f FROM cierres WHERE simbolo=?", (simbolo,)).fetchone()
+        "SELECT MAX(fecha) f FROM %s WHERE simbolo=?" % tabla, (simbolo,)).fetchone()
     return r["f"] if r and r["f"] else None
 
 
@@ -407,11 +414,6 @@ def alertas_recientes(n=40):
     return conn().execute(
         "SELECT * FROM alertas ORDER BY ts DESC LIMIT ?", (n,)).fetchall()
 
-
-
-def operaciones_recientes(n=60):
-    return conn().execute(
-        "SELECT * FROM operaciones ORDER BY ts DESC LIMIT ?", (n,)).fetchall()
 
 
 def resumen_requests(dias=30):
@@ -477,20 +479,6 @@ CREATE TABLE IF NOT EXISTS grupos (
     factor    REAL
 );
 
-CREATE TABLE IF NOT EXISTS movimientos (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    grupo_id   INTEGER NOT NULL,
-    ts         TEXT NOT NULL,
-    tipo       TEXT NOT NULL,         -- rotacion | aporte | retiro
-    ticker_de  TEXT,                  -- rotacion: de donde sale
-    cant_de    REAL,
-    ticker_a   TEXT,                  -- rotacion: a donde va / aporte-retiro: el ticker
-    cant_a     REAL,
-    ratio_base REAL,                  -- equivalente en la unidad base al momento
-    equiv_antes REAL,                 -- equivalente total justo antes del movimiento
-    nota       TEXT
-);
-CREATE INDEX IF NOT EXISTS ix_mov_grupo ON movimientos(grupo_id, ts);
 """
 
 
@@ -507,9 +495,6 @@ COLS_GRUPO_NUEVAS = (("num", "TEXT"), ("den", "TEXT"),
 def init_posicion():
     c = conn()
     c.executescript(ESQUEMA_POSICION)
-    cols = {r["name"] for r in c.execute("PRAGMA table_info(movimientos)")}
-    if "equiv_antes" not in cols:
-        c.execute("ALTER TABLE movimientos ADD COLUMN equiv_antes REAL")
     # bases de versiones anteriores no tienen los campos del par
     cols = {r["name"] for r in c.execute("PRAGMA table_info(grupos)")}
     for nombre, tipo in COLS_GRUPO_NUEVAS:
@@ -657,40 +642,7 @@ def grupo_por_id(gid):
 
 def borrar_grupo(gid):
     c = conn()
-    c.execute("DELETE FROM movimientos WHERE grupo_id=?", (gid,))
     c.execute("DELETE FROM grupos WHERE id=?", (gid,))
-    c.commit()
-
-
-def registrar_movimiento(grupo_id, tipo, ticker_de=None, cant_de=None,
-                         ticker_a=None, cant_a=None, ratio_base=None,
-                         nota=None, ts=None, equiv_antes=None):
-    c = conn()
-    cur = c.execute(
-        "INSERT INTO movimientos "
-        "(grupo_id, ts, tipo, ticker_de, cant_de, ticker_a, cant_a,"
-        " ratio_base, equiv_antes, nota) VALUES (?,?,?,?,?,?,?,?,?,?)",
-        (grupo_id, ts or datetime.now().isoformat(timespec="seconds"), tipo,
-         ticker_de, cant_de, ticker_a, cant_a, ratio_base, equiv_antes, nota))
-    c.commit()
-    return cur.lastrowid
-
-
-def movimientos_de(grupo_id):
-    return conn().execute(
-        "SELECT * FROM movimientos WHERE grupo_id=? ORDER BY ts, id",
-        (grupo_id,)).fetchall()
-
-
-def borrar_movimiento(mid):
-    c = conn()
-    c.execute("DELETE FROM movimientos WHERE id=?", (mid,))
-    c.commit()
-
-
-def borrar_operacion(oid):
-    c = conn()
-    c.execute("DELETE FROM operaciones WHERE id=?", (oid,))
     c.commit()
 
 
@@ -1079,9 +1031,9 @@ CREATE TABLE IF NOT EXISTS estrategia (
   -- TX28 -> TZXD8 -> TX31, la vara sigue siendo el que elegiste al
   -- crearla, aunque ya no lo tengas.
   ticker_base TEXT,
-  objetivo REAL,
-  stop     REAL,
-  revisar  TEXT,                     -- fecha para volver a mirarla
+  -- Stop, objetivo y "revisar" no van aca: los niveles son de cada
+  -- especie y viven en Gestion; las fechas, en los recordatorios
+  -- (alerta_fecha). Una sola fuente por dato (22/10/2026).
   grupo_id INTEGER,
   alta     TEXT NOT NULL,
   cierre   TEXT,
@@ -1196,7 +1148,7 @@ FAMILIAS = {
         "nombre": "Rotación de par", "pestana": "ratios",
         "tenencia": True, "tipos": ("bonos", "letras", "on", "acciones",
                                     "cedears"),
-        "campos": ("ratio_min", "ratio_max"),
+        "campos": (),
     },
     "curva": {
         "nombre": "Curva de bonos", "pestana": "bonos",
@@ -1212,17 +1164,17 @@ FAMILIAS = {
     "tecnica": {
         "nombre": "Análisis técnico", "pestana": "tecnica",
         "tenencia": True, "tipos": ("acciones", "cedears"),
-        "campos": ("stop", "objetivo"),
+        "campos": (),
     },
     "opciones": {
         "nombre": "Opciones", "pestana": "opc",
         "tenencia": True, "tipos": ("opciones", "acciones", "cedears"),
-        "campos": ("stop", "objetivo"),
+        "campos": (),
     },
 }
 
 # La fecha de revision aplica a cualquier familia.
-CAMPOS_POSICION = ("stop", "objetivo", "ratio_min", "ratio_max", "revisar")
+CAMPOS_POSICION = ()
 
 # El patron es la vara externa y es opcional en TODAS las familias.
 # Antes solo lo admitian reserva y cambiaria, lo que mezclaba como se
@@ -1255,9 +1207,7 @@ def init_alertas():
         if hay and "estrategia_id" not in hay:
             c.execute("ALTER TABLE %s ADD COLUMN estrategia_id INTEGER" % tabla)
     for col in ("ppc REAL", "fecha_alta TEXT", "precision TEXT",
-                "ppc_base REAL", "stop REAL", "objetivo REAL",
-                "par_ticker TEXT", "ratio_min REAL", "ratio_max REAL",
-                "revisar TEXT", "fci_nombre TEXT", "ppc_usd REAL"):
+                "ppc_base REAL", "fci_nombre TEXT", "ppc_usd REAL"):
         if col.split()[0] not in cols:
             c.execute("ALTER TABLE tenencia ADD COLUMN " + col)
     try:
@@ -1280,7 +1230,7 @@ def init_alertas():
                           % tabla)
         except Exception as e:
             log.warning("migrar %s: %s", tabla, e)
-    _migrar_parametros(c)
+    _quitar_duplicados(c)
     _migrar_modelo_estrategias(c)
     # `signo` llego despues de que las dos tablas existieran, y CREATE
     # TABLE IF NOT EXISTS no agrega columnas. Sin esto el INSERT del diff
@@ -1321,8 +1271,8 @@ def _migrar_modelo_estrategias(c):
     acordado: no hay forma honesta de adivinar cual de las dos familias
     nuevas le corresponde a cada `rotacion` vieja.
 
-    `movimientos` NO se borra. Queda sin que nadie la lea, para tener a
-    donde mirar si algo del modelo nuevo no cierra.
+    `movimientos` quedaba sin que nadie la leyera; desde el 22/10/2026 se
+    borra al arrancar (duplicaba el ledger de las estrategias).
     """
     if get_estado(MIGRACION):
         return
@@ -1397,34 +1347,62 @@ def _migrar_modelo_estrategias(c):
     log.warning("modelo nuevo listo")
 
 
-def _migrar_parametros(c):
-    """Baja stop, objetivo y revisar de la estrategia a sus especies.
+def _quitar_duplicados(c):
+    """Una sola fuente por dato (22/10/2026).
 
-    Estaban en la estrategia, lo que obligaba a crear una por accion para
-    poder ponerle su propio stop. Son de la posicion: el stop de MIRG es
-    de MIRG. Se copia una sola vez y respeta lo que la tenencia ya tenga.
+    Stop y objetivo estaban en tres lugares (Gestion, la tenencia y la
+    estrategia), "revisar" en dos (tenencia y estrategia, ademas de los
+    recordatorios) y el par de rotacion en los grupos y en la tenencia.
+    Quedan: niveles en Gestion, fechas en `alerta_fecha` y pares en
+    `grupos`. Lo que hubiera cargado se pasa antes de borrar las columnas.
     """
+    import json as _json
+    tc = {r["name"] for r in c.execute("PRAGMA table_info(tenencia)")}
+    ec = {r["name"] for r in c.execute("PRAGMA table_info(estrategia)")}
+    viejas_t = [k for k in ("stop", "objetivo", "par_ticker", "ratio_min", "ratio_max", "revisar") if k in tc]
+    viejas_e = [k for k in ("stop", "objetivo", "revisar") if k in ec]
+    if not (viejas_t or viejas_e):
+        return
+    ahora = datetime.now().isoformat(timespec="seconds")
     try:
-        cols = {r["name"] for r in c.execute("PRAGMA table_info(estrategia)")}
-    except Exception:
-        return
-    if not {"stop", "objetivo"} <= cols:
-        return
-    if c.execute("SELECT 1 FROM tenencia WHERE stop IS NOT NULL "
-                 "OR objetivo IS NOT NULL LIMIT 1").fetchone():
-        return          # ya se hizo
-    for e in c.execute("SELECT id, stop, objetivo, revisar FROM estrategia "
-                       "WHERE stop IS NOT NULL OR objetivo IS NOT NULL "
-                       "OR revisar IS NOT NULL"):
-        for esp in c.execute("SELECT simbolo FROM estrategia_especie "
-                             "WHERE estrategia_id = ?", (e["id"],)):
-            c.execute(
-                "UPDATE tenencia SET stop = COALESCE(stop, ?), "
-                "objetivo = COALESCE(objetivo, ?), "
-                "revisar = COALESCE(revisar, ?) "
-                "WHERE simbolo = ?",
-                (e["stop"], e["objetivo"], e["revisar"], esp["simbolo"]))
-
+        g = _json.loads(get_estado("gestion") or "{}")
+        if not isinstance(g, dict):
+            g = {}
+    except (ValueError, TypeError):
+        g = {}
+    niv = g.setdefault("niveles", {})
+    pasadas = []
+    filas = []
+    if {"stop", "objetivo"} <= tc:
+        filas += [(r["simbolo"], r["stop"], r["objetivo"], r["revisar"] if "revisar" in tc else None, None)
+                  for r in c.execute("SELECT simbolo, stop, objetivo%s FROM tenencia WHERE stop IS NOT NULL "
+                                     "OR objetivo IS NOT NULL%s" % (
+                                         ", revisar" if "revisar" in tc else "",
+                                         " OR revisar IS NOT NULL" if "revisar" in tc else ""))]
+    if {"stop", "objetivo"} <= ec:
+        for e in c.execute("SELECT id, stop, objetivo%s FROM estrategia WHERE stop IS NOT NULL OR "
+                           "objetivo IS NOT NULL%s" % (", revisar" if "revisar" in ec else "",
+                                                       " OR revisar IS NOT NULL" if "revisar" in ec else "")).fetchall():
+            for esp in c.execute("SELECT simbolo FROM estrategia_especie WHERE estrategia_id=?", (e["id"],)):
+                filas.append((esp["simbolo"], e["stop"], e["objetivo"],
+                              e["revisar"] if "revisar" in ec else None, e["id"]))
+    for sim, stop, obj, rev, eid in filas:
+        if (stop is not None or obj is not None) and sim not in niv:
+            niv[sim] = {"modo": "precio", "stop": stop, "obj": obj}
+            pasadas.append(sim)
+        if rev:
+            c.execute("INSERT INTO alerta_fecha (titulo, fecha, dias_antes, nota, estrategia_id, creada) "
+                      "VALUES (?,?,0,?,?,?)", ("Revisar %s" % sim, rev, "pasado desde la posición", eid, ahora))
+    if pasadas:
+        set_estado("gestion", _json.dumps(g))
+        log.warning("niveles pasados a Gestión: %s", ", ".join(sorted(set(pasadas))))
+    for t, cols in (("tenencia", viejas_t), ("estrategia", viejas_e)):
+        for k in cols:
+            try:
+                c.execute("ALTER TABLE %s DROP COLUMN %s" % (t, k))
+            except Exception as e:
+                log.warning("no se pudo borrar %s.%s: %s", t, k, e)
+    c.commit()
 
 def alertas_fecha(solo_activas=False):
     q = "SELECT * FROM alerta_fecha"
@@ -1602,7 +1580,21 @@ def tenencias(broker=None):
         e = est.get(eid) if eid else None
         f["estrategia"] = e["nombre"] if e else None
         f["familia"] = e["familia"] if e else None
-    return [_con_eventos(f) for f in filas]
+    filas = [_con_eventos(f) for f in filas]
+    return _ppc_del_diario(filas, ajustadas=True)
+
+
+def _ppc_del_diario(filas, ajustadas=False):
+    """Con la historia completa en el diario (IOL o boletos), el PPC, el PPC
+    en dolares y la fecha de alta salen de las operaciones: no se guardan
+    dos veces (22/10/2026)."""
+    try:
+        import diario as DI
+        if get_estado("diario_v3"):
+            return DI.aplicar_ppc(filas, ajustadas)
+    except Exception as e:
+        log.debug("ppc del diario: %s", e)
+    return filas
 
 
 def _con_eventos(f):
@@ -1698,7 +1690,7 @@ def guardar_tenencias(filas, reemplazar="todo", precios=None):
         vals = []
         for k in extra:
             v = f.get(k) if f.get(k) not in (None, "") else None
-            if v is not None and k in ("ppc_usd", "stop", "objetivo", "ratio_min", "ratio_max"):
+            if v is not None and k == "ppc_usd":
                 try:
                     v = float(v)
                 except (TypeError, ValueError):
@@ -1754,13 +1746,11 @@ def actualizar_tenencia(broker, simbolo, campos):
             v = (v or "").strip().lower() or None
             if v and v not in ("exacta", "mes", "antes"):
                 raise ValueError("precisión inválida: %s" % v)
-        elif k in ("fecha_alta", "revisar", "fci_nombre"):
+        elif k in ("fecha_alta", "fci_nombre"):
             # `fci_nombre` es el nombre del fondo en CAFCI. Sin esta
             # linea caia en el `float(v)` de abajo y guardar la posicion
             # de un FCI reventaba.
             v = (v or "").strip() or None
-        elif k == "par_ticker":
-            v = (v or "").strip().upper() or None
         else:
             v = float(v) if v not in (None, "") else None
             if k == "cantidad" and v is None:
@@ -1830,20 +1820,18 @@ def guardar_estrategia(datos, eid=None):
 
     campos = (nombre, familia, (datos.get("tesis") or "").strip() or None,
               (datos.get("origen") or "").strip() or None, patron,
-              num("patron_valor"), num("objetivo"), num("stop"),
-              (datos.get("revisar") or "").strip() or None,
-              datos.get("grupo_id") or None, base)
+              num("patron_valor"), datos.get("grupo_id") or None, base)
     c = conn()
     if eid:
         c.execute("UPDATE estrategia SET nombre=?, familia=?, tesis=?, "
-                  "origen=?, patron=?, patron_valor=?, objetivo=?, stop=?, "
-                  "revisar=?, grupo_id=?, ticker_base=? WHERE id=?",
+                  "origen=?, patron=?, patron_valor=?, "
+                  "grupo_id=?, ticker_base=? WHERE id=?",
                   campos + (eid,))
     else:
         cur = c.execute(
             "INSERT INTO estrategia (nombre, familia, tesis, origen, patron, "
-            "patron_valor, objetivo, stop, revisar, grupo_id, ticker_base, "
-            "alta) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            "patron_valor, grupo_id, ticker_base, "
+            "alta) VALUES (?,?,?,?,?,?,?,?,?)",
             campos + (datetime.now().date().isoformat(),))
         eid = cur.lastrowid
     c.commit()
@@ -2720,11 +2708,11 @@ def tenencia_de_estrategia(eid):
     solo se lee para medir. Es lo que evita que la tarjeta muestre la
     tenencia del dia en que se sembro el grupo y nunca mas.
     """
-    return [dict(r) for r in conn().execute(
+    return _ppc_del_diario([dict(r) for r in conn().execute(
         "SELECT t.broker, t.simbolo, t.cantidad, t.tipo, t.ppc, t.ppc_base, "
         "t.ppc_usd, t.fecha_alta "
         "FROM tenencia t JOIN estrategia_especie e ON e.simbolo = t.simbolo "
-        "WHERE e.estrategia_id = ? ORDER BY t.simbolo, t.broker", (eid,))]
+        "WHERE e.estrategia_id = ? ORDER BY t.simbolo, t.broker", (eid,))])
 
 
 def base_cotizacion(simbolo, ts=None):

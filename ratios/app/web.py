@@ -27,6 +27,11 @@ log = logging.getLogger("web")
 
 def crear_app(monitor):
     app = Flask(__name__, static_folder="static", static_url_path="")
+    try:
+        import diario as DI
+        DI.configurar([n for n, _ in monitor.cuentas_iol()], monitor.boletos_cfg()["broker"], monitor.cfg)
+    except Exception as e:
+        log.warning("diario: %s", e)
 
     @app.after_request
     def sin_cache(resp):
@@ -256,38 +261,6 @@ def crear_app(monitor):
             "ts": datetime.now().isoformat(timespec="seconds"),
         })
 
-    # -- operaciones --------------------------------------------------
-
-    @app.post("/api/operaciones")
-    def nueva_operacion():
-        d = request.get_json(silent=True) or {}
-        alias = (d.get("alias") or "").strip()
-        if not alias:
-            return jsonify({"error": "Falta el par."}), 400
-        try:
-            cantidad = float(d.get("cantidad") or 0)
-            pn = float(d.get("precio_num") or 0)
-            pd = float(d.get("precio_den") or 0)
-        except (TypeError, ValueError):
-            return jsonify({"error": "Cantidad y precios tienen que ser números."}), 400
-        if not pn or not pd:
-            return jsonify({"error": "Cargá los dos precios efectivos."}), 400
-
-        oid = db.registrar_operacion(
-            alias, (d.get("lado") or "entrada"), cantidad, pn, pd,
-            d.get("alerta_id"), (d.get("nota") or "").strip() or None)
-        return jsonify({"ok": True, "id": oid, "ratio": pn / pd})
-
-    @app.get("/api/operaciones")
-    def listar_operaciones():
-        filas = db.operaciones_recientes(60)
-        return jsonify([{
-            "id": f["id"], "ts": f["ts"], "alias": f["alias"],
-            "lado": f["lado"], "cantidad": f["cantidad"],
-            "precio_num": f["precio_num"], "precio_den": f["precio_den"],
-            "ratio": f["ratio"], "nota": f["nota"],
-        } for f in filas])
-
     # -- posicion -----------------------------------------------------
 
     def _mep():
@@ -455,11 +428,6 @@ def crear_app(monitor):
     def eliminar_grupo(gid):
         db.borrar_grupo(gid)
         _tarjeta_al_dia(gid)
-        return jsonify({"ok": True})
-
-    @app.delete("/api/operaciones/<int:oid>")
-    def eliminar_operacion(oid):
-        db.borrar_operacion(oid)
         return jsonify({"ok": True})
 
     # -- bonos --------------------------------------------------------
@@ -646,7 +614,7 @@ def crear_app(monitor):
         from datetime import date, timedelta
         desde = (date.today() - timedelta(days=90)).isoformat()
         ultimo = db.ultimo_cierre_guardado(sim)
-        if monitor._en_horario() and (
+        if not db._en_bono_hist(sim) and monitor._en_horario() and (
                 not ultimo
                 or ultimo < (date.today() - timedelta(days=1)).isoformat()):
             try:
@@ -1854,8 +1822,9 @@ def crear_app(monitor):
         import diario as DI
         cuentas = [n for n, _ in monitor.cuentas_iol()]
         bol = monitor.boletos_cfg()["broker"]
+        DI.configurar(cuentas, bol, monitor.cfg)
         if sincronizar:
-            DI.sincronizar_local(cuentas, bol, monitor.cfg)
+            DI.sincronizar_local()
         pos = DI.posiciones(_precios_vigentes(), _mep())
         return {"posiciones": pos, "pendientes": DI.pendientes(pos),
                 "estrategias": [{"id": e["id"], "nombre": e["nombre"],
@@ -1883,22 +1852,22 @@ def crear_app(monitor):
             log.exception("diario importar")
             return jsonify({"error": str(e)}), 500
 
-    @app.post("/api/diario/op/<int:oid>")
-    def diario_op(oid):
+    @app.post("/api/diario/op")
+    def diario_op():
         import diario as DI
         d = request.get_json(silent=True) or {}
         try:
-            DI.guardar_op(oid, d)
+            DI.guardar_op(str(d.get("ref") or ""), d)
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
         return jsonify(_diario_vista(sincronizar=False))
 
-    @app.post("/api/diario/pos/<int:pid>")
-    def diario_pos(pid):
+    @app.post("/api/diario/pos")
+    def diario_pos():
         import diario as DI
         d = request.get_json(silent=True) or {}
         try:
-            DI.guardar_pos(pid, d)
+            DI.guardar_pos(str(d.get("ref") or ""), d)
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
         return jsonify(_diario_vista(sincronizar=False))

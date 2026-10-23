@@ -976,7 +976,7 @@ input, select, textarea{ border-radius:8px; }
       <div class="cart-tit">Posiciones <span class="u-muted" id="dr-cuenta"></span></div>
       <div id="dr-lista"></div>
     </div>
-    <div class="hist-ayuda dr-pie">Una posición va desde la primera compra hasta que la cantidad vuelve a cero. El resultado se mide contra el PPC con gastos; en dólares, cada movimiento al MEP de su día. Aciertos, ganancia y pérdida media y esperanza se miden en dólares. Una rotación cierra una posición y abre otra, vinculadas. R = resultado ÷ riesgo inicial (cantidad de la primera compra × (entrada − stop al entrar)); el stop al entrar es una copia de Gestión guardada al comprar. Stop respetado: salida hasta 1% debajo del stop. Una posición que empezó antes de lo registrado queda como historia incompleta, fuera de las estadísticas; una compra y venta el mismo día en monedas distintas es un cambio de moneda (dólar MEP), también fuera, igual que una que ya no está en la cuenta sin venta registrada (vencimiento, rescate, canje o transferencia). Para completar pide motivo y estrategia desde 2026; lo anterior se completa desde el detalle. Fuente: boleto (precio y gastos reales), IOL (precio real, gastos estimados), aproximado (diferencia entre dos tenencias: precio de la foto, gastos estimados).</div>
+    <div class="hist-ayuda dr-pie">Una posición va desde la primera compra hasta que la cantidad vuelve a cero. El resultado se mide contra el PPC con gastos; en dólares, cada movimiento al MEP de su día. Aciertos, ganancia y pérdida media y esperanza se miden en dólares. Una rotación cierra una posición y abre otra, vinculadas. R = resultado ÷ riesgo inicial (cantidad de la primera compra × (entrada − stop al entrar)); el stop al entrar es una copia de Gestión guardada al comprar. Stop respetado: salida hasta 1% debajo del stop. Una posición que empezó antes de lo registrado queda como historia incompleta, fuera de las estadísticas; una compra y venta el mismo día en monedas distintas es un cambio de moneda (dólar MEP), también fuera, igual que una que ya no está en la cuenta sin venta registrada (vencimiento, rescate, canje o transferencia). Para completar pide motivo y estrategia desde 2026; lo anterior se completa desde el detalle. La estrategia tiene una sola fuente: en una abierta, la asignación de la especie (la misma de Tenencias y las tarjetas); en una cerrada, el ledger de la estrategia; solo la historia sin ledger la guarda el diario. Si el stop o el objetivo se cargan en Gestión hasta 7 días después de la compra, se copian como niveles al entrar. Fuente: boleto (precio y gastos reales), IOL (precio real, gastos estimados), aproximado (diferencia entre dos tenencias: precio de la foto, gastos estimados).</div>
   </section>
 
   <section id="v-panel" hidden>
@@ -1591,39 +1591,6 @@ input, select, textarea{ border-radius:8px; }
   <div id="m-msg"></div>
 </dialog>
 
-<dialog id="dlg-op">
-  <h2 id="dlg-titulo">Registrar operación</h2>
-  <div class="form">
-    <div>
-      <label for="o-cant">Cantidad</label>
-      <input id="o-cant" type="number" inputmode="decimal" placeholder="0">
-    </div>
-    <div>
-      <label for="o-lado">Lado</label>
-      <select id="o-lado">
-        <option value="entrada">Entrada</option>
-        <option value="salida">Salida</option>
-      </select>
-    </div>
-    <div>
-      <label for="o-pn" id="lbl-pn">Precio num.</label>
-      <input id="o-pn" type="number" inputmode="decimal" step="any">
-    </div>
-    <div>
-      <label for="o-pd" id="lbl-pd">Precio den.</label>
-      <input id="o-pd" type="number" inputmode="decimal" step="any">
-    </div>
-    <div class="ancho">
-      <label for="o-nota">Nota (opcional)</label>
-      <textarea id="o-nota"></textarea>
-    </div>
-    <div class="u-mono u-fs-12 u-muted ancho" id="o-ratio"></div>
-    <div class="ancho"><button class="primario" id="o-guardar">Guardar</button></div>
-    <div class="ancho"><button class="secundario" id="o-cerrar">Cancelar</button></div>
-  </div>
-  <div id="o-msg"></div>
-</dialog>
-
 <!-- uPlot va copiada en el repo (app/static/uplot.min.js), no desde un CDN:
      la app tiene que andar sin internet. Si falta, los graficos vuelven
      a los SVG de antes. -->
@@ -1638,7 +1605,6 @@ let ultimoEstado = null;
    del ratio las necesita y no vienen en /api/estado: la posicion vive en
    un solo endpoint para que las dos pantallas no se desincronicen. */
 let estrPar = [];
-let opCtx = {};
 
 /* El backend inyecta la version del config.yaml en el body. */
 $("#ver-app").textContent = document.body.dataset.version || "";
@@ -1832,7 +1798,7 @@ function drTarjeta(p, d){
     '<span class="dr-tag mal">salió ' + dec(Math.abs((p.px_salida / p.stop_ent - 1) * 100), 1) + '% debajo del stop</span>';
   const rtag = p.r != null ? '<span class="dr-tag">' + drS(p.r, 2) + ' R</span>' : (p.stop_ent ? "" : '<span class="dr-tag">sin stop al entrar</span>');
   const inc = p.cambio ? '<span class="dr-tag">cambio de moneda</span>' : p.sin_salida ? '<span class="dr-tag mal">salida sin registrar</span>' : p.incompleta ? '<span class="dr-tag mal">historia incompleta</span>' : (p.sin_precio ? '<span class="dr-tag mal">sin precio</span>' : "");
-  return '<details class="dr-tr ' + cls + '" data-dr-pos="' + p.id + '"' + (drSt.abiertas.has(p.id) ? " open" : "") + '><summary>' +
+  return '<details class="dr-tr ' + cls + '" data-dr-pos="' + esc(p.id) + '"' + (drSt.abiertas.has(p.id) ? " open" : "") + '><summary>' +
     '<div><div class="t1"><span class="esp">' + esc(p.simbolo) + '</span><span class="meta">' + esc(p.broker) + ' · ' + esc(p.estrategia || "sin estrategia") + '</span></div>' +
     '<div class="meta">' + drF(p.fecha_ini) + ' → ' + (p.abierta ? "abierta" : p.sin_salida ? "salida sin registrar" : drF(p.fecha_fin)) + ' · ' + p.dias + ' días' + (p.motivo ? " · " + esc(DR_MOT[p.motivo] || p.motivo) : "") + '</div></div>' +
     '<div class="res ' + (p.cambio || p.sin_salida ? "u-muted" : vu > 0 ? "u-sage" : vu < 0 ? "u-coral" : "") + '">' + (p.cambio ? "cambio" : p.sin_salida ? "sin salida" : pu == null ? "—" : drS(pu, 1) + "% US$") +
@@ -1881,16 +1847,19 @@ function drDetalle(p, d){
     '<div class="dr-caja">Riesgo inicial<b>' + (p.riesgo == null ? "—" : "$ " + dec(p.riesgo, 0)) + '</b></div></div>' +
     '<div class="u-scroll-x"><table class="tabla"><thead><tr><th>Fecha</th><th>Operación</th><th>Cantidad</th><th>Precio</th><th>Gastos</th><th>Neto $</th><th>MEP</th></tr></thead><tbody>' + filas + '</tbody></table></div>' +
     notas.map(n => '<div class="dr-nota">' + esc(n) + '</div>').join("") +
-    (p.rot_a ? '<div class="dr-link">Rotación: el neto de la venta entró en <a href="#" data-dr-ir="' + p.rot_a.id + '">' + esc(p.rot_a.simbolo) + ' (' + esc(p.rot_a.broker) + ')</a>. Cada una se mide por separado.</div>' : "") +
-    (p.rot_de ? '<div class="dr-link">Rotación: entró con el neto de la venta de <a href="#" data-dr-ir="' + p.rot_de.id + '">' + esc(p.rot_de.simbolo) + ' (' + esc(p.rot_de.broker) + ')</a>.</div>' : "") +
+    (p.rot_a ? '<div class="dr-link">Rotación: el neto de la venta entró en <a href="#" data-dr-ir="' + esc(p.rot_a.id) + '">' + esc(p.rot_a.simbolo) + ' (' + esc(p.rot_a.broker) + ')</a>. Cada una se mide por separado.</div>' : "") +
+    (p.rot_de ? '<div class="dr-link">Rotación: entró con el neto de la venta de <a href="#" data-dr-ir="' + esc(p.rot_de.id) + '">' + esc(p.rot_de.simbolo) + ' (' + esc(p.rot_de.broker) + ')</a>.</div>' : "") +
     (p.alertas || []).map(a => '<div class="dr-link">Alerta antes de la ' + esc(a.cuando) + ': ' + esc(a.texto) + ' · ' + drFH(a.ts) + ' · <a href="#" data-dr-reg="1">ver en Registro</a></div>').join("") +
     '<div class="dr-ed">' +
-    '<label for="dr-e-' + p.id + '">Estrategia<select id="dr-e-' + p.id + '" data-dr-e>' + optE + '</select></label>' +
-    (p.abierta ? '<span></span>' : '<label for="dr-m-' + p.id + '">Motivo de salida<select id="dr-m-' + p.id + '" data-dr-m>' + optM + '</select></label>') +
-    (p.stop_ent == null && p.obj_ent == null ? '<label for="dr-s-' + p.id + '">Stop al entrar (sin copia)<input id="dr-s-' + p.id + '" data-dr-s inputmode="decimal" placeholder="precio"></label>' +
-      '<label for="dr-o-' + p.id + '">Objetivo al entrar<input id="dr-o-' + p.id + '" data-dr-o inputmode="decimal" placeholder="precio"></label>' : "") +
-    '<label class="ancho" for="dr-n-' + p.id + '">Comentario<textarea id="dr-n-' + p.id + '" data-dr-n placeholder="Qué vi al entrar, qué haría distinto">' + esc(p.nota) + '</textarea></label>' +
-    '<div class="acc"><button class="corto secundario" data-dr-guardar="' + p.id + '">Guardar</button></div></div>';
+    (p.estrategia_fuente === "ledger" && !p.abierta
+      ? '<div class="dr-caja">Estrategia<b>' + esc(p.estrategia || "—") + '</b>del ledger de la estrategia</div>'
+      : '<label for="dr-e-' + css(p.id) + '">Estrategia' + (p.abierta ? ' (la de la especie en toda la app)' : '') +
+        '<select id="dr-e-' + css(p.id) + '" data-dr-e>' + optE + '</select></label>') +
+    (p.abierta ? '<span></span>' : '<label for="dr-m-' + css(p.id) + '">Motivo de salida<select id="dr-m-' + css(p.id) + '" data-dr-m>' + optM + '</select></label>') +
+    (p.stop_ent == null && p.obj_ent == null ? '<label for="dr-s-' + css(p.id) + '">Stop al entrar (sin copia)<input id="dr-s-' + css(p.id) + '" data-dr-s inputmode="decimal" placeholder="precio"></label>' +
+      '<label for="dr-o-' + css(p.id) + '">Objetivo al entrar<input id="dr-o-' + css(p.id) + '" data-dr-o inputmode="decimal" placeholder="precio"></label>' : "") +
+    '<label class="ancho" for="dr-n-' + css(p.id) + '">Comentario<textarea id="dr-n-' + css(p.id) + '" data-dr-n placeholder="Qué vi al entrar, qué haría distinto">' + esc(p.nota) + '</textarea></label>' +
+    '<div class="acc"><button class="corto secundario" data-dr-guardar="' + esc(p.id) + '">Guardar</button></div></div>';
 }
 
 function drPintarPend(d){
@@ -1903,7 +1872,7 @@ function drPintarPend(d){
     const rot = o.falta_motivo && o.candidatos_rot && o.candidatos_rot.length ?
       '<select class="rot" data-dr-pr hidden aria-label="Compra en la que entró"><option value="">Entró en…</option>' + o.candidatos_rot.map(k =>
         '<option value="' + k.id + '">' + esc(k.simbolo) + ' · ' + esc(k.broker) + ' · ' + drF(k.fecha) + '</option>').join("") + '</select>' : "";
-    return '<div class="dr-pf" data-dr-op="' + o.op_id + '"><div class="q"><b>' + esc(o.simbolo) + '</b> · ' + (o.lado === "compra" ? "Compra" : "Venta") + ' ' + ent(o.cantidad) +
+    return '<div class="dr-pf" data-dr-op="' + esc(o.op_id) + '"><div class="q"><b>' + esc(o.simbolo) + '</b> · ' + (o.lado === "compra" ? "Compra" : "Venta") + ' ' + ent(o.cantidad) +
       (o.precio != null ? ' a ' + dec(o.precio, 2) + (o.moneda === "USD" ? " US$" : "") : "") + ' <span class="u-muted">· ' + esc(o.broker) + ' · ' + drFA(o.fecha) + '</span></div>' +
       (o.falta_estrategia ? '<select data-dr-pe aria-label="Estrategia">' + optE(o.estrategia_id) + '</select>' : '<span></span>') +
       (o.falta_motivo ? '<select data-dr-pm aria-label="Motivo"><option value="">Motivo…</option>' + (d.motivos || []).map(m => '<option value="' + m + '"' +
@@ -1926,7 +1895,7 @@ document.addEventListener("change", ev => {
 document.addEventListener("toggle", ev => {
   const t = ev.target;
   if(!t || !t.matches || !t.matches("details[data-dr-pos]")) return;
-  const id = +t.dataset.drPos;
+  const id = t.dataset.drPos;
   if(t.open) drSt.abiertas.add(id); else drSt.abiertas.delete(id);
 }, true);
 document.addEventListener("click", async ev => {
@@ -1954,14 +1923,14 @@ document.addEventListener("click", async ev => {
   const ir = t.closest("[data-dr-ir]");
   if(ir){
     ev.preventDefault();
-    const id = +ir.dataset.drIr;
+    const id = ir.dataset.drIr;
     drSt.abiertas.add(id);
     drSt.est = "todas"; drSt.per = 0; drSt.estr = ""; drSt.brk = "";
     document.querySelectorAll("#dr-per button").forEach(x => x.setAttribute("aria-pressed", x.dataset.v === "0" ? "true" : "false"));
     document.querySelectorAll("#dr-est button").forEach(x => x.setAttribute("aria-pressed", x.dataset.v === "todas" ? "true" : "false"));
     $("#dr-f-estr").value = ""; $("#dr-f-brk").value = "";
     drRender();
-    const el = document.querySelector('details[data-dr-pos="' + id + '"]');
+    const el = [...document.querySelectorAll('details[data-dr-pos]')].find(x => x.dataset.drPos === id);
     if(el) el.scrollIntoView({behavior: "smooth", block: "start"});
     return;
   }
@@ -1972,9 +1941,10 @@ document.addEventListener("click", async ev => {
     const e = fila.querySelector("[data-dr-pe]"), m = fila.querySelector("[data-dr-pm]"), r = fila.querySelector("[data-dr-pr]");
     if(e){ if(!e.value){ e.focus(); return; } cuerpo.estrategia_id = +e.value; }
     if(m){ if(!m.value){ m.focus(); return; } cuerpo.motivo = m.value; }
-    if(m && m.value === "rotacion" && r && r.value) cuerpo.rot_a = +r.value;
+    if(m && m.value === "rotacion" && r && r.value) cuerpo.rot_a = r.value;
     pg.disabled = true;
-    await drPost("op/" + fila.dataset.drOp, cuerpo);
+    cuerpo.ref = fila.dataset.drOp;
+    await drPost("op", cuerpo);
     return;
   }
   const gu = t.closest("[data-dr-guardar]");
@@ -1982,13 +1952,14 @@ document.addEventListener("click", async ev => {
     const det = gu.closest(".dr-det"), id = gu.dataset.drGuardar, cuerpo = {};
     const e = det.querySelector("[data-dr-e]"), m = det.querySelector("[data-dr-m]");
     const s = det.querySelector("[data-dr-s]"), o = det.querySelector("[data-dr-o]"), n = det.querySelector("[data-dr-n]");
-    cuerpo.estrategia_id = e.value ? +e.value : null;
+    if(e) cuerpo.estrategia_id = e.value ? +e.value : null;
     if(m) cuerpo.motivo = m.value || null;
     if(s && (s.value || o.value)){ cuerpo.stop_ent = s.value; cuerpo.obj_ent = o.value; }
     cuerpo.nota = n.value;
     gu.disabled = true;
-    drSt.abiertas.add(+id);
-    await drPost("pos/" + id, cuerpo);
+    drSt.abiertas.add(id);
+    cuerpo.ref = id;
+    await drPost("pos", cuerpo);
   }
 });
 
@@ -3412,57 +3383,6 @@ function grafico(puntos, res, sop, modo){
     (varPct ? ' (' + varPct.toFixed(1) + '%)' : "") + '</div>';
 }
 
-/* ---------- registrar operación ---------- */
-function abrirOp(alias){
-  const p = (ultimoEstado && ultimoEstado.pares || []).find(x => x.alias === alias);
-  opCtx = {alias, alerta_id: p && p.alerta_id};
-  $("#dlg-titulo").textContent = alias;
-  $("#lbl-pn").textContent = "Precio " + ((p && p.num) || "num.");
-  $("#lbl-pd").textContent = "Precio " + ((p && p.den) || "den.");
-  $("#o-cant").value = "";
-  $("#o-pn").value = p && p.p_num ? (p.p_num.ref || "") : "";
-  $("#o-pd").value = p && p.p_den ? (p.p_den.ref || "") : "";
-  $("#o-nota").value = "";
-  $("#o-msg").innerHTML = "";
-  calcRatioOp();
-  $("#dlg-op").showModal();
-}
-["o-pn","o-pd"].forEach(id => $("#"+id).addEventListener("input", calcRatioOp));
-function calcRatioOp(){
-  const a = parseFloat($("#o-pn").value), b = parseFloat($("#o-pd").value);
-  $("#o-ratio").textContent = (a && b) ? "Ratio efectivo: " + num(a/b) : "";
-}
-$("#o-cerrar").addEventListener("click", () => $("#dlg-op").close());
-$("#o-guardar").addEventListener("click", async () => {
-  const cuerpo = {
-    alias: opCtx.alias, alerta_id: opCtx.alerta_id,
-    lado: $("#o-lado").value,
-    cantidad: parseFloat($("#o-cant").value) || 0,
-    precio_num: parseFloat($("#o-pn").value) || 0,
-    precio_den: parseFloat($("#o-pd").value) || 0,
-    nota: $("#o-nota").value,
-  };
-  try{
-    const r = await fetch(base + "api/operaciones", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify(cuerpo)});
-    const d = await r.json();
-    if(!r.ok){ $("#o-msg").innerHTML = '<div class="msg error">' +
-      esc(d.error || "No se pudo guardar.") + '</div>'; return; }
-    $("#dlg-op").close();
-    if(vista === "pos") cargarPosicion();
-    if(vista === "bonos") cargarBonos();
-    if(vista === "rulo") cargarCircuitos();
-    if(vista === "opc") cargarOpciones();
-    if(vista === "plazos") cargarPlazos();
-    if(vista === "alertas"){ cargarAlertas(); cargarAlertasFecha(); }
-    if(vista === "pos"){ cargarTenencias(); cargarCobros(); cargarBoletos(); }
-    if(vista === "reg") cargarRegistro();
-  }catch(e){
-    $("#o-msg").innerHTML = '<div class="msg error">No se pudo guardar.</div>';
-  }
-});
-
 /* ---------- calculadora ---------- */
 async function cargarRecientes(){
   try{
@@ -3588,7 +3508,7 @@ const DESTINO_ALERTA = {alta:["panel","Ver en RATIOS"], baja:["panel","Ver en RA
   canje:["bonos","Ver en BONOS"], rulo:["rulo","Ver en RULO"],
   plazos:["plazos","Ver en PASES"], fecha:["alertas","Ver alertas"],
   precio:["alertas","Ver alertas"], cobro:["pos","Ver tenencias"]};
-let regDatos = {al: [], op: []};
+let regDatos = {al: []};
 function detalleAlerta(a){
   const dest = a.tipo && a.tipo.startsWith("curva_")
     ? '<button class="corto secundario" onclick="verBono(\'' + esc(a.alias) +
@@ -3615,22 +3535,6 @@ function detalleAlerta(a){
       puntas + '</dl>' +
     (dest ? '<div class="u-mt-8">' + dest + '</div>' : "") + '</div>';
 }
-function detalleOperacion(o){
-  return '<div class="reg-borde reg-det"><dl class="kv">' +
-    '<dt>Fecha</dt><dd>' + esc((o.ts || "").replace("T", " ")) + '</dd>' +
-    '<dt>Par</dt><dd>' + esc(o.alias) + '</dd>' +
-    '<dt>Lado</dt><dd>' + esc(o.lado || "") + '</dd>' +
-    '<dt>Cantidad</dt><dd>' + ent(o.cantidad || 0) + '</dd>' +
-    '<dt>Ratio</dt><dd>' + num(o.ratio, 4) + '</dd>' +
-    ((o.precio_num != null || o.precio_den != null)
-      ? '<dt>Precios</dt><dd>' + (o.precio_num != null ? num(o.precio_num, 2)
-        : "—") + ' / ' + (o.precio_den != null ? num(o.precio_den, 2) : "—") +
-        '</dd>' : "") +
-    (o.nota ? '<dt>Nota</dt><dd>' + esc(o.nota) + '</dd>' : "") +
-    '</dl><div class="u-mt-8"><button class="corto secundario" ' +
-    'onclick="irA(\'panel\')">Ver en ' +
-    'RATIOS</button></div></div>';
-}
 function abrirRegistro(tipo, i){
   const id = "reg-" + tipo + "-" + i;
   const abierto = document.getElementById(id + "-d");
@@ -3640,8 +3544,7 @@ function abrirRegistro(tipo, i){
   if(!fila) return;
   const d = document.createElement("div");
   d.id = id + "-d";
-  d.innerHTML = tipo === "al" ? detalleAlerta(regDatos.al[i])
-                              : detalleOperacion(regDatos.op[i]);
+  d.innerHTML = detalleAlerta(regDatos.al[i]);
   const det = d.firstElementChild;
   det.id = id + "-d";
   fila.after(det);
@@ -3652,22 +3555,12 @@ async function cargarRegistro(){
     /* Promise.all sobre respuestas YA resueltas: el await de adentro
        las espera de a una y si la primera falla, la segunda queda
        colgada y la solapa entera se cae. */
-    const [rAl, rOp] = await Promise.all([
-      fetch(base + "api/alertas"),
-      fetch(base + "api/operaciones")]);
-    const [al, op] = await Promise.all([rAl.json(), rOp.json()]);
-    regDatos = {al, op};
-    let h = '<div class="hallazgo"><h3>Operaciones</h3>';
-    h += op.length ? op.map((o, i) =>
-      '<div class="u-ptr fila" id="reg-op-' + i + '" ' +
-      'onclick="abrirRegistro(\'op\',' + i + ')"><span>' + esc(o.alias) +
-      ' <span class="t">' + esc(o.lado) + '</span></span><span>' +
-      num(o.ratio) + ' <span class="t">' + ent(o.cantidad) + ' · ' +
-      o.ts.slice(5,10) + ' ' + o.ts.slice(11,16) + '</span> ' +
-      '<button onclick="event.stopPropagation();borrarOperacion(' + o.id +
-      ')" class="u-sin-fondo u-sin-borde u-muted u-ptr">×</button></span></div>').join("")
-      : '<div class="u-p-12 vacio">Nada registrado todavía. ' +
-        'Se registran desde la estrategia.</div>';
+    const al = await (await fetch(base + "api/alertas")).json();
+    regDatos = {al};
+    /* Las operaciones estan en DIARIO, que las trae de los brokers: el
+       registro manual que habia aca las duplicaba (22/10/2026). */
+    let h = '<div class="hallazgo"><h3>Operaciones</h3><div class="u-p-12 vacio">Están en ' +
+      '<a href="#" onclick="irA(\'diario\');return false">Diario</a>, con las de cada broker.</div>';
     h += '</div><div class="hallazgo"><h3>Alertas</h3>';
     h += al.length ? al.map((a, i) =>
       '<div class="u-ptr fila ' + esc(iconoAlerta(a.tipo).clase) + '" id="reg-al-' +
@@ -3681,12 +3574,6 @@ async function cargarRegistro(){
   }catch(e){
     cont.innerHTML = '<div class="msg error">No se pudo cargar.</div>';
   }
-}
-
-async function borrarOperacion(oid){
-  if(!confirm("¿Borrar esta operación?")) return;
-  await fetch(base + "api/operaciones/" + oid, {method:"DELETE"});
-  cargarRegistro();
 }
 
 /* ---------- explorar ---------- */
@@ -8556,7 +8443,7 @@ function tenPintar(){
       '<div class="pos-pie"><span>' +
         (t.estrategia ? esc(t.estrategia)
           : '<span class="u-amber">sin asignar</span>') +
-        ' · ' + esc(t.broker) + paramsPos(t) +
+        ' · ' + esc(t.broker) +
       '</span><span style="color:' + tono + '">' +
         (p.resultado_pct == null ? "sin PPC"
           : (p.resultado_pct >= 0 ? "+" : "") + num(p.resultado_pct, 3) + "%") +
@@ -8577,21 +8464,6 @@ function tenPintar(){
       (tenModo === "especie" ? ' especies de ' + tenDatos.length +
         ' posiciones. Para editar una, volvé a "Por broker".'
        : ' de ' + tenDatos.length + ' posiciones.') + '</div>';
-}
-
-/* Lo que hay que ver sin abrir nada: la otra punta y el rango en
-   rotacion. El stop y el objetivo son los de Gestion y van en el riel:
-   los SL/TP viejos de la tenencia no disparaban nada y quedan en la
-   base sin mostrarse. */
-function paramsPos(t){
-  const p = [];
-  if(t.par_ticker) p.push("↔ " + esc(t.par_ticker) +
-    (t.ratio_min != null || t.ratio_max != null
-      ? " " + (t.ratio_min == null ? "" : num(t.ratio_min, 4)) + "–" +
-        (t.ratio_max == null ? "" : num(t.ratio_max, 4)) : ""));
-  if(t.revisar) p.push("revisar " + esc(t.revisar));
-  return p.length ? '<br><span class="u-muted">' +
-    p.join(" · ") + '</span>' : "";
 }
 
 function agrupar(filas, val){
@@ -8640,15 +8512,6 @@ function agrupar(filas, val){
 /* Fila de edicion, oculta hasta que se toca la posicion. Sin ids: las
    filas se redibujan y dos brokers pueden tener la misma especie, asi
    que todo se ubica por data-atributos y closest(). */
-/* Que campos pide cada familia. El stop es del titulo y no de la
-   estrategia: por eso se cargan aca y no en otra pantalla. */
-const CAMPO_POS = {
-  par_ticker: {etq: "Rota contra", tipo: "text", ph: "la otra punta"},
-  ratio_min:  {etq: "Ratio mínimo", tipo: "number"},
-  ratio_max:  {etq: "Ratio máximo", tipo: "number"},
-  revisar:    {etq: "Revisar el", tipo: "date"},
-};
-
 /* La busqueda va contra CAFCI y devuelve el nombre exacto. Escribirlo a
    mano es como se elige mal la clase: precio parecido y equivocado. */
 let fciTimer = null;
@@ -8684,16 +8547,6 @@ document.addEventListener("click", ev => {
   caja.querySelector("[data-fci-buscar]").value = b.dataset.fciElegir;
   caja.querySelector("[data-fci-out]").innerHTML = "";
 });
-
-function campoPos(k, t){
-  const c = CAMPO_POS[k];
-  if(!c) return "";
-  const v = t[k] == null ? "" : t[k];
-  return '<label>' + esc(c.etq) + '<input data-c="' + k + '" type="' +
-    c.tipo + '"' + (c.tipo === "number" ? ' step="any"' : "") +
-    (c.ph ? ' placeholder="' + esc(c.ph) + '"' : "") +
-    ' value="' + esc(String(v)) + '"></label>';
-}
 
 /* Al desplegar se lee, no se edita: los datos y la estrategia como
    tarjetas, y el formulario solo cuando se pide. */
@@ -8783,11 +8636,6 @@ function tenFicha(t, p){
     h += '<div class="u-mt-12 ficha">' +
       '<div class="pos-pie"><span><b>' + esc(e.nombre) + '</b></span>' +
       '<span>' + esc(famNombre(e.familia)) + '</span></div>' +
-      dato("Rota contra", t.par_ticker ? esc(t.par_ticker) : null) +
-      dato("Rango de ratio", (t.ratio_min == null && t.ratio_max == null)
-        ? null : (t.ratio_min == null ? "" : num(t.ratio_min, 4)) + " – " +
-          (t.ratio_max == null ? "" : num(t.ratio_max, 4))) +
-      dato("Revisar", t.revisar ? esc(t.revisar) : null) +
       (m && m.contra_patron_pct != null
         ? dato("Contra " + esc(NOM_PATRON[m.patron] || m.patron),
             '<span style="color:' + (m.contra_patron_pct >= 0
@@ -8798,8 +8646,7 @@ function tenFicha(t, p){
       (e.tesis ? '<div class="ancho u-m-4-0-0 nota">' +
         esc(e.tesis) + '</div>' : "") +
       '</div><div class="u-mt-8 acciones">' +
-      '<button data-editar-estr="' + e.id + '">Editar estrategia</button>' +
-      '<button data-editar-ten>Cambiar parámetros</button></div>';
+      '<button data-editar-estr="' + e.id + '">Editar estrategia</button></div>';
   } else {
     h += '<div class="u-mt-10 u-amber nota">' +
       'Sin estrategia asignada.</div>';
@@ -8818,12 +8665,11 @@ function tenEditor(t){
     '<option value="' + p + '"' + ((t.precision || "") === p ? " selected" : "") +
     '>' + (p ? {exacta:"Exacta", mes:"Solo el mes", antes:"Antes de"}[p]
              : "Sin precisar") + '</option>').join("");
-  /* Depende de la familia de la estrategia asignada: rotacion pide contra
-     que se rota y el rango de ratio. El stop y el objetivo se cargan en
-     Gestion. */
-  const fam = estrFamilias.find(f => f.id === t.familia) || {};
-  const propios = (fam.campos || []).map(k => campoPos(k, t)).join("") +
-    (t.familia ? campoPos("revisar", t) : "");
+  /* Una sola fuente por dato: el stop y el objetivo se cargan en
+     Gestion, las fechas para revisar en los recordatorios y el rango de
+     un par en su grupo de RATIOS. Con la historia completa en el diario,
+     el PPC y la fecha de alta salen de las operaciones y no se editan. */
+  const delDiario = t.ppc_fuente === "diario";
 
   return '<div class="ten-edit" data-br="' + esc(t.broker) + '" data-sim="' +
     esc(t.simbolo) + '">' +
@@ -8831,21 +8677,25 @@ function tenEditor(t){
     '<label>Cantidad<input data-c="cantidad" type="number" step="any" value="' +
       t.cantidad + '"></label>' +
     '<label>Tipo<select data-c="tipo">' + opc + '</select></label>' +
+    (delDiario ? '<div class="ancho nota">PPC ' + num(t.ppc, 4) + ' · en dólares ' +
+      (t.ppc_usd == null ? "—" : num(t.ppc_usd, 6)) + ' · alta ' + esc(t.fecha_alta || "—") +
+      ': salen de las operaciones del diario (con gastos), no se cargan a mano.</div>' :
     '<label>PPC<input data-c="ppc" type="number" step="any" value="' +
       (t.ppc == null ? "" : t.ppc) + '"></label>' +
     '<label>Base del PPC<input data-c="ppc_base" type="number" step="any" ' +
       'placeholder="según el tipo" value="' +
-      (t.ppc_base == null ? "" : t.ppc_base) + '"></label>' +
+      (t.ppc_base == null ? "" : t.ppc_base) + '"></label>') +
     /* Columna propia, no el PPC en pesos dividido por el dolar de hoy:
        cada compra entro a su tipo de cambio y esa es la diferencia que
        se quiere medir. Va en la misma base que el de pesos: `ppc_base`
        es una sola y describe a los dos. */
+    (delDiario ? "" :
     '<label>PPC en dólares<input data-c="ppc_usd" type="number" step="any" ' +
       'placeholder="en la misma base que el PPC" value="' +
       (t.ppc_usd == null ? "" : t.ppc_usd) + '"></label>' +
     '<label>Fecha de alta<input data-c="fecha_alta" type="date" value="' +
       (t.fecha_alta || "") + '"></label>' +
-    '<label>Precisión<select data-c="precision">' + prec + '</select></label>' +
+    '<label>Precisión<select data-c="precision">' + prec + '</select></label>') +
     /* Un FCI que el broker no comercializa no esta en ningun panel. El
        precio sale de CAFCI, que identifica por nombre completo con la
        clase: se elige de la lista, no se escribe. */
@@ -8864,7 +8714,6 @@ function tenEditor(t){
           esc(x.nombre) + ' · ' + esc(famNombre(x.familia)) + '</option>'),
         ['<option value="_nueva">+ Crear una nueva</option>']
       ).join("") + '</select></label>' +
-    propios +
     '</div>' +
     '<div class="u-mb-8 form" data-estr-nueva hidden>' +
     '<label>Familia<select data-n="familia">' +

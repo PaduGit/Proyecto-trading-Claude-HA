@@ -1,29 +1,28 @@
 """Diario de trading: cada posicion desde que se abre hasta que vuelve a cero.
 
-Tres fuentes, segun el broker:
+Una sola fuente por dato (22/10/2026). El diario no copia lo que ya esta
+en otra tabla: lee cada operacion de donde vive.
 
-- **boleto** (Veta): los boletos aplicados, omitidos o descartados. Precio, gastos y
-  fecha reales.
-- **iol** (las cuentas de IOL): `/api/v2/operaciones`. Precio real
-  (`precioOperado`, `montoOperado`); la API no trae las comisiones, asi
-  que los gastos se estiman con la tabla de costos.
+- **boleto** (Veta): la tabla `boleto` (aplicados, omitidos o
+  descartados: omitir o descartar solo evita tocar la tenencia, la
+  operacion existio). Precio, gastos y fecha reales.
+- **iol** (las cuentas de IOL): `/api/v2/operaciones`. No hay otra copia
+  local, asi que se guardan en `diario_op`, una fila por operacion de
+  IOL. Precio real; la API no trae comisiones: los gastos se estiman con
+  la tabla de costos al leer.
 - **tenencia** (ECO y los demas sin API): los movimientos confirmados de
-  la diferencia entre dos fotos. Aproximado: el precio es el de la foto,
-  no el ejecutado, y dos operaciones entre las mismas fotos se ven como
-  una. Un broker con boletos usa esta fuente solo antes de su primer
-  boleto.
+  `mov_propuesto`. Aproximado: el precio es el de la foto. Un broker con
+  boletos usa esta fuente solo antes de su primer boleto.
 
-Cada operacion es una fila de `diario_op`. Las posiciones no se guardan:
-se arman al leer, por broker y especie, en orden. El resultado se mide
-contra el PPC con gastos; en dolares, cada movimiento al MEP de su dia.
-El acierto se mide en dolares.
+Lo unico propio del diario esta en `diario_anot`, por referencia de
+operacion: motivo de la venta, comentario, la rotacion elegida a mano, la
+estrategia de la historia sin ledger y la copia del stop y objetivo al
+comprar (historia para el R). El MEP de cada dia y los gastos estimados
+se calculan al leer, no se guardan.
 
-Lo que el diario agrega a cada operacion: estrategia, motivo de la
-venta, comentario, el enlace de rotacion (una venta cuyo neto entro en
-una compra) y la copia del stop y objetivo de Gestion vigentes al
-comprar, para el R multiplo aunque despues se muevan.
-
-Nada de esto toca la tenencia ni el ledger de las estrategias.
+La estrategia de una posicion abierta es la asignacion de la especie
+(`estrategia_especie`); la de una cerrada, el ledger (`estrategia_mov`).
+Las posiciones no se guardan: se arman al leer, por broker y especie.
 """
 
 import logging
@@ -34,24 +33,33 @@ import db
 log = logging.getLogger("ratios.diario")
 
 MOTIVOS = ("stop", "objetivo", "propio", "rotacion", "sin motivo")
-# Tolerancia del stop respetado: salir hasta 1% debajo cuenta como
-# respetado (la venta se ejecuta en la punta, no en el nivel exacto).
+# Salir hasta 1% debajo del stop cuenta como respetado.
 TOL_STOP = 0.01
-# La copia de los niveles se toma solo para compras recientes: una compra
-# de hace meses que entra en la primera carga no tenia estos niveles.
+# Los niveles de Gestion se copian como "al entrar" solo si se cargan en
+# los dias siguientes a la compra.
 DIAS_COPIA = 7
 # Cuanto antes de la operacion se busca la alerta que la precedio.
 DIAS_ALERTA = 5
 # Ventana para unir una venta y una compra como rotacion.
 DIAS_ROTACION = 5
-# "Para completar" pide motivo y estrategia solo desde esta fecha
-# (decidido el 22/10: lo anterior es historia de IOL desde 2017). Lo viejo
-# se puede completar desde el detalle.
+# "Para completar" pide motivo y estrategia desde esta fecha (22/10).
 DESDE_PENDIENTES = "2026-01-01"
 NO_OPERA = ("moneda",)
 MONEDAS = ("ARS", "USD", "MEP", "CCL", "CAUCION", "US$", "PESOS", "DOLARES")
+# Diferencia de cantidad tolerada para tomar el PPC del diario.
+TOL_CANT = 0.005
 
 _listo = False
+_cfg = {"directos": [], "boletos": None, "cfg": {}}
+_mep_cache = {}
+_ppc_cache = {"clave": None, "datos": {}}
+
+
+def configurar(directos, broker_boletos, cfg):
+    """Que cuentas son de IOL, cual es el broker de los boletos y la
+    configuracion (para los gastos estimados). Lo llama la app al armarse."""
+    _cfg.update({"directos": list(directos or []), "boletos": broker_boletos, "cfg": cfg or {}})
+    _ppc_cache["clave"] = None
 
 
 def _asegurar():
@@ -60,33 +68,33 @@ def _asegurar():
         return
     c = db.conn()
     c.executescript("""
+-- Solo las operaciones de IOL: no tienen otra copia local.
 CREATE TABLE IF NOT EXISTS diario_op (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  ref        TEXT NOT NULL UNIQUE,   -- bol:<n> | iol:<broker>:<numero> | mov:<id>:<lado>
-  fuente     TEXT NOT NULL,          -- boleto | iol | tenencia
+  ref        TEXT PRIMARY KEY,       -- iol:<broker>:<numero>
   broker     TEXT NOT NULL,
   simbolo    TEXT NOT NULL,
   crudo      TEXT,                   -- el simbolo tal como vino (AO29D)
-  fecha      TEXT NOT NULL,          -- de la operacion; en tenencia, la foto
+  fecha      TEXT NOT NULL,
   lado       TEXT NOT NULL,          -- compra | venta
   cantidad   REAL NOT NULL,
   precio     REAL,                   -- en la base en que cotiza
   base       REAL,
   moneda     TEXT NOT NULL DEFAULT 'ARS',
-  bruto      REAL,                   -- en `moneda`, sin gastos
-  gastos     REAL,                   -- en `moneda`, con IVA
-  gastos_est INTEGER NOT NULL DEFAULT 0,
-  mep        REAL,
-  estrategia_id INTEGER,
-  motivo     TEXT,
-  nota       TEXT,
-  rot_id     INTEGER,                -- venta -> la compra en la que entro
-  stop_ent   REAL,
-  obj_ent    REAL,
-  modo_ent   TEXT,
+  bruto      REAL,                   -- montoOperado, en `moneda`
   creado     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_diario_pos ON diario_op(broker, simbolo, fecha);
+-- Lo que el diario agrega a una operacion de cualquier fuente.
+CREATE TABLE IF NOT EXISTS diario_anot (
+  ref        TEXT PRIMARY KEY,       -- iol:… | bol:<n> | mov:<id>:<lado>
+  motivo     TEXT,
+  nota       TEXT,
+  rot_ref    TEXT,                   -- venta -> la compra en la que entro
+  estrategia_id INTEGER,             -- solo historia cerrada sin ledger
+  stop_ent   REAL,
+  obj_ent    REAL,
+  modo_ent   TEXT
+);
 """)
     c.commit()
     _listo = True
@@ -94,6 +102,55 @@ CREATE INDEX IF NOT EXISTS ix_diario_pos ON diario_op(broker, simbolo, fecha);
 
 def init():
     _asegurar()
+    migrar()
+
+
+def migrar():
+    """Del diario de la 0.68/0.69, que copiaba boletos y movimientos y
+    guardaba en cada fila la estrategia, el MEP y los gastos estimados, a
+    este: IOL en `diario_op` y lo propio en `diario_anot`. Una vez."""
+    if db.get_estado("diario_v3"):
+        return
+    c = db.conn()
+    cols = {r["name"] for r in c.execute("PRAGMA table_info(diario_op)")}
+    if "motivo" in cols:
+        viejas = [dict(r) for r in c.execute("SELECT * FROM diario_op")]
+        ref_de = {r["id"]: r["ref"] for r in viejas}
+        # el motivo que el boleto guardaba en `nota` (0.69.0 y antes)
+        mot_bol = {}
+        try:
+            for b in c.execute("SELECT bol, nota FROM boleto WHERE tipo='venta' AND nota IS NOT NULL"):
+                if b["nota"] in MOTIVOS:
+                    mot_bol["bol:%s" % b["bol"]] = b["nota"]
+            c.execute("UPDATE boleto SET nota=NULL WHERE tipo='venta'")
+        except Exception as e:
+            log.info("migrar motivos de boletos: %s", e)
+        ya = bool(db.get_estado("diario_fuente_unica"))
+        for r in viejas:
+            motivo = r["motivo"] or mot_bol.get(r["ref"])
+            # La estrategia que la importacion copiaba no se pasa (salvo que
+            # la 0.69.1 ya la hubiera limpiado y quede solo la elegida).
+            eid = r["estrategia_id"] if ya else None
+            rot = ref_de.get(r["rot_id"]) if r.get("rot_id") else None
+            if any(v is not None and v != "" for v in (motivo, r["nota"], rot, eid, r["stop_ent"], r["obj_ent"])):
+                c.execute("INSERT OR REPLACE INTO diario_anot (ref, motivo, nota, rot_ref, estrategia_id, "
+                          "stop_ent, obj_ent, modo_ent) VALUES (?,?,?,?,?,?,?,?)",
+                          (r["ref"], motivo, r["nota"] or None, rot, eid, r["stop_ent"], r["obj_ent"],
+                           r["modo_ent"]))
+        c.executescript("""
+ALTER TABLE diario_op RENAME TO diario_op_vieja;
+CREATE TABLE diario_op (
+  ref TEXT PRIMARY KEY, broker TEXT NOT NULL, simbolo TEXT NOT NULL, crudo TEXT,
+  fecha TEXT NOT NULL, lado TEXT NOT NULL, cantidad REAL NOT NULL, precio REAL, base REAL,
+  moneda TEXT NOT NULL DEFAULT 'ARS', bruto REAL, creado TEXT NOT NULL);
+INSERT INTO diario_op (ref, broker, simbolo, crudo, fecha, lado, cantidad, precio, base, moneda, bruto, creado)
+  SELECT ref, broker, simbolo, crudo, fecha, lado, cantidad, precio, base, moneda, bruto, creado
+  FROM diario_op_vieja WHERE fuente='iol';
+DROP TABLE diario_op_vieja;
+CREATE INDEX IF NOT EXISTS ix_diario_pos ON diario_op(broker, simbolo, fecha);
+""")
+    c.commit()
+    db.set_estado("diario_v3", _ahora())
 
 
 # -- utilidades ----------------------------------------------------------
@@ -103,14 +160,24 @@ def _ahora():
 
 
 def _mep(fecha):
+    """MEP de un dia, de la serie AL30/AL30D. Calculado, no guardado; se
+    recuerda en memoria solo lo que se encontro."""
+    f = str(fecha or "")[:10]
+    if not f:
+        return None
+    if f in _mep_cache:
+        return _mep_cache[f]
     try:
         import bonos as BO
-        return BO.mep_al(str(fecha)[:10])
+        m = BO.mep_al(f)
     except Exception:
-        return None
+        m = None
+    if m:
+        _mep_cache[f] = m
+    return m
 
 
-def _gastos_est(cfg, tipo, bruto):
+def _gastos_est(tipo, bruto):
     """Gastos estimados de una pata con la tabla de costos de la app."""
     if not bruto:
         return 0.0
@@ -118,20 +185,20 @@ def _gastos_est(cfg, tipo, bruto):
     inst = (tipo or "acciones").lower()
     if inst in ("fci", "moneda"):
         return 0.0
+    cfg = _cfg["cfg"] or {}
     try:
-        p = CO.pct((cfg or {}).get("comisiones") or {}, inst,
-                   (cfg or {}).get("derechos_mercado"), (cfg or {}).get("iva_pct") or 0)
+        p = CO.pct(cfg.get("comisiones") or {}, inst, cfg.get("derechos_mercado"), cfg.get("iva_pct") or 0)
     except Exception:
         p = 0.0
     return round(abs(bruto) * p, 2)
 
 
 def _tipo(sim):
-    r = db.conn().execute("SELECT tipo FROM tenencia WHERE simbolo=? AND tipo IS NOT NULL "
-                          "LIMIT 1", (sim,)).fetchone()
+    c = db.conn()
+    r = c.execute("SELECT tipo FROM tenencia WHERE simbolo=? AND tipo IS NOT NULL LIMIT 1", (sim,)).fetchone()
     if not r:
-        r = db.conn().execute("SELECT tipo FROM tenencia_hist WHERE simbolo=? AND tipo IS NOT "
-                              "NULL ORDER BY ts DESC LIMIT 1", (sim,)).fetchone()
+        r = c.execute("SELECT tipo FROM tenencia_hist WHERE simbolo=? AND tipo IS NOT NULL "
+                      "ORDER BY ts DESC LIMIT 1", (sim,)).fetchone()
     if r:
         return r["tipo"]
     try:
@@ -158,140 +225,161 @@ def _niveles():
         return {}
 
 
-def _insertar(c, op, niveles=None):
-    """Inserta si la referencia no existe. Devuelve True si entro."""
-    if c.execute("SELECT 1 FROM diario_op WHERE ref=?", (op["ref"],)).fetchone():
-        return False
-    stop = obj = modo = None
-    if op["lado"] == "compra" and niveles is not None:
-        try:
-            dias = (date.today() - date.fromisoformat(op["fecha"][:10])).days
-        except ValueError:
-            dias = 999
-        n = niveles.get(op["simbolo"])
-        if n and dias <= DIAS_COPIA:
-            stop, obj, modo = n.get("stop"), n.get("obj"), n.get("modo") or "precio"
-    c.execute(
-        "INSERT INTO diario_op (ref, fuente, broker, simbolo, crudo, fecha, lado, cantidad, "
-        "precio, base, moneda, bruto, gastos, gastos_est, mep, estrategia_id, motivo, "
-        "stop_ent, obj_ent, modo_ent, creado) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (op["ref"], op["fuente"], op["broker"], op["simbolo"], op.get("crudo"), op["fecha"],
-         op["lado"], op["cantidad"], op.get("precio"), op.get("base"), op.get("moneda") or "ARS",
-         op.get("bruto"), op.get("gastos"), 1 if op.get("gastos_est") else 0,
-         op.get("mep") or _mep(op["fecha"]), op.get("estrategia_id"), op.get("motivo"),
-         stop, obj, modo, _ahora()))
-    return True
-
-
-# -- fuente: boletos -----------------------------------------------------
-
-def sincronizar_boletos():
-    """Los boletos aplicados, omitidos y descartados: omitir o descartar
-    solo evita tocar la tenencia, la operacion existio (decidido el
-    21/10). Los pendientes entran al confirmarlos, con el motivo elegido."""
+def _anotaciones():
     _asegurar()
-    import boletos as BOL
-    BOL._asegurar()
-    c = db.conn()
-    niv = _niveles()
-    n = 0
-    for b in c.execute("SELECT * FROM boleto WHERE estado IN ('aplicado','omitido','descartado') "
-                       "AND tipo IN ('compra','venta') AND cantidad > 0").fetchall():
-        sim = (b["simbolo"] or "").upper()
-        base = _base(sim)
-        bruto = b["cantidad"] * b["precio"] / base if b["precio"] is not None else None
-        gastos = (b["gastos"] or 0) + (b["iva"] or 0)
-        motivo = b["nota"] if (b["tipo"] == "venta" and b["nota"] in MOTIVOS) else None
-        if _insertar(c, {"ref": "bol:%s" % b["bol"], "fuente": "boleto", "broker": b["broker"],
-                         "simbolo": sim, "crudo": sim, "fecha": b["fecha"] or b["liquida"] or "",
-                         "lado": b["tipo"], "cantidad": b["cantidad"], "precio": b["precio"],
-                         "base": base, "moneda": "USD" if b["moneda"] == "USD" else "ARS",
-                         "bruto": bruto, "gastos": round(gastos, 2), "gastos_est": False,
-                         "estrategia_id": db._estrategia_de(sim), "motivo": motivo}, niv):
-            n += 1
-    c.commit()
-    return n
+    return {r["ref"]: dict(r) for r in db.conn().execute("SELECT * FROM diario_anot")}
 
+
+def _anotar(ref, **campos):
+    """Escribe en la anotacion de una operacion (la crea si no existe)."""
+    _asegurar()
+    c = db.conn()
+    c.execute("INSERT OR IGNORE INTO diario_anot (ref) VALUES (?)", (ref,))
+    for k, v in campos.items():
+        if k not in ("motivo", "nota", "rot_ref", "estrategia_id", "stop_ent", "obj_ent", "modo_ent"):
+            raise ValueError("campo inválido: %s" % k)
+        c.execute("UPDATE diario_anot SET %s=? WHERE ref=?" % k, (v, ref))
+    c.commit()
+
+
+# -- lectura de las tres fuentes ----------------------------------------
 
 def _primer_boleto(broker):
-    import boletos as BOL
-    BOL._asegurar()
-    r = db.conn().execute("SELECT MIN(fecha) f FROM boleto WHERE broker=? AND tipo IN "
-                          "('compra','venta')", (broker,)).fetchone()
-    return r["f"] if r and r["f"] else None
+    try:
+        r = db.conn().execute("SELECT MIN(fecha) f FROM boleto WHERE broker=? AND tipo IN "
+                              "('compra','venta')", (broker,)).fetchone()
+        return r["f"] if r and r["f"] else None
+    except Exception:
+        return None
 
 
-# -- fuente: diferencia entre tenencias ---------------------------------
+def _ops_boletos():
+    out = []
+    try:
+        filas = db.conn().execute(
+            "SELECT * FROM boleto WHERE estado IN ('aplicado','omitido','descartado') "
+            "AND tipo IN ('compra','venta') AND cantidad > 0").fetchall()
+    except Exception:
+        return out
+    for b in filas:
+        sim = (b["simbolo"] or "").upper()
+        base = _base(sim)
+        out.append({"ref": "bol:%s" % b["bol"], "fuente": "boleto", "broker": b["broker"],
+                    "simbolo": sim, "fecha": b["fecha"] or b["liquida"] or "", "lado": b["tipo"],
+                    "cantidad": b["cantidad"], "precio": b["precio"], "base": base,
+                    "moneda": "USD" if b["moneda"] == "USD" else "ARS",
+                    "bruto": b["cantidad"] * b["precio"] / base if b["precio"] is not None else None,
+                    "gastos": round((b["gastos"] or 0) + (b["iva"] or 0), 2), "gastos_est": False})
+    return out
 
-def sincronizar_tenencia(directos, broker_boletos=None, cfg=None):
-    """Los movimientos confirmados de los brokers sin fuente directa.
 
-    `directos` son las cuentas de IOL: esas salen de la API desde la
-    primera compra de su tenencia y no se toman de aca. El broker de los
-    boletos se toma de aca solo antes de su primer boleto.
-    """
-    _asegurar()
+def _ops_movimientos():
+    """Movimientos confirmados de los brokers sin fuente directa, y las
+    rotaciones que ya dicen (dentro del broker o unidas entre dos)."""
+    directos = set(_cfg["directos"])
+    bol = _cfg["boletos"]
+    corte = _primer_boleto(bol) if bol else None
     c = db.conn()
-    corte_bol = _primer_boleto(broker_boletos) if broker_boletos else None
-    niv = _niveles()
-    n = 0
-    filas = c.execute("SELECT * FROM mov_propuesto WHERE estado='confirmado' "
-                      "ORDER BY hasta, id").fetchall()
+    out, rot = [], {}
+    filas = c.execute("SELECT * FROM mov_propuesto WHERE estado='confirmado' ORDER BY hasta, id").fetchall()
     for m in filas:
-        if m["broker"] in directos:
+        if m["broker"] in directos or (m["signo"] or 1) < 0:
             continue
-        if broker_boletos and m["broker"] == broker_boletos and corte_bol and m["hasta"] >= corte_bol:
+        if bol and m["broker"] == bol and corte and m["hasta"] >= corte:
             continue
-        if (m["signo"] or 1) < 0:
-            continue    # lanzadas y saldos deudores: no son compras ni ventas
         patas = []
         if m["sale"] and m["cant_sale"]:
             patas.append(("venta", m["sale"], m["cant_sale"], m["precio_sale"]))
         if m["entra"] and m["cant_entra"]:
             patas.append(("compra", m["entra"], m["cant_entra"], m["precio_entra"]))
-        ids = {}
+        refs = {}
         for lado, sim, cant, precio in patas:
             sim = sim.upper()
             tipo = _tipo(sim)
             if sim in MONEDAS or (tipo or "").lower() in NO_OPERA:
                 continue
             base = _base(sim)
-            bruto = cant * precio / base if precio else None
+            bruto = abs(cant) * precio / base if precio else None
             ref = "mov:%s:%s" % (m["id"], lado)
-            n += _insertar(c, {"ref": ref, "fuente": "tenencia", "broker": m["broker"],
-                          "simbolo": sim, "crudo": sim, "fecha": m["hasta"], "lado": lado,
-                          "cantidad": abs(cant), "precio": precio, "base": base,
-                          "bruto": bruto, "gastos": _gastos_est(cfg, tipo, bruto) if bruto else None,
-                          "gastos_est": True,
-                          "estrategia_id": m["estrategia_id"] or db._estrategia_de(sim)}, niv)
-            r = c.execute("SELECT id FROM diario_op WHERE ref=?", (ref,)).fetchone()
-            ids[lado] = r["id"]
-        if m["tipo"] == "rotacion" and "venta" in ids and "compra" in ids:
-            c.execute("UPDATE diario_op SET rot_id=?, motivo=COALESCE(motivo,'rotacion') "
-                      "WHERE id=? AND rot_id IS NULL", (ids["compra"], ids["venta"]))
-    # Rotaciones entre brokers: dos propuestas unidas (retiro + aporte de
-    # especies distintas).
-    for m in c.execute("SELECT a.id ia, b.id ib FROM mov_propuesto a JOIN mov_propuesto b "
-                       "ON b.unido_a = a.id WHERE a.estado='confirmado' AND b.estado='confirmado'"):
-        va = c.execute("SELECT id, lado, simbolo FROM diario_op WHERE ref IN (?,?,?,?)",
-                       ("mov:%s:venta" % m["ia"], "mov:%s:compra" % m["ia"],
-                        "mov:%s:venta" % m["ib"], "mov:%s:compra" % m["ib"])).fetchall()
-        v = [x for x in va if x["lado"] == "venta"]
-        k = [x for x in va if x["lado"] == "compra"]
-        if len(v) == 1 and len(k) == 1 and v[0]["simbolo"] != k[0]["simbolo"]:
-            c.execute("UPDATE diario_op SET rot_id=?, motivo=COALESCE(motivo,'rotacion') "
-                      "WHERE id=? AND rot_id IS NULL", (k[0]["id"], v[0]["id"]))
-    c.commit()
-    return n
+            refs[lado] = ref
+            out.append({"ref": ref, "fuente": "tenencia", "broker": m["broker"], "simbolo": sim,
+                        "fecha": m["hasta"], "lado": lado, "cantidad": abs(cant), "precio": precio,
+                        "base": base, "moneda": "ARS", "bruto": bruto,
+                        "gastos": _gastos_est(tipo, bruto) if bruto else None, "gastos_est": True})
+        if m["tipo"] == "rotacion" and len(refs) == 2:
+            rot[refs["venta"]] = refs["compra"]
+    for m in c.execute("SELECT a.id ia, b.id ib, a.tipo ta, b.tipo tb FROM mov_propuesto a "
+                       "JOIN mov_propuesto b ON b.unido_a = a.id WHERE a.estado='confirmado' "
+                       "AND b.estado='confirmado'"):
+        if {m["ta"], m["tb"]} == {"retiro", "aporte"}:
+            v = "mov:%s:venta" % (m["ia"] if m["ta"] == "retiro" else m["ib"])
+            k = "mov:%s:compra" % (m["ib"] if m["ta"] == "retiro" else m["ia"])
+            rot[v] = k
+    return out, rot
 
 
-# -- fuente: IOL ---------------------------------------------------------
+def _ops_iol():
+    out = []
+    for r in db.conn().execute("SELECT * FROM diario_op"):
+        d = dict(r)
+        tipo = _tipo(d["simbolo"])
+        d.update(fuente="iol", gastos=_gastos_est(tipo, d["bruto"]), gastos_est=True)
+        out.append(d)
+    return out
+
+
+def _todas():
+    """Todas las operaciones, con sus anotaciones y las rotaciones que las
+    fuentes ya dicen. Devuelve (ops, rotaciones {venta_ref: compra_ref})."""
+    _asegurar()
+    ops = _ops_iol() + _ops_boletos()
+    mov, rot = _ops_movimientos()
+    ops += mov
+    anot = _anotaciones()
+    for o in ops:
+        a = anot.get(o["ref"]) or {}
+        o["motivo"] = a.get("motivo")
+        o["nota"] = a.get("nota")
+        o["rot_ref"] = a.get("rot_ref")
+        o["estrategia_id"] = a.get("estrategia_id")
+        o["stop_ent"], o["obj_ent"], o["modo_ent"] = a.get("stop_ent"), a.get("obj_ent"), a.get("modo_ent")
+        o["mep"] = _mep(o["fecha"])
+    # Rotaciones del ledger de las estrategias (boletos marcados como
+    # rotacion, movimientos confirmados en IOL): una venta y una compra
+    # sin unir en la ventana.
+    por_ref = {o["ref"]: o for o in ops}
+    elegidas = {o["rot_ref"] for o in ops if o.get("rot_ref")} | set(rot.values())
+    for r in db.conn().execute("SELECT ticker_de, ticker_a, ts FROM estrategia_mov WHERE tipo='rotacion' "
+                               "AND ticker_de IS NOT NULL AND ticker_a IS NOT NULL"):
+        f = (r["ts"] or "")[:10]
+        try:
+            d0 = (date.fromisoformat(f) - timedelta(days=DIAS_ROTACION)).isoformat()
+        except ValueError:
+            continue
+        h = f + "T23:59:59"
+        v = [o for o in ops if o["lado"] == "venta" and o["simbolo"] == r["ticker_de"]
+             and d0 <= o["fecha"] <= h and not o.get("rot_ref") and o["ref"] not in rot]
+        k = [o for o in ops if o["lado"] == "compra" and o["simbolo"] == r["ticker_a"]
+             and d0 <= o["fecha"] <= h and o["ref"] not in elegidas]
+        if len(v) == 1 and len(k) == 1:
+            rot[v[0]["ref"]] = k[0]["ref"]
+            elegidas.add(k[0]["ref"])
+    for v, k in rot.items():
+        o = por_ref.get(v)
+        if o and not o.get("rot_ref"):
+            o["rot_ref"] = k
+            o["rot_auto"] = True
+            if not o["motivo"]:
+                o["motivo"] = "rotacion"
+    ops.sort(key=lambda o: (o["broker"], o["simbolo"], o["fecha"], o["ref"]))
+    return ops
+
+
+# -- importacion de IOL --------------------------------------------------
 
 def _operaciones(cli, desde, hasta):
-    """Las operaciones de un rango, de a un año: la primera carga de una
-    cuenta abierta en 2017 son nueve años y un pedido tan largo puede
-    vencer o venir cortado. Las repetidas en los bordes se filtran por
-    numero."""
+    """Las operaciones de un rango, de a un año (la primera carga de una
+    cuenta de 2017 son nueve años). Las repetidas se filtran por numero."""
     out, vistos = [], set()
     d = date.fromisoformat(desde[:10])
     fin = date.fromisoformat(hasta[:10])
@@ -310,16 +398,14 @@ def _operaciones(cli, desde, hasta):
 
 
 def _corte_inicial(cli, broker):
-    """Desde cuando importar la primera vez: la primera compra de las
-    tenencias actuales del broker (el alta de la posicion vigente).
-
-    Las que no tienen fecha de alta se reconstruyen con las operaciones de
-    los ultimos cinco años. Devuelve (corte, operaciones ya bajadas o
-    None)."""
+    """La primera vez: desde la primera compra de las tenencias actuales del
+    broker. Las que no tienen fecha de alta se reconstruyen con cinco años
+    de operaciones. Devuelve (corte, operaciones ya bajadas o None)."""
     import operaciones as OPS
-    ten = [t for t in db.tenencias(broker)
-           if (t.get("tipo") or "").lower() not in NO_OPERA and t["simbolo"] not in MONEDAS
-           and (t.get("cantidad") or 0) > 0]
+    ten = [dict(r) for r in db.conn().execute(
+        "SELECT simbolo, tipo, cantidad, fecha_alta FROM tenencia WHERE broker=?", (broker,))]
+    ten = [t for t in ten if (t.get("tipo") or "").lower() not in NO_OPERA
+           and t["simbolo"] not in MONEDAS and (t.get("cantidad") or 0) > 0]
     altas = [t["fecha_alta"][:10] for t in ten if t.get("fecha_alta")]
     if ten and len(altas) == len(ten):
         return min(altas), None
@@ -334,12 +420,9 @@ def _corte_inicial(cli, broker):
 
 
 def importar_iol(cli, broker, cfg=None):
-    """Baja las operaciones de una cuenta y guarda las nuevas.
-
-    La primera vez, desde la primera compra de las tenencias actuales;
-    despues, desde la ultima importacion menos tres dias (las repetidas
-    no entran: la referencia es el numero de operacion).
-    """
+    """Baja las operaciones de una cuenta y guarda las nuevas en
+    `diario_op`. La primera vez, desde la primera compra de las tenencias
+    actuales; despues, desde la ultima importacion menos tres dias."""
     import operaciones as OPS
     _asegurar()
     k = "diario_iol:" + broker
@@ -356,87 +439,60 @@ def importar_iol(cli, broker, cfg=None):
     c = db.conn()
     pares = [(x, o) for x, o in ((OPS.limpiar(o), o) for o in ops)
              if x and x["fecha"] >= desde and x.get("numero")]
-    limpias = [x for x, _ in pares]
-    vistos = {x["simbolo"] for x in limpias} | {t["simbolo"] for t in db.tenencias(broker)}
-    niv = _niveles()
+    vistos = {x["simbolo"] for x, _ in pares} | {r["simbolo"] for r in c.execute(
+        "SELECT simbolo FROM tenencia WHERE broker=?", (broker,))}
     nuevas = 0
     for x, o in pares:
         usd = OPS.en_dolares(x["simbolo_crudo"], vistos)
         sim = OPS.simbolo_base(x["simbolo"], vistos)
         base = OPS.base_de(x) or _base(sim)
-        tipo = _tipo(sim)
         fecha = str(o.get("fechaOperada") or o.get("fechaOrden") or x["fecha"])[:19]
-        bruto = x["monto"] if x["monto"] else (x["cantidad"] * x["precio"] / base
-                                                if x["precio"] else None)
-        if _insertar(c, {"ref": "iol:%s:%s" % (broker, x["numero"]), "fuente": "iol",
-                         "broker": broker, "simbolo": sim, "crudo": x["simbolo_crudo"],
-                         "fecha": fecha, "lado": "compra" if x["signo"] > 0 else "venta",
-                         "cantidad": x["cantidad"], "precio": x["precio"], "base": base,
-                         "moneda": "USD" if usd else "ARS", "bruto": bruto,
-                         "gastos": _gastos_est(cfg, tipo, bruto), "gastos_est": True,
-                         "estrategia_id": db._estrategia_de(sim)}, niv):
-            nuevas += 1
+        bruto = x["monto"] if x["monto"] else (x["cantidad"] * x["precio"] / base if x["precio"] else None)
+        cur = c.execute(
+            "INSERT OR IGNORE INTO diario_op (ref, broker, simbolo, crudo, fecha, lado, cantidad, precio, "
+            "base, moneda, bruto, creado) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("iol:%s:%s" % (broker, x["numero"]), broker, sim, x["simbolo_crudo"], fecha,
+             "compra" if x["signo"] > 0 else "venta", x["cantidad"], x["precio"], base,
+             "USD" if usd else "ARS", bruto, _ahora()))
+        nuevas += cur.rowcount
     c.commit()
     db.set_estado(k, _ahora())
     db.set_estado("diario_iol_error:" + broker, "")
-    return {"broker": broker, "desde": desde, "operaciones": len(limpias), "nuevas": nuevas}
+    _ppc_cache["clave"] = None
+    return {"broker": broker, "desde": desde, "operaciones": len(pares), "nuevas": nuevas}
 
 
-# -- rotaciones ----------------------------------------------------------
-
-def vincular_rotaciones():
-    """Une venta y compra cuando el ledger de una estrategia registro una
-    rotacion (boletos marcados como rotacion, o movimientos confirmados
-    en las cuentas de IOL). Solo si hay una venta y una compra sin unir
-    en la ventana."""
-    _asegurar()
-    c = db.conn()
+def completar_copias():
+    """Copia el stop y objetivo de Gestion como "al entrar" en las compras
+    de los ultimos DIAS_COPIA dias que todavia no la tienen."""
+    niv = _niveles()
+    if not niv:
+        return 0
+    desde = (date.today() - timedelta(days=DIAS_COPIA)).isoformat()
     n = 0
-    for r in c.execute("SELECT ticker_de, ticker_a, ts FROM estrategia_mov WHERE tipo='rotacion' "
-                       "AND ticker_de IS NOT NULL AND ticker_a IS NOT NULL").fetchall():
-        f = (r["ts"] or "")[:10]
-        if not f:
+    for o in _todas():
+        if o["lado"] != "compra" or o["fecha"] < desde or o["stop_ent"] is not None or o["obj_ent"] is not None:
             continue
-        try:
-            d0 = (date.fromisoformat(f) - timedelta(days=DIAS_ROTACION)).isoformat()
-        except ValueError:
-            continue
-        hasta = f + "T23:59:59"
-        v = c.execute("SELECT id FROM diario_op WHERE lado='venta' AND simbolo=? AND fecha>=? "
-                      "AND fecha<=? AND rot_id IS NULL", (r["ticker_de"], d0, hasta)).fetchall()
-        k = c.execute("SELECT id FROM diario_op WHERE lado='compra' AND simbolo=? AND fecha>=? "
-                      "AND fecha<=? AND id NOT IN (SELECT rot_id FROM diario_op WHERE rot_id "
-                      "IS NOT NULL)", (r["ticker_a"], d0, hasta)).fetchall()
-        if len(v) == 1 and len(k) == 1:
-            c.execute("UPDATE diario_op SET rot_id=?, motivo=COALESCE(motivo,'rotacion') WHERE id=?",
-                      (k[0]["id"], v[0]["id"]))
+        x = niv.get(o["simbolo"])
+        if x and (x.get("stop") is not None or x.get("obj") is not None):
+            _anotar(o["ref"], stop_ent=x.get("stop"), obj_ent=x.get("obj"), modo_ent=x.get("modo") or "precio")
             n += 1
-    c.commit()
     return n
 
 
-def sincronizar_local(directos, broker_boletos=None, cfg=None):
-    """Todo lo que no pide nada afuera: boletos, movimientos confirmados y
-    rotaciones. Corre al abrir el diario."""
-    out = {"boletos": 0, "tenencia": 0, "rotaciones": 0}
+def sincronizar_local(*_args, **_kw):
+    """Lo que no pide nada afuera. Ya no copia nada: solo completa la copia
+    de los niveles al entrar."""
     try:
-        out["boletos"] = sincronizar_boletos()
+        return {"copias": completar_copias()}
     except Exception as e:
-        log.warning("diario boletos: %s", e)
-    try:
-        out["tenencia"] = sincronizar_tenencia(set(directos), broker_boletos, cfg)
-    except Exception as e:
-        log.warning("diario tenencia: %s", e)
-    try:
-        out["rotaciones"] = vincular_rotaciones()
-    except Exception as e:
-        log.warning("diario rotaciones: %s", e)
-    return out
+        log.warning("diario copias: %s", e)
+        return {"copias": 0}
 
 
 def sincronizar(cuentas, broker_boletos=None, cfg=None):
-    """La revision diaria: IOL por API y despues lo local. `cuentas` es
-    [(nombre, cliente)]."""
+    """La revision diaria de las 4: IOL por API y la copia de niveles."""
+    configurar([n for n, _ in cuentas], broker_boletos, cfg)
     res = []
     for nombre, cli in cuentas:
         try:
@@ -446,16 +502,24 @@ def sincronizar(cuentas, broker_boletos=None, cfg=None):
             db.set_estado("diario_iol_error:" + nombre, str(e)[:300])
             log.warning("diario %s: %s", nombre, e)
             res.append({"broker": nombre, "error": str(e)})
-    loc = sincronizar_local([n for n, _ in cuentas], broker_boletos, cfg)
+    loc = sincronizar_local()
     db.set_estado("diario_revision", _ahora())
     return {"iol": res, "local": loc}
+
+
+def motivo_de_boletos(motivos):
+    """El motivo elegido al confirmar boletos, en su unico lugar.
+    `motivos`: {bol: motivo}."""
+    for bol, m in (motivos or {}).items():
+        if m in MOTIVOS:
+            _anotar("bol:%s" % bol, motivo=m)
 
 
 # -- posiciones ----------------------------------------------------------
 
 def _ajustar(ops, sim):
-    """Lleva cantidad y precio a la escala de hoy si hubo un evento
-    societario despues de la operacion. Lo pagado no cambia."""
+    """Cantidad y precio a la escala de hoy si hubo un evento societario
+    despues de la operacion. Lo pagado no cambia."""
     try:
         evs = [e for e in db.eventos(sim) if e.get("factor") and e["factor"] != 1]
     except Exception:
@@ -471,18 +535,150 @@ def _ajustar(ops, sim):
 
 
 def _pesos_dolares(o):
-    """Bruto, gastos y neto en pesos y el neto en dolares de una operacion.
-    El neto es lo que salio (compra) o entro (venta)."""
+    """Neto en pesos y en dolares de una operacion (lo que salio en una
+    compra, lo que entro en una venta)."""
     if o["bruto"] is None:
         return None
     g = o["gastos"] or 0
     neto = o["bruto"] + g if o["lado"] == "compra" else o["bruto"] - g
     mep = o["mep"]
     if o["moneda"] == "USD":
-        return {"neto": neto * mep if mep else None, "neto_usd": neto,
-                "bruto": o["bruto"] * mep if mep else None, "gastos": g * mep if mep else None}
-    return {"neto": neto, "neto_usd": neto / mep if mep else None,
-            "bruto": o["bruto"], "gastos": g}
+        return {"neto": neto * mep if mep else None, "neto_usd": neto}
+    return {"neto": neto, "neto_usd": neto / mep if mep else None}
+
+
+def _armar(ops, ten=None):
+    """Agrupa por broker y especie en posiciones. `ten`: cantidades por
+    (broker, simbolo) para marcar historia incompleta y salida sin
+    registrar; sin ella no se marca."""
+    grupos = {}
+    for o in ops:
+        grupos.setdefault((o["broker"], o["simbolo"]), []).append(o)
+    pos = []
+    for (broker, sim), lista in grupos.items():
+        _ajustar(lista, sim)
+        actual, q = None, 0.0
+        for o in lista:
+            if o["lado"] == "compra":
+                if actual is None or q <= 1e-9:
+                    actual = {"broker": broker, "simbolo": sim, "ops": [], "incompleta": False}
+                    pos.append(actual)
+                    q = 0.0
+                actual["ops"].append(o)
+                q += o["q"]
+            else:
+                if actual is None or q <= 1e-9:
+                    actual = {"broker": broker, "simbolo": sim, "ops": [], "incompleta": True}
+                    pos.append(actual)
+                    q = 0.0
+                if o["q"] > q + 1e-6:
+                    actual["incompleta"] = True
+                actual["ops"].append(o)
+                q = max(0.0, q - o["q"])
+        if actual is not None and ten is not None:
+            t = ten.get((broker, sim), 0)
+            if q > 1e-9 and t > q * (1 + 2 * TOL_CANT) + 1e-6:
+                actual["incompleta"] = True       # empezo antes de lo registrado
+            elif q > 1e-9 and t <= 1e-9:
+                actual["sin_salida"] = True       # vencimiento, rescate, canje o transferencia
+    return pos
+
+
+def _cantidades():
+    ten = {}
+    for r in db.conn().execute("SELECT broker, simbolo, cantidad FROM tenencia"):
+        ten[(r["broker"], r["simbolo"])] = ten.get((r["broker"], r["simbolo"]), 0) + (r["cantidad"] or 0)
+    return ten
+
+
+def _costos(p):
+    """Cantidad, costo y resultado (pesos y dolares) corriendo las
+    operaciones contra el PPC con gastos."""
+    q = costo = costo_u = res = res_u = 0.0
+    costo_tot = costo_u_tot = 0.0
+    sin_precio = sin_mep = False
+    for o in p["ops"]:
+        v = _pesos_dolares(o)
+        if v is None or v["neto"] is None:
+            sin_precio = True
+            if v is not None:
+                sin_mep = True
+            q = q + o["q"] if o["lado"] == "compra" else max(0.0, q - o["q"])
+            continue
+        if v["neto_usd"] is None:
+            sin_mep = True
+        if o["lado"] == "compra":
+            q += o["q"]
+            costo += v["neto"]
+            costo_tot += v["neto"]
+            if v["neto_usd"] is not None:
+                costo_u += v["neto_usd"]
+                costo_u_tot += v["neto_usd"]
+        else:
+            if q <= 1e-9:
+                continue
+            f = min(1.0, o["q"] / q)
+            cs, csu = costo * f, costo_u * f
+            res += v["neto"] - cs
+            if v["neto_usd"] is not None:
+                res_u += v["neto_usd"] - csu
+            costo -= cs
+            costo_u -= csu
+            q = max(0.0, q - o["q"])
+    return {"q": q, "costo": costo, "costo_u": costo_u, "res": res, "res_u": res_u,
+            "costo_tot": costo_tot, "costo_u_tot": costo_u_tot,
+            "sin_precio": sin_precio, "sin_mep": sin_mep}
+
+
+def posiciones(precios=None, mep_hoy=None):
+    """Las posiciones armadas desde las tres fuentes, con resultado,
+    estrategia, R y alertas. `precios` (pesos, en la base en que cotiza) y
+    `mep_hoy` para el latente de las abiertas."""
+    precios = precios or {}
+    ops = _todas()
+    pos = _armar(ops, _cantidades())
+    estr = {e["id"]: e["nombre"] for e in db.estrategias(incluir_cerradas=True)}
+    niv_hoy = _niveles()
+    de_ref = {}
+    for p in pos:
+        for o in p["ops"]:
+            de_ref[o["ref"]] = p
+    out = []
+    for p in pos:
+        d = _medir(p, precios, mep_hoy, niv_hoy)
+        d["estrategia"] = estr.get(d["estrategia_id"])
+        out.append(d)
+    por_pos = {id(p): d for p, d in zip(pos, out)}
+    for p, d in zip(pos, out):
+        for o in p["ops"]:
+            if o["lado"] == "venta" and o.get("rot_ref") and o["rot_ref"] in de_ref:
+                dst = por_pos[id(de_ref[o["rot_ref"]])]
+                d["rot_a"] = {"id": dst["id"], "simbolo": dst["simbolo"], "broker": dst["broker"],
+                              "auto": bool(o.get("rot_auto"))}
+                dst["rot_de"] = {"id": d["id"], "simbolo": d["simbolo"], "broker": d["broker"]}
+    out.sort(key=lambda x: (x["abierta"], x["fecha_fin"] or x["fecha_ini"]), reverse=True)
+    return out
+
+
+def _estrategia(p, abierta, ops):
+    """Abierta: la asignacion de la especie. Cerrada: el ledger. Cerrada sin
+    ledger: la elegida en el diario. Devuelve (id, fuente)."""
+    sim = p["simbolo"]
+    if abierta:
+        eid = db._estrategia_de(sim)
+        return eid, ("asignacion" if eid else None)
+    f0 = ops[0]["fecha"][:10]
+    try:
+        f1 = (date.fromisoformat(ops[-1]["fecha"][:10]) + timedelta(days=DIAS_ROTACION)).isoformat()
+    except ValueError:
+        f1 = ops[-1]["fecha"][:10]
+    r = db.conn().execute(
+        "SELECT estrategia_id FROM estrategia_mov WHERE (ticker_de=? OR ticker_a=?) AND ts>=? AND ts<=? "
+        "ORDER BY (ticker_de=?) DESC, ts DESC LIMIT 1", (sim, sim, f0, f1 + "T23:59:59", sim)).fetchone()
+    if r and r["estrategia_id"]:
+        return r["estrategia_id"], "ledger"
+    eid = next((o["estrategia_id"] for o in ops if o["estrategia_id"]), None)
+    return eid, ("diario" if eid else None)
 
 
 def _alertas(sim, fecha, lado):
@@ -508,133 +704,14 @@ def _alertas(sim, fecha, lado):
     return {"id": r["id"], "ts": r["ts"], "tipo": r["tipo"], "texto": txt[:160]}
 
 
-def posiciones(precios=None, mep_hoy=None):
-    """Arma las posiciones a partir de las operaciones.
-
-    `precios`: precio actual por simbolo (en pesos, en la base en que
-    cotiza) para el resultado latente de las abiertas. `mep_hoy` para
-    llevarlo a dolares.
-    """
-    _asegurar()
-    c = db.conn()
-    precios = precios or {}
-    ops = [dict(r) for r in c.execute("SELECT * FROM diario_op ORDER BY broker, simbolo, fecha, id")]
-    # MEP faltante: se completa si la serie ya llega
-    for o in ops:
-        if o["mep"] is None:
-            m = _mep(o["fecha"])
-            if m:
-                o["mep"] = m
-                c.execute("UPDATE diario_op SET mep=? WHERE id=?", (m, o["id"]))
-    c.commit()
-    estr = {e["id"]: e["nombre"] for e in db.estrategias(incluir_cerradas=True)}
-    niv_hoy = _niveles()
-    grupos = {}
-    for o in ops:
-        grupos.setdefault((o["broker"], o["simbolo"]), []).append(o)
-
-    pos, de_op = [], {}
-    for (broker, sim), lista in grupos.items():
-        _ajustar(lista, sim)
-        actual, q = None, 0.0
-        for o in lista:
-            if o["lado"] == "compra":
-                if actual is None or q <= 1e-9:
-                    actual = {"broker": broker, "simbolo": sim, "ops": [], "incompleta": False}
-                    pos.append(actual)
-                    q = 0.0
-                actual["ops"].append(o)
-                q += o["q"]
-            else:
-                if actual is None or q <= 1e-9:
-                    # Venta sin compras registradas: la posicion empezo
-                    # antes de lo importado o entro por transferencia.
-                    actual = {"broker": broker, "simbolo": sim, "ops": [], "incompleta": True}
-                    pos.append(actual)
-                    q = 0.0
-                if o["q"] > q + 1e-6:
-                    actual["incompleta"] = True
-                actual["ops"].append(o)
-                q = max(0.0, q - o["q"])
-            de_op[o["id"]] = actual
-        # nada mas: la ultima puede quedar abierta
-
-    # Una abierta que tiene en la cuenta mas de lo que suman sus
-    # operaciones empezo antes de lo registrado (la diferencia de tenencias
-    # arranca con la primera foto; una transferencia no tiene compra).
-    ten = {}
-    for t in db.tenencias():
-        ten[(t["broker"], t["simbolo"])] = ten.get((t["broker"], t["simbolo"]), 0) + (t["cantidad"] or 0)
-    ultima = {}
-    for p in pos:
-        ultima[(p["broker"], p["simbolo"])] = p
-    for k, p in ultima.items():
-        q = sum(o["q"] if o["lado"] == "compra" else -o["q"] for o in p["ops"])
-        if q > 1e-9 and ten.get(k, 0) > q * 1.01 + 1e-6:
-            p["incompleta"] = True
-        # Al reves: las operaciones dicen que sigue abierta y la cuenta ya
-        # no la tiene. Salio por un vencimiento, un rescate, un canje o una
-        # transferencia, que no son ventas: queda cerrada sin salida
-        # registrada y fuera de las estadisticas.
-        elif q > 1e-9 and ten.get(k, 0) <= 1e-9:
-            p["sin_salida"] = True
-    out = []
-    for p in pos:
-        d = _medir(p, precios, mep_hoy, niv_hoy)
-        d["estrategia"] = estr.get(d["estrategia_id"])
-        out.append(d)
-    ids = {id(p): d for p, d in zip(pos, out)}
-    # rotaciones: de la venta a la posicion de la compra
-    for p, d in zip(pos, out):
-        for o in p["ops"]:
-            if o["lado"] == "venta" and o["rot_id"] and o["rot_id"] in de_op:
-                dst = ids[id(de_op[o["rot_id"]])]
-                d["rot_a"] = {"id": dst["id"], "simbolo": dst["simbolo"], "broker": dst["broker"]}
-                dst["rot_de"] = {"id": d["id"], "simbolo": d["simbolo"], "broker": d["broker"]}
-    out.sort(key=lambda x: (x["abierta"], x["fecha_fin"] or x["fecha_ini"]), reverse=True)
-    return out
-
-
 def _medir(p, precios, mep_hoy, niv_hoy):
     ops = p["ops"]
     compras = [o for o in ops if o["lado"] == "compra"]
     ventas = [o for o in ops if o["lado"] == "venta"]
-    q = costo = costo_u = res = res_u = 0.0
-    costo_tot = costo_u_tot = 0.0
-    sin_precio = sin_mep = False
-    for o in ops:
-        v = _pesos_dolares(o)
-        if v is None or v["neto"] is None:
-            # Sin precio, o en dolares sin el MEP del dia: no hay pesos
-            # con que medir.
-            sin_precio = True
-            if v is not None:
-                sin_mep = True
-            if o["lado"] == "compra":
-                q += o["q"]
-            else:
-                q = max(0.0, q - o["q"])
-            continue
-        if v["neto_usd"] is None:
-            sin_mep = True
-        if o["lado"] == "compra":
-            q += o["q"]
-            costo += v["neto"]
-            costo_tot += v["neto"]
-            if v["neto_usd"] is not None:
-                costo_u += v["neto_usd"]
-                costo_u_tot += v["neto_usd"]
-        else:
-            if q <= 1e-9:
-                continue
-            f = min(1.0, o["q"] / q)
-            cs, csu = costo * f, costo_u * f
-            res += v["neto"] - cs
-            if v["neto_usd"] is not None:
-                res_u += v["neto_usd"] - csu
-            costo -= cs
-            costo_u -= csu
-            q = max(0.0, q - o["q"])
+    k = _costos(p)
+    q, costo, costo_u = k["q"], k["costo"], k["costo_u"]
+    res, res_u, costo_tot, costo_u_tot = k["res"], k["res_u"], k["costo_tot"], k["costo_u_tot"]
+    sin_precio, sin_mep = k["sin_precio"], k["sin_mep"]
     sin_salida = bool(p.get("sin_salida"))
     abierta = q > 1e-9 and not sin_salida
     primera = compras[0] if compras else ops[0]
@@ -642,11 +719,8 @@ def _medir(p, precios, mep_hoy, niv_hoy):
     base = primera.get("base") or 1.0
     fuentes = {o["fuente"] for o in ops}
     fuente = "tenencia" if "tenencia" in fuentes else ("iol" if "iol" in fuentes else "boleto")
-    eid = next((o["estrategia_id"] for o in compras if o["estrategia_id"]), None) \
-        or next((o["estrategia_id"] for o in ops if o["estrategia_id"]), None)
-    if not eid and abierta:
-        eid = db._estrategia_de(p["simbolo"])
-    motivo = ventas[-1]["motivo"] if ventas and not abierta and not p.get("sin_salida") else None
+    eid, e_fuente = _estrategia(p, abierta, ops)
+    motivo = ventas[-1]["motivo"] if ventas and not abierta and not sin_salida else None
 
     lat = lat_u = None
     if abierta and not sin_precio and not p["incompleta"]:
@@ -656,15 +730,11 @@ def _medir(p, precios, mep_hoy, niv_hoy):
             lat = v_act - costo
             if mep_hoy and not sin_mep:
                 lat_u = v_act / mep_hoy - costo_u
-    # Compra y venta de la misma especie el mismo dia, una en pesos y la
-    # otra en dolares: es una compra o venta de dolar MEP, no una posicion
-    # (decidido el 22/10). Fuera de las estadisticas y de "Para completar".
     cambio = (bool(compras) and bool(ventas) and q <= 1e-9
               and len({o["fecha"][:10] for o in ops}) == 1
               and len({o["moneda"] for o in ops}) > 1)
     medible = not sin_precio and not p["incompleta"] and not cambio and not sin_salida
 
-    # R: con la copia de los niveles de la primera compra, solo por precio
     stop = primera.get("stop_ent") if compras else None
     obj = primera.get("obj_ent") if compras else None
     modo = primera.get("modo_ent") if compras else None
@@ -678,7 +748,6 @@ def _medir(p, precios, mep_hoy, niv_hoy):
     resp = None
     if not abierta and motivo == "stop" and stop and pxs and (modo or "precio") == "precio":
         resp = pxs >= stop * (1 - TOL_STOP)
-
     c_comp = [o for o in compras if o["px"] and o["moneda"] == "ARS"]
     px_ent = (sum(o["q"] * o["px"] for o in c_comp) / sum(o["q"] for o in c_comp)) if c_comp else None
     q_comp = sum(o["q"] for o in compras)
@@ -693,9 +762,10 @@ def _medir(p, precios, mep_hoy, niv_hoy):
             alertas.append(dict(a, cuando="salida"))
     nh = niv_hoy.get(p["simbolo"]) if abierta else None
     return {
-        "id": primera["id"], "broker": p["broker"], "simbolo": p["simbolo"],
-        "estrategia_id": eid, "fuente": fuente, "abierta": abierta,
-        "incompleta": p["incompleta"], "cambio": cambio, "sin_salida": sin_salida, "sin_precio": sin_precio, "sin_mep": sin_mep,
+        "id": primera["ref"], "broker": p["broker"], "simbolo": p["simbolo"],
+        "estrategia_id": eid, "estrategia_fuente": e_fuente, "fuente": fuente, "abierta": abierta,
+        "incompleta": p["incompleta"], "cambio": cambio, "sin_salida": sin_salida,
+        "sin_precio": sin_precio, "sin_mep": sin_mep,
         "medible": medible, "gastos_est": any(o["gastos_est"] for o in ops),
         "fecha_ini": primera["fecha"], "fecha_fin": None if abierta else ultima["fecha"],
         "dias": ((date.today() if abierta else date.fromisoformat(ultima["fecha"][:10]))
@@ -717,7 +787,7 @@ def _medir(p, precios, mep_hoy, niv_hoy):
         "riesgo": None if riesgo is None else round(riesgo, 2), "r": r,
         "stop_respetado": resp, "motivo": motivo,
         "nota": primera.get("nota") or "", "alertas": alertas,
-        "ops": [{"id": o["id"], "fecha": o["fecha"], "lado": o["lado"], "cantidad": o["q"],
+        "ops": [{"id": o["ref"], "fecha": o["fecha"], "lado": o["lado"], "cantidad": o["q"],
                  "precio": o["px"], "moneda": o["moneda"], "fuente": o["fuente"],
                  "gastos": o["gastos"], "gastos_est": bool(o["gastos_est"]),
                  "neto": (_pesos_dolares(o) or {}).get("neto"), "mep": o["mep"],
@@ -725,11 +795,81 @@ def _medir(p, precios, mep_hoy, niv_hoy):
     }
 
 
+# -- PPC de la tenencia ---------------------------------------------------
+
+def _huella():
+    """Cambia cuando cambia algo que mueve los costos."""
+    c = db.conn()
+    partes = [date.today().isoformat()]
+    for q in ("SELECT COUNT(*), MAX(creado) FROM diario_op",
+              "SELECT COUNT(*), MAX(aplicado), MAX(leido) FROM boleto",
+              "SELECT COUNT(*), MAX(id) FROM mov_propuesto WHERE estado='confirmado'",
+              "SELECT COUNT(*), MAX(id) FROM evento_societario"):
+        try:
+            partes.append(tuple(c.execute(q).fetchone()))
+        except Exception:
+            partes.append(None)
+    return tuple(partes)
+
+
+def ppc_por_posicion():
+    """{(broker, simbolo): {ppc, ppc_usd, fecha_alta, cantidad}} de las
+    abiertas cuya historia esta completa en el diario con precio real
+    (IOL o boletos). Es la fuente del PPC de esas posiciones: la tenencia
+    lo toma de aca en vez de guardarlo aparte."""
+    _asegurar()
+    if not db.get_estado("diario_v3"):
+        return {}
+    h = _huella()
+    if _ppc_cache["clave"] == h:
+        return _ppc_cache["datos"]
+    datos = {}
+    try:
+        for p in _armar(_todas()):
+            if p["incompleta"] or any(o["fuente"] == "tenencia" for o in p["ops"]):
+                continue
+            k = _costos(p)
+            if k["q"] <= 1e-9 or k["sin_precio"]:
+                continue
+            datos[(p["broker"], p["simbolo"])] = {
+                "ppc": k["costo"] / k["q"],
+                "ppc_usd": (k["costo_u"] / k["q"]) if not k["sin_mep"] else None,
+                "fecha_alta": next(o for o in p["ops"] if o["lado"] == "compra")["fecha"][:10],
+                "cantidad": k["q"]}
+    except Exception as e:
+        log.warning("ppc del diario: %s", e)
+        datos = {}
+    _ppc_cache.update(clave=h, datos=datos)
+    return datos
+
+
+def aplicar_ppc(filas, ajustadas=False):
+    """Pone en las filas de tenencia el PPC del diario cuando la cantidad
+    coincide. `ajustadas`: las filas ya pasaron por el ajuste de eventos
+    (el del diario ya esta en la escala de hoy)."""
+    try:
+        datos = ppc_por_posicion()
+    except Exception:
+        return filas
+    for f in filas:
+        d = datos.get((f.get("broker"), f.get("simbolo")))
+        cant = f.get("cantidad") or 0
+        if not d or not cant or abs(d["cantidad"] - cant) > TOL_CANT * max(abs(cant), 1):
+            continue
+        f["ppc"], f["ppc_base"] = d["ppc"], 1.0
+        if d["ppc_usd"] is not None:
+            f["ppc_usd"] = d["ppc_usd"]
+        f["fecha_alta"], f["precision"], f["ppc_fuente"] = d["fecha_alta"], "exacta", "diario"
+        if ajustadas:
+            f["ppc_ajustado"], f["eventos"], f["ajuste_supuesto"] = d["ppc"], [], False
+    return filas
+
+
 # -- para completar y edicion -------------------------------------------
 
 def pendientes(pos=None):
-    """Lo que falta clasificar: ventas sin motivo y posiciones sin
-    estrategia. "Sin motivo" es un motivo: elegirlo la saca de la lista."""
+    """Ventas sin motivo y posiciones sin estrategia, desde 2026. "Sin
+    motivo" es un motivo: elegirlo la saca de la lista."""
     pos = pos if pos is not None else posiciones()
     archivados = {}
     try:
@@ -738,15 +878,12 @@ def pendientes(pos=None):
             archivados.setdefault(a.get("simbolo"), a)
     except Exception:
         pass
+    todas = None
     out = []
     for p in pos:
-        # Una posicion con historia incompleta queda fuera de las
-        # estadisticas: clasificarla no cambia nada.
         if p["incompleta"] or p["cambio"] or p["sin_salida"]:
             continue
         reciente = p["abierta"] or (p["fecha_fin"] or "") >= DESDE_PENDIENTES
-        # Las ventas del mismo dia son una salida (TRAN vendio en cuatro
-        # boletos): se pregunta una vez, por la ultima.
         dias = {}
         for o in p["ops"]:
             if o["lado"] == "venta":
@@ -770,105 +907,97 @@ def pendientes(pos=None):
                         "cantidad": cant, "precio": o["precio"], "moneda": o["moneda"],
                         "falta_estrategia": falta_e, "falta_motivo": falta_m,
                         "estrategia_id": p["estrategia_id"], "motivo_sugerido": sug,
-                        "candidatos_rot": candidatos_rotacion(o["id"]) if falta_m else []})
+                        "candidatos_rot": []})
+            if falta_m:
+                todas = todas if todas is not None else _todas()
+                out[-1]["candidatos_rot"] = _candidatos(o, p["simbolo"], todas)
     out.sort(key=lambda x: x["fecha"], reverse=True)
     return out
 
 
-def candidatos_rotacion(op_id):
-    """Compras de otra especie en los dias de la venta, sin unir."""
-    c = db.conn()
-    v = c.execute("SELECT * FROM diario_op WHERE id=?", (op_id,)).fetchone()
-    if not v or v["lado"] != "venta":
-        return []
+def _candidatos(v, sim, todas):
+    """Compras de otra especie en los dias de la venta."""
     f = v["fecha"][:10]
     d0 = (date.fromisoformat(f) - timedelta(days=DIAS_ROTACION)).isoformat()
     d1 = (date.fromisoformat(f) + timedelta(days=DIAS_ROTACION)).isoformat() + "T23:59:59"
-    return [dict(r) for r in c.execute(
-        "SELECT id, broker, simbolo, fecha, cantidad FROM diario_op WHERE lado='compra' AND "
-        "simbolo<>? AND fecha>=? AND fecha<=? AND id NOT IN (SELECT rot_id FROM diario_op "
-        "WHERE rot_id IS NOT NULL AND id<>?) ORDER BY fecha", (v["simbolo"], d0, d1, op_id))]
+    return [{"id": o["ref"], "broker": o["broker"], "simbolo": o["simbolo"], "fecha": o["fecha"],
+             "cantidad": o["cantidad"]}
+            for o in todas if o["lado"] == "compra" and o["simbolo"] != sim and d0 <= o["fecha"] <= d1]
 
 
-def _ops_de(pos_id):
-    """Los ids de las operaciones de la posicion que empieza en `pos_id`."""
+def _posicion_de(ref):
     for p in posiciones():
-        if p["id"] == pos_id:
-            return p, [o["id"] for o in p["ops"]]
-    return None, []
+        if p["id"] == ref or any(o["id"] == ref for o in p["ops"]):
+            return p
+    return None
 
 
-def guardar_op(op_id, d):
-    """Estrategia y motivo desde "Para completar". La estrategia va a toda
-    la posicion; el motivo a la venta."""
-    _asegurar()
-    c = db.conn()
-    o = c.execute("SELECT * FROM diario_op WHERE id=?", (op_id,)).fetchone()
-    if not o:
-        raise ValueError("operación inexistente")
-    pos_id = None
-    for p in posiciones():
-        if any(x["id"] == op_id for x in p["ops"]):
-            pos_id = p["id"]
-            ids = [x["id"] for x in p["ops"]]
-            break
+def _fijar_estrategia(p, eid):
+    """En su unica fuente. Una cerrada con ledger no se cambia desde aca."""
+    if p["abierta"]:
+        db.asignar(p["simbolo"], eid)
+    elif p.get("estrategia_fuente") == "ledger":
+        raise ValueError("La estrategia de %s sale del ledger de la estrategia; se corrige ahí." % p["simbolo"])
     else:
-        ids = [op_id]
+        _anotar(p["id"], estrategia_id=eid)
+
+
+def _fijar_motivo(p, venta_ref, m, rot_a=None):
+    if m and m not in MOTIVOS:
+        raise ValueError("motivo inválido")
+    v = next((o for o in p["ops"] if o["id"] == venta_ref and o["lado"] == "venta"), None)
+    if not v:
+        raise ValueError("operación inexistente")
+    # El motivo va a todas las ventas de ese dia de la posicion.
+    for o in p["ops"]:
+        if o["lado"] == "venta" and o["fecha"][:10] == v["fecha"][:10]:
+            _anotar(o["id"], motivo=m)
+    if m == "rotacion" and rot_a:
+        if not any(o["ref"] == rot_a and o["lado"] == "compra" for o in _todas()):
+            raise ValueError("la compra de la rotación no existe")
+        _anotar(venta_ref, rot_ref=rot_a)
+    elif m != "rotacion":
+        _anotar(venta_ref, rot_ref=None)
+
+
+def guardar_op(ref, d):
+    """Desde "Para completar": estrategia de la posicion y motivo de la venta."""
+    p = _posicion_de(ref)
+    if not p:
+        raise ValueError("operación inexistente")
     if "estrategia_id" in d:
         eid = int(d["estrategia_id"]) if d.get("estrategia_id") else None
-        c.execute("UPDATE diario_op SET estrategia_id=? WHERE id IN (%s)" % ",".join("?" * len(ids)),
-                  [eid] + ids)
-    if "motivo" in d and o["lado"] == "venta":
-        m = d.get("motivo") or None
-        if m and m not in MOTIVOS:
-            raise ValueError("motivo inválido")
-        mismas = [op_id]
-        if pos_id is not None:
-            mismas = [x for x in ids if c.execute(
-                "SELECT 1 FROM diario_op WHERE id=? AND lado='venta' AND substr(fecha,1,10)=?",
-                (x, o["fecha"][:10])).fetchone()] or [op_id]
-        c.execute("UPDATE diario_op SET motivo=? WHERE id IN (%s)" % ",".join("?" * len(mismas)),
-                  [m] + mismas)
-        if m == "rotacion" and d.get("rot_a"):
-            rid = int(d["rot_a"])
-            if not c.execute("SELECT 1 FROM diario_op WHERE id=? AND lado='compra'", (rid,)).fetchone():
-                raise ValueError("la compra de la rotación no existe")
-            c.execute("UPDATE diario_op SET rot_id=NULL WHERE rot_id=? AND id<>?", (rid, op_id))
-            c.execute("UPDATE diario_op SET rot_id=? WHERE id=?", (rid, op_id))
-        elif m != "rotacion":
-            c.execute("UPDATE diario_op SET rot_id=NULL WHERE id=?", (op_id,))
-    c.commit()
-    return pos_id
+        if eid != p["estrategia_id"]:
+            _fijar_estrategia(p, eid)
+    if "motivo" in d:
+        _fijar_motivo(p, ref, d.get("motivo") or None, d.get("rot_a"))
+    return p["id"]
 
 
-def guardar_pos(pos_id, d):
-    """Estrategia, motivo de la ultima venta, comentario y, si no hay
-    copia, el stop y objetivo al entrar (cargados a mano)."""
-    _asegurar()
-    c = db.conn()
-    p, ids = _ops_de(pos_id)
+def guardar_pos(ref, d):
+    """Desde el detalle: estrategia, motivo de la ultima venta, comentario
+    y, si no hay copia, el stop y objetivo al entrar."""
+    p = _posicion_de(ref)
     if not p:
         raise ValueError("posición inexistente")
-    marcas = ",".join("?" * len(ids))
     if "estrategia_id" in d:
         eid = int(d["estrategia_id"]) if d.get("estrategia_id") else None
-        c.execute("UPDATE diario_op SET estrategia_id=? WHERE id IN (%s)" % marcas, [eid] + ids)
+        if eid != p["estrategia_id"]:
+            _fijar_estrategia(p, eid)
     if "nota" in d:
-        c.execute("UPDATE diario_op SET nota=? WHERE id=?", ((d.get("nota") or "").strip()[:1000], pos_id))
+        _anotar(p["id"], nota=(d.get("nota") or "").strip()[:1000] or None)
     if "motivo" in d:
         ventas = [o for o in p["ops"] if o["lado"] == "venta"]
         if ventas:
-            guardar_op(ventas[-1]["id"], {"motivo": d["motivo"], "rot_a": d.get("rot_a")})
+            _fijar_motivo(p, ventas[-1]["id"], d.get("motivo") or None, d.get("rot_a"))
     if "stop_ent" in d or "obj_ent" in d:
         def num(v):
             try:
                 return float(str(v).replace(",", ".")) if v not in (None, "") else None
             except ValueError:
                 raise ValueError("número inválido: %s" % v)
-        c.execute("UPDATE diario_op SET stop_ent=?, obj_ent=?, modo_ent='precio' WHERE id=?",
-                  (num(d.get("stop_ent")), num(d.get("obj_ent")), pos_id))
-    c.commit()
-    return pos_id
+        _anotar(p["id"], stop_ent=num(d.get("stop_ent")), obj_ent=num(d.get("obj_ent")), modo_ent="precio")
+    return p["id"]
 
 
 def estado(cuentas_iol, broker_boletos=None):

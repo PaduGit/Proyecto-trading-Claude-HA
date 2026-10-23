@@ -1,5 +1,35 @@
 # Registro de cambios
 
+## 0.70.0
+
+**Una sola fuente por dato.** Ningun dato se carga en dos pantallas ni se
+copia de una tabla a otra que cumple la misma funcion.
+
+- **Stop y objetivo**: solo en Gestion. Se borran las columnas de la
+  tenencia y de la estrategia (lo que hubiera se pasa a Gestion).
+- **Revisar**: las fechas van a los recordatorios. Se borran las columnas
+  de la tenencia y de la estrategia.
+- **Par de rotacion**: solo en los grupos de RATIOS. TENENCIAS ya no pide
+  "Rota contra" ni el rango de ratio.
+- **Ledger viejo `movimientos`** y **registro manual de operaciones**
+  (tabla, dialogo y lista de Registro): retirados. El ledger es el de las
+  estrategias; las operaciones estan en DIARIO.
+- **Cierres de bonos**: solo en el historico de bonos; no se guardan ni se
+  piden aparte.
+- **PPC**: con la historia completa en el diario (IOL o boletos), el PPC,
+  el PPC en dolares y la fecha de alta de la tenencia salen de las
+  operaciones (con gastos) y no se editan en TENENCIAS.
+- **DIARIO**: lee los boletos y los movimientos confirmados de sus
+  tablas, sin copiarlos; guarda solo las operaciones de IOL y sus propias
+  anotaciones. MEP y gastos estimados se calculan al leer. La estrategia
+  de una posicion abierta es la de la especie (elegirla en el diario la
+  asigna en toda la app); la de una cerrada, la del ledger.
+- Los niveles de Gestion cargados hasta 7 dias despues de una compra se
+  copian como "al entrar".
+
+Migraciones al arrancar, una vez: diario al esquema nuevo (motivos y notas
+se conservan), columnas y tablas retiradas, cierres de bonos repetidos.
+
 ## 0.69.0
 
 **Boletos de varias paginas.** Un boleto con muchas ejecuciones ocupa

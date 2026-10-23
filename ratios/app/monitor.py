@@ -2655,6 +2655,10 @@ class Monitor:
             # una especie que fallo hoy no se vuelve a pedir hasta manana
             if fallos.get(sim) == hoy:
                 continue
+            # Los bonos tienen su serie en bono_hist, que mantiene el
+            # historico: no se piden ni se guardan aparte.
+            if db._en_bono_hist(sim):
+                continue
             ultimo = db.ultimo_cierre_guardado(sim)
             if ultimo:
                 desde = datetime.fromisoformat(ultimo).date() + timedelta(days=1)

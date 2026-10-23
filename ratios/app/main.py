@@ -153,6 +153,7 @@ def main():
     historico.init()
     curva.init()
     historico.limpiar_no_habiles()
+    db.limpiar_cierres_bonos()
     import senales
     senales.init()
     db.init_cartera_hist()
@@ -173,6 +174,10 @@ def main():
                  cfg.get("broker2_nombre") or "IOL-2")
     else:
         monitor.iol2 = None
+
+    # El diario tiene que saber que cuentas son de IOL antes del primer
+    # ciclo: el PPC de la tenencia sale de el.
+    diario.configurar([n for n, _ in monitor.cuentas_iol()], monitor.boletos_cfg()["broker"], cfg)
 
     log.info("%d pares, %d instrumentos, refresco cada %ss",
              len(monitor.pares), len(monitor.instrumentos_orleans()),

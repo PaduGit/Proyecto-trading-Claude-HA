@@ -85,17 +85,6 @@ def exportar_posicion():
               "exportado": datetime.now().isoformat(timespec="seconds"),
               "grupos": [], "estrategias": []}
     for g in db.listar_grupos():
-        movs = []
-        for m in db.movimientos_de(g["id"]):
-            movs.append({
-                "ts": m["ts"], "tipo": m["tipo"],
-                "ticker_de": m["ticker_de"], "cant_de": m["cant_de"],
-                "ticker_a": m["ticker_a"], "cant_a": m["cant_a"],
-                "ratio_base": m["ratio_base"],
-                "equiv_antes": (m["equiv_antes"]
-                                if "equiv_antes" in m.keys() else None),
-                "nota": m["nota"],
-            })
         # los datos del par van en el export: es lo que permite
         # recuperarlos despues de una reinstalacion
         salida["grupos"].append({
@@ -105,7 +94,6 @@ def exportar_posicion():
             "plazo": g.get("plazo"), "resistencia": g.get("resistencia"),
             "soporte": g.get("soporte"),
             "alertas": g.get("alertas", 1), "factor": g.get("factor"),
-            "movimientos": movs,
         })
     salida["estrategias"] = _estrategias_export()
     return salida
@@ -120,8 +108,7 @@ def _estrategias_export():
             "tesis": e["tesis"], "origen": e["origen"],
             "patron": e["patron"], "patron_valor": e["patron_valor"],
             "ticker_base": e["ticker_base"],
-            "objetivo": e["objetivo"], "stop": e["stop"],
-            "revisar": e["revisar"], "alta": e["alta"],
+            "alta": e["alta"],
             "cierre": e["cierre"], "motivo_cierre": e["motivo_cierre"],
             "grupo": _nombre_grupo(e["grupo_id"]),
             "especies": db.especies_de(e["id"]),
@@ -182,14 +169,9 @@ def importar_posicion(datos, reemplazar=False):
         if campos:
             db.actualizar_par(gid, campos)
         creados += 1
-        for m in g.get("movimientos") or []:
-            db.registrar_movimiento(
-                gid, m.get("tipo") or "rotacion",
-                ticker_de=m.get("ticker_de"), cant_de=m.get("cant_de"),
-                ticker_a=m.get("ticker_a"), cant_a=m.get("cant_a"),
-                ratio_base=m.get("ratio_base"), nota=m.get("nota"),
-                ts=m.get("ts"), equiv_antes=m.get("equiv_antes"))
-            movs += 1
+        # El ledger viejo por grupo ya no existe: el de cada estrategia
+        # viene en "estrategias". Un export viejo con movimientos de grupo
+        # se importa sin ellos.
 
     est = _importar_estrategias(datos.get("estrategias"), reemplazar)
     return {"grupos_creados": creados, "grupos_salteados": salteados,
@@ -222,7 +204,7 @@ def _importar_estrategias(lista, reemplazar):
             db.borrar_estrategia(ya[nombre])
         datos = {k: e.get(k) for k in (
             "nombre", "familia", "tesis", "origen", "patron", "patron_valor",
-            "ticker_base", "objetivo", "stop", "revisar")}
+            "ticker_base")}
         datos["grupo_id"] = grupos.get(e.get("grupo"))
         try:
             eid = db.guardar_estrategia(datos)

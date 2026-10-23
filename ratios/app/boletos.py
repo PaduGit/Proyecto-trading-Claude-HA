@@ -689,9 +689,16 @@ def aplicar(broker, decisiones, precios=None, rotacion=None):
 
     for g in list(grupos.values()) + list(caus.values()):
         for x in g["boletos"]:
-            c.execute("UPDATE boleto SET estado='aplicado', aplicado=?, nota=? WHERE bol=?",
-                      (ahora, g.get("motivo_final"), x["bol"]))
+            c.execute("UPDATE boleto SET estado='aplicado', aplicado=? WHERE bol=?",
+                      (ahora, x["bol"]))
     c.commit()
+    # El motivo de la venta vive en el diario, no en el boleto.
+    try:
+        import diario as DI
+        DI.motivo_de_boletos({x["bol"]: g.get("motivo_final") for g in grupos.values()
+                              if g["tipo"] == "venta" for x in g["boletos"]})
+    except Exception as e:
+        log.warning("motivo al diario: %s", e)
     return {"aplicados": sum(len(g["boletos"]) for g in list(grupos.values()) + list(caus.values())),
             "omitidos": sum(len(g["boletos"]) for g in omitir),
             "grupos": len(grupos), "archivados": archivados,
